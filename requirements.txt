@@ -1,0 +1,6 @@
+pyrogram==2.0.106
+tgcrypto==1.2.5
+python-dotenv==1.0.1
+requests==2.32.3
+beautifulsoup4==4.12.3
+yt-dlp==2025.1.26
