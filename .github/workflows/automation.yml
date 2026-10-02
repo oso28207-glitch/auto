@@ -54,32 +54,36 @@ jobs:
           cache: 'pip'
 
       # ═══════════════════════════════════════════════════════
-      # 3) Xvfb + Chrome (لـ SeleniumBase)
+      # 3) ffmpeg — عبر GitHub Action موثوق
+      # ═══════════════════════════════════════════════════════
+      - name: 📦 Install ffmpeg
+        uses: FedericoCarboni/setup-ffmpeg@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ✅ Verify ffmpeg
+        run: |
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+
+      # ═══════════════════════════════════════════════════════
+      # 4) Xvfb + Chrome (لـ SeleniumBase)
       # ═══════════════════════════════════════════════════════
       - name: 🖥️ Install Xvfb + Chrome
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb google-chrome-stable
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb
+          
+          # ثبّت Chrome عبر .deb الرسمي
+          wget -q -O /tmp/chrome.deb \
+            "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb"
+          sudo apt-get install -y -qq /tmp/chrome.deb
+          
+          # شغّل Xvfb
           sudo Xvfb :99 -screen 0 1920x1080x24 &
           echo "DISPLAY=:99" >> $GITHUB_ENV
           sleep 2
           echo "✅ Xvfb و Chrome جاهزان"
-
-      # ═══════════════════════════════════════════════════════
-      # 4) ffmpeg (static — سريع)
-      # ═══════════════════════════════════════════════════════
-      - name: 📦 Install ffmpeg (static — سريع)
-        run: |
-          mkdir -p $HOME/bin
-          cd /tmp
-          curl -fsSL --max-time 120 -o ffmpeg.tar.xz \
-            "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
-          tar -xf ffmpeg.tar.xz
-          mv ffmpeg-*-amd64-static/ffmpeg $HOME/bin/
-          mv ffmpeg-*-amd64-static/ffprobe $HOME/bin/
-          chmod +x $HOME/bin/ffmpeg $HOME/bin/ffprobe
-          echo "$HOME/bin" >> $GITHUB_PATH
-          $HOME/bin/ffmpeg -version | head -1
 
       # ═══════════════════════════════════════════════════════
       # 5) Python deps
@@ -90,11 +94,11 @@ jobs:
           pip install -r requirements.txt
           echo "── pip check ──"
           pip check || true
-          echo "── تثبيت SeleniumBase drivers ──"
-          sbase install chromedriver || true
+          echo "── التحقق من yt-dlp ──"
+          yt-dlp --version
 
       # ═══════════════════════════════════════════════════════
-      # 6) إنشاء .env من الأسرار
+      # 6) إنشاء .env
       # ═══════════════════════════════════════════════════════
       - name: 🔑 Create .env
         env:
@@ -129,8 +133,8 @@ jobs:
             echo "KEEP_MEDIA=false"
             echo "SKIP_COMPRESS=false"
           } > .env
-
-          echo "── .env (القيم الحساسة محجوبة) ──"
+          
+          echo "── .env ──"
           grep -v -E "API_HASH|SESSION_STRING|BOT_TOKEN|API_ID" .env
 
       # ═══════════════════════════════════════════════════════
