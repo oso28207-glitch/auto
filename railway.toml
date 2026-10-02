@@ -1,0 +1,8 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "pip install -r requirements-stream.txt"
+
+[deploy]
+startCommand = "python stream_server.py"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
