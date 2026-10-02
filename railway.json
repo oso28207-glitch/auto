@@ -1,42 +1,20 @@
-2026-10-02T20:16:30.873725292Z [inf]  scheduling build on Metal builder "builder-luduff"
-2026-10-02T20:16:33.024312029Z [inf]  unpacking archive
-2026-10-02T20:16:33.107163048Z [inf]  using build driver railpack-v0.40.1
-2026-10-02T20:16:33.535743578Z [inf]  uploading snapshot
-2026-10-02T20:16:33.716257179Z [inf]  [railway] prepare railpack-v0.40.1
-2026-10-02T20:16:33.716262537Z [inf]  local://prepare-driver
-2026-10-02T20:16:33.716263038Z [inf]  local://prepare-context
-2026-10-02T20:16:33.716263499Z [inf]  docker-image://ghcr.io/railwayapp/railpack-builder:latest
-2026-10-02T20:16:33.716371791Z [inf]  local://prepare-driver
-2026-10-02T20:16:33.716375927Z [inf]  docker-image://ghcr.io/railwayapp/railpack-builder:latest
-2026-10-02T20:16:33.716406924Z [inf]  local://prepare-context
-2026-10-02T20:16:33.716533073Z [inf]  local://prepare-context
-2026-10-02T20:16:33.716999272Z [inf]  local://prepare-context
-2026-10-02T20:16:33.717189789Z [inf]  local://prepare-driver
-2026-10-02T20:16:34.029165655Z [inf]  docker-image://ghcr.io/railwayapp/railpack-builder:latest
-2026-10-02T20:16:34.226778482Z [inf]  local://prepare-driver
-2026-10-02T20:16:35.847035725Z [inf]  local://prepare-context
-2026-10-02T20:16:37.462974479Z [inf]  docker-image://ghcr.io/railwayapp/railpack-builder:mise-2026.9.15
-2026-10-02T20:16:37.462976042Z [inf]  docker-image://ghcr.io/railwayapp/railpack-builder:mise-2026.9.15
-2026-10-02T20:16:37.467642603Z [inf]  [railway] prepare railpack-v0.40.1
-2026-10-02T20:16:42.394042151Z [inf]                     
-[38;2;125;86;243m╭─────────────────╮[0m
-[38;2;125;86;243m│[0m Railpack 0.40.1 [38;2;125;86;243m│[0m
-[38;2;125;86;243m╰─────────────────╯[0m
-
-  [97m↳ Detected Python[0m
-  [97m↳ Using pip[0m
-  [1;31m✖ No start command detected. Specify a start command: https://railpack.com/config/file#deploy[0m
-  
-  To start your Python application, Railpack will automatically:
-  
-  1. Start FastHTML projects with uvicorn
-  2. Start FastAPI projects with uvicorn
-  3. Start Flask projects with gunicorn
-  4. Start Django projects with the gunicorn production server
-  
-  Otherwise, it will run the main.py or app.py file in your project root
-
-
-
-2026-10-02T20:16:43.052791524Z [err]  [railway] prepare railpack-v0.40.1
-2026-10-02T20:16:43.941326556Z [err]  railpack prepare exited with an error
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "pip install -r requirements-stream.txt",
+    "watchPatterns": [
+      "stream_server.py",
+      "requirements-stream.txt",
+      "Dockerfile",
+      "railway.json"
+    ]
+  },
+  "deploy": {
+    "startCommand": "python stream_server.py",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10,
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 30
+  }
+}
