@@ -1,0 +1,82 @@
+name: Soo Automation — تحميل ورفع
+
+on:
+  # تشغيل يدوي من تبويب Actions
+  workflow_dispatch:
+    inputs:
+      check_interval:
+        description: 'CHECK_INTERVAL (0 = مرة واحدة)'
+        required: false
+        default: '0'
+
+  # تشغيل مجدول — كل 6 ساعات
+  schedule:
+    - cron: '0 */6 * * *'
+
+  # عند push على main (اختياري)
+  push:
+    branches: [main]
+    paths:
+      - 'checker.py'
+      - 'downloader.py'
+      - 'uploader.py'
+      - 'orchestrator.py'
+      - 'run.py'
+
+jobs:
+  automate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350   # أقل من 6 ساعات بقليل
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}   # للسماح بدفع data/ و docs/
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install ffmpeg (مطلوب لـ yt-dlp)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: 📦 Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🔑 Create .env
+        run: |
+          cat > .env << 'EOF'
+          API_ID=${{ secrets.API_ID }}
+          API_HASH=${{ secrets.API_HASH }}
+          SESSION_STRING=${{ secrets.SESSION_STRING }}
+          CHANNEL_ID=${{ secrets.CHANNEL_ID }}
+          SOURCE_BASE_URL=${{ secrets.SOURCE_BASE_URL }}
+          SOURCE_SERIES_PATH=${{ secrets.SOURCE_SERIES_PATH }}
+          SOURCE_LIST_SELECTOR=${{ secrets.SOURCE_LIST_SELECTOR }}
+          SOURCE_EP_SELECTOR=${{ secrets.SOURCE_EP_SELECTOR }}
+          MAX_RETRIES=2
+          RETRY_DELAY=10
+          CHECK_INTERVAL=${{ github.event.inputs.check_interval || 0 }}
+          AUTO_BUILD=true
+          KEEP_MEDIA=false
+          API_BASE=${{ secrets.API_BASE }}
+          EOF
+
+      - name: 🚀 Run automation
+        run: python run.py
+
+      - name: 💾 Commit state + docs
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/state.json docs/ 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "🤖 تحديث تلقائي: $(date -u +'%Y-%m-%d %H:%M')"
+          git push || true
