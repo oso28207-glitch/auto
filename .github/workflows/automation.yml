@@ -1,16 +1,23 @@
 name: Soo Automation — تحميل ورفع
 
 on:
+  # تشغيل يدوي
   workflow_dispatch:
     inputs:
       check_interval:
         description: 'CHECK_INTERVAL (0 = مرة واحدة)'
         required: false
         default: '0'
+      max_episodes:
+        description: 'حد أقصى للحلقات في الدورة (0 = بلا حد)'
+        required: false
+        default: '0'
 
+  # تشغيل تلقائي كل 6 ساعات
   schedule:
     - cron: '0 */6 * * *'
 
+  # عند push على الملفات المؤثرة
   push:
     branches: [main]
     paths:
@@ -18,6 +25,9 @@ on:
       - 'downloader.py'
       - 'uploader.py'
       - 'orchestrator.py'
+      - 'builder.py'
+      - 'database.py'
+      - 'config.py'
       - 'run.py'
       - 'requirements.txt'
       - '.github/workflows/automation.yml'
@@ -27,27 +37,52 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
 
+    # ═══════════════════════════════════════════════════════════
+    # FlareSolverr — يتجاوز Cloudflare تلقائياً
+    # ═══════════════════════════════════════════════════════════
+    services:
+      flaresolverr:
+        image: ghcr.io/flaresolverr/flaresolverr:latest
+        ports:
+          - 8191:8191
+        env:
+          LOG_LEVEL: info
+          BROWSER_TIMEOUT: 60000
+          CAPTCHA_SOLVER: none
+        options: >-
+          --health-cmd "wget -q -O- http://localhost:8191/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
+      # ═══════════════════════════════════════════════════════════
+      # 1) Checkout
+      # ═══════════════════════════════════════════════════════════
       - name: 📥 Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
+          fetch-depth: 1
 
+      # ═══════════════════════════════════════════════════════════
+      # 2) Python
+      # ═══════════════════════════════════════════════════════════
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      # ═══════════════════════════════════════════════════════
-      # ffmpeg — نسخة ثابتة سريعة (بدل apt install البطيء)
-      # ═══════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════════
+      # 3) ffmpeg — نسخة ثابتة سريعة (30 ثانية بدل 6 دقائق)
+      # ═══════════════════════════════════════════════════════════
       - name: 📦 Install ffmpeg (static — سريع)
         run: |
           mkdir -p $HOME/bin
           cd /tmp
           echo "⬇️  تحميل ffmpeg static..."
-          curl -fsSL -o ffmpeg.tar.xz \
+          curl -fsSL --max-time 120 -o ffmpeg.tar.xz \
             "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
           tar -xf ffmpeg.tar.xz
           mv ffmpeg-*-amd64-static/ffmpeg $HOME/bin/
@@ -56,18 +91,40 @@ jobs:
           echo "$HOME/bin" >> $GITHUB_PATH
           $HOME/bin/ffmpeg -version | head -1
 
-      # ═══════════════════════════════════════════════════════
-      # Python deps
-      # ═══════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════════
+      # 4) Python deps
+      # ═══════════════════════════════════════════════════════════
       - name: 📦 Install Python deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          echo "── pip check ──"
           pip check || true
+          echo "── yt-dlp impersonate targets ──"
+          yt-dlp --list-impersonate-targets | head -20 || true
 
-      # ═══════════════════════════════════════════════════════
-      # إنشاء .env من الأسرار
-      # ═══════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════════
+      # 5) انتظار FlareSolverr
+      # ═══════════════════════════════════════════════════════════
+      - name: 🔍 Wait for FlareSolverr
+        run: |
+          echo "انتظار FlareSolverr على localhost:8191..."
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:8191/health | grep -q 200; then
+              echo "✅ FlareSolverr جاهز بعد ${i} محاولة"
+              curl -s http://localhost:8191/health | head -c 200
+              echo ""
+              exit 0
+            fi
+            echo "   محاولة $i/30..."
+            sleep 2
+          done
+          echo "❌ FlareSolverr لم يصبح جاهزاً — استمرار بدون"
+          exit 0
+
+      # ═══════════════════════════════════════════════════════════
+      # 6) إنشاء .env من الأسرار
+      # ═══════════════════════════════════════════════════════════
       - name: 🔑 Create .env
         env:
           API_ID: ${{ secrets.API_ID }}
@@ -80,6 +137,7 @@ jobs:
           SOURCE_EP_SELECTOR: ${{ secrets.SOURCE_EP_SELECTOR }}
           API_BASE: ${{ secrets.API_BASE }}
           IMPERSONATE_TARGET: ${{ secrets.IMPERSONATE_TARGET }}
+          MAX_EPISODES: ${{ github.event.inputs.max_episodes || '0' }}
         run: |
           {
             echo "API_ID=${API_ID}"
@@ -92,6 +150,9 @@ jobs:
             echo "SOURCE_EP_SELECTOR=${SOURCE_EP_SELECTOR}"
             echo "API_BASE=${API_BASE}"
             echo "IMPERSONATE_TARGET=${IMPERSONATE_TARGET:-chrome}"
+            echo "FLARESOLVERR_URL=http://localhost:8191/v1"
+            echo "USE_FLARESOLVERR=true"
+            echo "MAX_EPISODES=${MAX_EPISODES}"
             echo "MAX_RETRIES=2"
             echo "RETRY_DELAY=10"
             echo "CHECK_INTERVAL=${{ github.event.inputs.check_interval || 0 }}"
@@ -99,23 +160,45 @@ jobs:
             echo "KEEP_MEDIA=false"
           } > .env
 
-          echo "── .env (بدون القيم الحساسة) ──"
-          grep -v -E "API_HASH|SESSION_STRING|BOT_TOKEN" .env
+          echo "── .env (القيم الحساسة محجوبة) ──"
+          grep -v -E "API_HASH|SESSION_STRING|BOT_TOKEN|API_ID" .env
 
-      # ═══════════════════════════════════════════════════════
-      # تشغيل النظام
-      # ═══════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════════
+      # 7) تشغيل النظام
+      # ═══════════════════════════════════════════════════════════
       - name: 🚀 Run automation
         run: python run.py
 
-      # ═══════════════════════════════════════════════════════
-      # حفظ الحالة في المستودع
-      # ═══════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════════
+      # 8) حفظ الحالة (حتى عند الفشل)
+      # ═══════════════════════════════════════════════════════════
       - name: 💾 Commit state + docs
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # احفظ الحالة
+          mkdir -p data docs
           git add data/state.json data/state.backup.json docs/ 2>/dev/null || true
-          git diff --staged --quiet || git commit -m "🤖 تحديث تلقائي: $(date -u +'%Y-%m-%d %H:%M')"
-          git push || true
+
+          if git diff --staged --quiet; then
+            echo "لا تغييرات لحفظها"
+          else
+            git commit -m "🤖 تحديث تلقائي: $(date -u +'%Y-%m-%d %H:%M')"
+            git push || {
+              echo "⚠️ فشل الدفع، محاولة مرة أخرى..."
+              sleep 5
+              git pull --rebase --autostash || true
+              git push || echo "❌ فشل الدفع النهائي"
+            }
+          fi
+
+      # ═══════════════════════════════════════════════════════════
+      # 9) تنظيف الملفات الكبيرة
+      # ═══════════════════════════════════════════════════════════
+      - name: 🧹 Cleanup
+        if: always()
+        run: |
+          rm -rf data/media/* 2>/dev/null || true
+          df -h | head -3
