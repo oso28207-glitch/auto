@@ -1,7 +1,6 @@
 name: Soo Automation — تحميل ورفع
 
 on:
-  # تشغيل يدوي من تبويب Actions
   workflow_dispatch:
     inputs:
       check_interval:
@@ -9,11 +8,9 @@ on:
         required: false
         default: '0'
 
-  # تشغيل مجدول — كل 6 ساعات
   schedule:
     - cron: '0 */6 * * *'
 
-  # عند push على main (اختياري)
   push:
     branches: [main]
     paths:
@@ -22,17 +19,19 @@ on:
       - 'uploader.py'
       - 'orchestrator.py'
       - 'run.py'
+      - 'requirements.txt'
+      - '.github/workflows/automation.yml'
 
 jobs:
   automate:
     runs-on: ubuntu-latest
-    timeout-minutes: 350   # أقل من 6 ساعات بقليل
+    timeout-minutes: 350
 
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GH_PAT }}   # للسماح بدفع data/ و docs/
+          token: ${{ secrets.GH_PAT }}
 
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
@@ -40,43 +39,83 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: 📦 Install ffmpeg (مطلوب لـ yt-dlp)
+      # ═══════════════════════════════════════════════════════
+      # ffmpeg — نسخة ثابتة سريعة (بدل apt install البطيء)
+      # ═══════════════════════════════════════════════════════
+      - name: 📦 Install ffmpeg (static — سريع)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          mkdir -p $HOME/bin
+          cd /tmp
+          echo "⬇️  تحميل ffmpeg static..."
+          curl -fsSL -o ffmpeg.tar.xz \
+            "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+          tar -xf ffmpeg.tar.xz
+          mv ffmpeg-*-amd64-static/ffmpeg $HOME/bin/
+          mv ffmpeg-*-amd64-static/ffprobe $HOME/bin/
+          chmod +x $HOME/bin/ffmpeg $HOME/bin/ffprobe
+          echo "$HOME/bin" >> $GITHUB_PATH
+          $HOME/bin/ffmpeg -version | head -1
 
+      # ═══════════════════════════════════════════════════════
+      # Python deps
+      # ═══════════════════════════════════════════════════════
       - name: 📦 Install Python deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip check || true
 
+      # ═══════════════════════════════════════════════════════
+      # إنشاء .env من الأسرار
+      # ═══════════════════════════════════════════════════════
       - name: 🔑 Create .env
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          SESSION_STRING: ${{ secrets.SESSION_STRING }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          SOURCE_BASE_URL: ${{ secrets.SOURCE_BASE_URL }}
+          SOURCE_SERIES_PATH: ${{ secrets.SOURCE_SERIES_PATH }}
+          SOURCE_LIST_SELECTOR: ${{ secrets.SOURCE_LIST_SELECTOR }}
+          SOURCE_EP_SELECTOR: ${{ secrets.SOURCE_EP_SELECTOR }}
+          API_BASE: ${{ secrets.API_BASE }}
+          IMPERSONATE_TARGET: ${{ secrets.IMPERSONATE_TARGET }}
         run: |
-          cat > .env << 'EOF'
-          API_ID=${{ secrets.API_ID }}
-          API_HASH=${{ secrets.API_HASH }}
-          SESSION_STRING=${{ secrets.SESSION_STRING }}
-          CHANNEL_ID=${{ secrets.CHANNEL_ID }}
-          SOURCE_BASE_URL=${{ secrets.SOURCE_BASE_URL }}
-          SOURCE_SERIES_PATH=${{ secrets.SOURCE_SERIES_PATH }}
-          SOURCE_LIST_SELECTOR=${{ secrets.SOURCE_LIST_SELECTOR }}
-          SOURCE_EP_SELECTOR=${{ secrets.SOURCE_EP_SELECTOR }}
-          MAX_RETRIES=2
-          RETRY_DELAY=10
-          CHECK_INTERVAL=${{ github.event.inputs.check_interval || 0 }}
-          AUTO_BUILD=true
-          KEEP_MEDIA=false
-          API_BASE=${{ secrets.API_BASE }}
-          EOF
+          {
+            echo "API_ID=${API_ID}"
+            echo "API_HASH=${API_HASH}"
+            echo "SESSION_STRING=${SESSION_STRING}"
+            echo "CHANNEL_ID=${CHANNEL_ID}"
+            echo "SOURCE_BASE_URL=${SOURCE_BASE_URL}"
+            echo "SOURCE_SERIES_PATH=${SOURCE_SERIES_PATH}"
+            echo "SOURCE_LIST_SELECTOR=${SOURCE_LIST_SELECTOR}"
+            echo "SOURCE_EP_SELECTOR=${SOURCE_EP_SELECTOR}"
+            echo "API_BASE=${API_BASE}"
+            echo "IMPERSONATE_TARGET=${IMPERSONATE_TARGET:-chrome}"
+            echo "MAX_RETRIES=2"
+            echo "RETRY_DELAY=10"
+            echo "CHECK_INTERVAL=${{ github.event.inputs.check_interval || 0 }}"
+            echo "AUTO_BUILD=true"
+            echo "KEEP_MEDIA=false"
+          } > .env
 
+          echo "── .env (بدون القيم الحساسة) ──"
+          grep -v -E "API_HASH|SESSION_STRING|BOT_TOKEN" .env
+
+      # ═══════════════════════════════════════════════════════
+      # تشغيل النظام
+      # ═══════════════════════════════════════════════════════
       - name: 🚀 Run automation
         run: python run.py
 
+      # ═══════════════════════════════════════════════════════
+      # حفظ الحالة في المستودع
+      # ═══════════════════════════════════════════════════════
       - name: 💾 Commit state + docs
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/state.json docs/ 2>/dev/null || true
+          git add data/state.json data/state.backup.json docs/ 2>/dev/null || true
           git diff --staged --quiet || git commit -m "🤖 تحديث تلقائي: $(date -u +'%Y-%m-%d %H:%M')"
           git push || true
