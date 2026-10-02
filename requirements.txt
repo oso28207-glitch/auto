@@ -4,4 +4,5 @@ python-dotenv==1.0.1
 requests==2.32.3
 cloudscraper==1.2.71
 beautifulsoup4==4.12.3
-yt-dlp==2025.1.26
+yt-dlp[default,curl-cffi]==2025.1.26
+curl-cffi==0.7.4
