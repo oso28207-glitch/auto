@@ -1,7 +1,6 @@
 name: Soo Automation — تحميل ورفع
 
 on:
-  # تشغيل يدوي
   workflow_dispatch:
     inputs:
       check_interval:
@@ -13,11 +12,9 @@ on:
         required: false
         default: '0'
 
-  # تشغيل تلقائي كل 6 ساعات
   schedule:
     - cron: '0 */6 * * *'
 
-  # عند push على الملفات المؤثرة
   push:
     branches: [main]
     paths:
@@ -47,13 +44,14 @@ jobs:
           - 8191:8191
         env:
           LOG_LEVEL: info
-          BROWSER_TIMEOUT: 60000
+          BROWSER_TIMEOUT: 90000
           CAPTCHA_SOLVER: none
         options: >-
-          --health-cmd "wget -q -O- http://localhost:8191/health || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
+          --health-cmd "curl -f http://localhost:8191/health || exit 1"
+          --health-interval 15s
+          --health-timeout 10s
           --health-retries 10
+          --health-start-period 60s
 
     steps:
       # ═══════════════════════════════════════════════════════════
@@ -75,7 +73,7 @@ jobs:
           cache: 'pip'
 
       # ═══════════════════════════════════════════════════════════
-      # 3) ffmpeg — نسخة ثابتة سريعة (30 ثانية بدل 6 دقائق)
+      # 3) ffmpeg — نسخة ثابتة سريعة
       # ═══════════════════════════════════════════════════════════
       - name: 📦 Install ffmpeg (static — سريع)
         run: |
@@ -109,15 +107,15 @@ jobs:
       - name: 🔍 Wait for FlareSolverr
         run: |
           echo "انتظار FlareSolverr على localhost:8191..."
-          for i in $(seq 1 30); do
-            if curl -s -o /dev/null -w "%{http_code}" http://localhost:8191/health | grep -q 200; then
+          for i in $(seq 1 40); do
+            if curl -s -f -o /dev/null http://localhost:8191/health; then
               echo "✅ FlareSolverr جاهز بعد ${i} محاولة"
               curl -s http://localhost:8191/health | head -c 200
               echo ""
               exit 0
             fi
-            echo "   محاولة $i/30..."
-            sleep 2
+            echo "   محاولة $i/40..."
+            sleep 3
           done
           echo "❌ FlareSolverr لم يصبح جاهزاً — استمرار بدون"
           exit 0
@@ -178,7 +176,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # احفظ الحالة
           mkdir -p data docs
           git add data/state.json data/state.backup.json docs/ 2>/dev/null || true
 
