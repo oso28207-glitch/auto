@@ -34,52 +34,44 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
 
-    # ═══════════════════════════════════════════════════════════
-    # FlareSolverr — يتجاوز Cloudflare تلقائياً
-    # ═══════════════════════════════════════════════════════════
-    services:
-      flaresolverr:
-        image: ghcr.io/flaresolverr/flaresolverr:latest
-        ports:
-          - 8191:8191
-        env:
-          LOG_LEVEL: info
-          BROWSER_TIMEOUT: 90000
-          CAPTCHA_SOLVER: none
-        options: >-
-          --health-cmd "curl -f http://localhost:8191/health || exit 1"
-          --health-interval 15s
-          --health-timeout 10s
-          --health-retries 10
-          --health-start-period 60s
-
     steps:
-      # ═══════════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════
       # 1) Checkout
-      # ═══════════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════
       - name: 📥 Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
           fetch-depth: 1
 
-      # ═══════════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════
       # 2) Python
-      # ═══════════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      # ═══════════════════════════════════════════════════════════
-      # 3) ffmpeg — نسخة ثابتة سريعة
-      # ═══════════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════
+      # 3) Xvfb + Chrome (لـ SeleniumBase)
+      # ═══════════════════════════════════════════════════════
+      - name: 🖥️ Install Xvfb + Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb google-chrome-stable
+          sudo Xvfb :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+          sleep 2
+          echo "✅ Xvfb و Chrome جاهزان"
+
+      # ═══════════════════════════════════════════════════════
+      # 4) ffmpeg (static — سريع)
+      # ═══════════════════════════════════════════════════════
       - name: 📦 Install ffmpeg (static — سريع)
         run: |
           mkdir -p $HOME/bin
           cd /tmp
-          echo "⬇️  تحميل ffmpeg static..."
           curl -fsSL --max-time 120 -o ffmpeg.tar.xz \
             "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
           tar -xf ffmpeg.tar.xz
@@ -89,40 +81,21 @@ jobs:
           echo "$HOME/bin" >> $GITHUB_PATH
           $HOME/bin/ffmpeg -version | head -1
 
-      # ═══════════════════════════════════════════════════════════
-      # 4) Python deps
-      # ═══════════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════
+      # 5) Python deps
+      # ═══════════════════════════════════════════════════════
       - name: 📦 Install Python deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           echo "── pip check ──"
           pip check || true
-          echo "── yt-dlp impersonate targets ──"
-          yt-dlp --list-impersonate-targets | head -20 || true
+          echo "── تثبيت SeleniumBase drivers ──"
+          sbase install chromedriver || true
 
-      # ═══════════════════════════════════════════════════════════
-      # 5) انتظار FlareSolverr
-      # ═══════════════════════════════════════════════════════════
-      - name: 🔍 Wait for FlareSolverr
-        run: |
-          echo "انتظار FlareSolverr على localhost:8191..."
-          for i in $(seq 1 40); do
-            if curl -s -f -o /dev/null http://localhost:8191/health; then
-              echo "✅ FlareSolverr جاهز بعد ${i} محاولة"
-              curl -s http://localhost:8191/health | head -c 200
-              echo ""
-              exit 0
-            fi
-            echo "   محاولة $i/40..."
-            sleep 3
-          done
-          echo "❌ FlareSolverr لم يصبح جاهزاً — استمرار بدون"
-          exit 0
-
-      # ═══════════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════
       # 6) إنشاء .env من الأسرار
-      # ═══════════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════
       - name: 🔑 Create .env
         env:
           API_ID: ${{ secrets.API_ID }}
@@ -147,53 +120,49 @@ jobs:
             echo "SOURCE_LIST_SELECTOR=${SOURCE_LIST_SELECTOR}"
             echo "SOURCE_EP_SELECTOR=${SOURCE_EP_SELECTOR}"
             echo "API_BASE=${API_BASE}"
-            echo "IMPERSONATE_TARGET=${IMPERSONATE_TARGET:-chrome}"
-            echo "FLARESOLVERR_URL=http://localhost:8191/v1"
-            echo "USE_FLARESOLVERR=true"
+            echo "IMPERSONATE_TARGET=${IMPERSONATE_TARGET:-chrome120}"
             echo "MAX_EPISODES=${MAX_EPISODES}"
             echo "MAX_RETRIES=2"
             echo "RETRY_DELAY=10"
             echo "CHECK_INTERVAL=${{ github.event.inputs.check_interval || 0 }}"
             echo "AUTO_BUILD=true"
             echo "KEEP_MEDIA=false"
+            echo "SKIP_COMPRESS=false"
           } > .env
 
           echo "── .env (القيم الحساسة محجوبة) ──"
           grep -v -E "API_HASH|SESSION_STRING|BOT_TOKEN|API_ID" .env
 
-      # ═══════════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════
       # 7) تشغيل النظام
-      # ═══════════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════
       - name: 🚀 Run automation
         run: python run.py
 
-      # ═══════════════════════════════════════════════════════════
-      # 8) حفظ الحالة (حتى عند الفشل)
-      # ═══════════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════
+      # 8) حفظ الحالة
+      # ═══════════════════════════════════════════════════════
       - name: 💾 Commit state + docs
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
           mkdir -p data docs
           git add data/state.json data/state.backup.json docs/ 2>/dev/null || true
-
           if git diff --staged --quiet; then
-            echo "لا تغييرات لحفظها"
+            echo "لا تغييرات"
           else
             git commit -m "🤖 تحديث تلقائي: $(date -u +'%Y-%m-%d %H:%M')"
             git push || {
-              echo "⚠️ فشل الدفع، محاولة مرة أخرى..."
               sleep 5
               git pull --rebase --autostash || true
-              git push || echo "❌ فشل الدفع النهائي"
+              git push || echo "❌ فشل الدفع"
             }
           fi
 
-      # ═══════════════════════════════════════════════════════════
-      # 9) تنظيف الملفات الكبيرة
-      # ═══════════════════════════════════════════════════════════
+      # ═══════════════════════════════════════════════════════
+      # 9) تنظيف
+      # ═══════════════════════════════════════════════════════
       - name: 🧹 Cleanup
         if: always()
         run: |
