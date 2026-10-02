@@ -1,14 +1,8 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "pip install -r requirements-stream.txt",
-    "watchPatterns": [
-      "stream_server.py",
-      "requirements-stream.txt",
-      "Dockerfile",
-      "railway.json"
-    ]
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile"
   },
   "deploy": {
     "startCommand": "python stream_server.py",
