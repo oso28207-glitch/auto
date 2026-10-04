@@ -1,12 +1,15 @@
-"""كشف الجديد من u.3seq.com عبر WordPress REST API."""
+"""
+checker.py — كشف الجديد من u.3seq.com عبر WordPress REST API.
+يستخدم cloudscraper لتجاوز Cloudflare.
+"""
 
 import re
 import time
-from urllib.parse import urlparse
 
 import cloudscraper
 
 from config import config
+from database import db
 from errors import SourceError
 
 _scraper = None
@@ -63,6 +66,7 @@ def _api_get(path, params=None, retries=3):
                 return r.json()
             if r.status_code == 403:
                 last_err = f"403 Cloudflare (محاولة {attempt})"
+                print(f"   ⚠️ {last_err}")
                 time.sleep(5 * attempt)
                 continue
             if r.status_code == 404:
@@ -81,7 +85,7 @@ def _api_get(path, params=None, retries=3):
 def fetch_series_list():
     """
     يجلب كل المسلسلات مع حلقاتها من التصنيف المحدد.
-    يعيد: [{name, url, slug, posts: [{episode, title, link, id}]}]
+    يعيد: [{name, url, slug, posts: [{episode, title, link, id, date}]}]
     """
     print(f"📋 جلب قائمة المسلسلات (تصنيف {config.SOURCE_CATEGORY})...")
     all_posts = []
@@ -128,7 +132,7 @@ def fetch_series_list():
         name = _clean_series_name(title)
         ep_num = _extract_ep(title)
         if not ep_num:
-            continue  # تجاهل المنشورات بدون رقم حلقة
+            continue
 
         if name not in series_map:
             series_map[name] = {
@@ -146,7 +150,6 @@ def fetch_series_list():
             "date": post.get("date", ""),
         })
 
-    # ترتيب الحلقات
     for s in series_map.values():
         s["posts"].sort(key=lambda x: x["episode"])
 
@@ -158,14 +161,15 @@ def fetch_series_list():
 def find_new_episodes(series_data, series_name):
     """
     يقارن حلقات المصدر مع قاعدة البيانات.
-    يعيد قائمة الحلقات الجديدة فقط.
+    يعيد قائمة الحلقات الجديدة فقط (غير المرفوعة، غير الفاشلة).
     """
     new = []
     for post in series_data.get("posts", []):
         ep = post["episode"]
-        if db.is_uploaded(series_name, ep):
+        status = db.episode_status(series_name, ep)
+        if status == "uploaded":
             continue
-        if db.episode_status(series_name, ep) == "failed":
+        if status == "failed":
             continue  # لا نعيد المحاولة تلقائياً
         new.append(post)
     return new

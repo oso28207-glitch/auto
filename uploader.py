@@ -1,4 +1,7 @@
-"""رفع إلى قناة Telegram عبر Pyrogram."""
+"""
+uploader.py — رفع إلى قناة Telegram.
+يرجع dict يحتوي message_id + file_id + size + width + height + duration.
+"""
 
 import asyncio
 import subprocess
@@ -31,7 +34,7 @@ def _meta(video_path):
 
 
 def _thumb(video_path, thumb_path):
-    """يولّد صورة مصغّرة."""
+    """توليد صورة مصغّرة."""
     for ts in ["00:00:05", "00:00:01", "00:00:00"]:
         r = subprocess.run(
             ["ffmpeg", "-err_detect", "ignore_err", "-fflags", "+discardcorrupt",
@@ -71,9 +74,14 @@ class Uploader:
             await self._client.stop()
             self._client = None
 
-    async def upload(self, file_path: Path, caption: str) -> int:
+    async def upload(self, file_path: Path, caption: str) -> dict:
+        """
+        يرفع الفيديو ويعيد:
+        {message_id, file_id, size, width, height, duration}
+        """
         if not self._client:
             await self.start()
+
         if not file_path.exists():
             raise UploadError(f"ملف غير موجود: {file_path}")
 
@@ -81,9 +89,11 @@ class Uploader:
         thumb = file_path.with_suffix(".jpg")
         has_thumb = _thumb(file_path, thumb)
 
-        size_mb = file_path.stat().st_size / 1048576
+        size_bytes = file_path.stat().st_size
+        size_mb = size_bytes / 1048576
         print(f"   📤 رفع {size_mb:.1f}MB | {w}x{h} | {d}s...")
 
+        msg = None
         for attempt in range(3):
             try:
                 msg = await self._client.send_video(
@@ -95,10 +105,7 @@ class Uploader:
                     thumb=str(thumb) if has_thumb else None,
                     file_name=file_path.name,
                 )
-                if has_thumb and thumb.exists():
-                    thumb.unlink()
-                print(f"   ✅ message_id={msg.id}")
-                return msg.id
+                break
             except FloodWait as e:
                 print(f"   ⏳ FloodWait {e.value}s")
                 await asyncio.sleep(e.value)
@@ -107,9 +114,34 @@ class Uploader:
                     print(f"   ⚠️ محاولة {attempt+1}: {str(e)[:100]}")
                     await asyncio.sleep(5)
                 else:
+                    if has_thumb and thumb.exists():
+                        thumb.unlink()
                     raise UploadError(f"فشل رفع {file_path.name}: {e}")
 
-        raise UploadError(f"فشل رفع {file_path.name}")
+        if not msg:
+            if has_thumb and thumb.exists():
+                thumb.unlink()
+            raise UploadError(f"فشل رفع {file_path.name}")
+
+        # استخراج file_id و size من الرسالة
+        media = msg.video or msg.document
+        file_id = media.file_id if media else ""
+        file_size = (media.file_size if media and media.file_size else size_bytes)
+        duration = (media.duration if media and media.duration else d)
+
+        if has_thumb and thumb.exists():
+            thumb.unlink()
+
+        print(f"   ✅ message_id={msg.id} | fid={file_id[:20]}... | size={file_size}")
+
+        return {
+            "message_id": msg.id,
+            "file_id": file_id,
+            "size": file_size,
+            "width": w,
+            "height": h,
+            "duration": duration,
+        }
 
 
 uploader = Uploader()

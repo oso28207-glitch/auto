@@ -47,28 +47,30 @@ class Pipeline:
         print(f"\n📊 الحالة الحالية:")
         s = db.stats()
         print(f"   المسلسلات: {s['series']}")
-        print(f"   الحلقات: {s['uploaded']} مرفوعة من {s['episodes']}")
-        print(f"   الفيديوهات: {s['videos']}")
+        print(f"   الحلقات المرفوعة: {s['uploaded']} من {s['episodes']}")
+        print(f"   الفيديوهات في الفهرس: {s['videos']}")
 
         # ═══ 1) جلب قائمة المسلسلات ═══
+        print()
         series_list = fetch_series_list()
         self.stats["series_checked"] = len(series_list)
 
         # ═══ 2) فلترة المسلسلات التي فيها جديد ═══
+        print("🔍 فحص الحلقات الجديدة...")
         work_queue = []
         for s in series_list:
             name = s["name"]
             new_eps = find_new_episodes(s, name)
-
             if not new_eps:
                 continue
 
-            # حفظ/تحديث المسلسل
             existing = db.get_series(name)
-            if not existing.get("url"):
-                print(f"📺 جديد: {name} ({len(new_eps)} حلقة)")
+            is_new = not existing.get("url")
+
+            if is_new:
+                print(f"   📺 جديد: {name} ({len(new_eps)} حلقة)")
             else:
-                print(f"🔍 تحديث: {name} ({len(new_eps)} حلقة جديدة)")
+                print(f"   🔄 تحديث: {name} ({len(new_eps)} حلقة)")
 
             db.set_series(name, {
                 "url": s["url"],
@@ -104,14 +106,14 @@ class Pipeline:
                 eps.sort(key=lambda x: x["episode"])
 
                 print(f"\n{'═' * 60}")
-                print(f"📺 {name}")
+                print(f"📺 {name} ({len(eps)} حلقة)")
                 print(f"{'═' * 60}")
 
                 for ep_data in eps:
                     # حد أقصى؟
                     if (config.MAX_EPISODES_PER_RUN > 0 and
                             self.stats["episodes_uploaded"] >= config.MAX_EPISODES_PER_RUN):
-                        print(f"⏸️  وصلنا للحد الأقصى ({config.MAX_EPISODES_PER_RUN})")
+                        print(f"\n⏸️  وصلنا للحد الأقصى ({config.MAX_EPISODES_PER_RUN})")
                         break
 
                     ep_num = ep_data["episode"]
@@ -119,9 +121,15 @@ class Pipeline:
 
                     print(f"\n   ── الحلقة {ep_num} ──")
 
-                    # تحميل + ضغط
-                    db.set_episode(name, ep_num, status="downloading",
-                                   url=ep_url, title=ep_data.get("title", ""))
+                    # تحديث الحالة: تحميل
+                    db.set_episode(
+                        name, ep_num,
+                        status="downloading",
+                        url=ep_url,
+                        title=ep_data.get("title", ""),
+                    )
+
+                    # التحميل
                     try:
                         video_path = download_episode(name, ep_num, ep_url)
                     except SooFatalError:
@@ -129,34 +137,51 @@ class Pipeline:
                         self.stats["episodes_failed"] += 1
                         raise
 
-                    # رفع
+                    # تحديث الحالة: رفع
                     db.set_episode(name, ep_num, status="uploading")
+
+                    # الرفع
+                    caption = f"📺 {name}\n🎬 الحلقة {ep_num}"
                     try:
-                        caption = f"📺 {name}\n🎬 الحلقة {ep_num}"
-                        message_id = await uploader.upload(video_path, caption)
+                        upload_info = await uploader.upload(video_path, caption)
                     except SooFatalError:
                         db.mark_failed(name, ep_num, "فشل الرفع")
                         self.stats["episodes_failed"] += 1
                         raise
 
-                    # حفظ
-                    db.set_episode(name, ep_num,
-                                   status="uploaded",
-                                   message_id=message_id)
+                    # حفظ في قاعدة البيانات
+                    db.set_episode(
+                        name, ep_num,
+                        status="uploaded",
+                        message_id=upload_info["message_id"],
+                        file_id=upload_info["file_id"],
+                        size=upload_info["size"],
+                        width=upload_info.get("width", 0),
+                        height=upload_info.get("height", 0),
+                        duration=upload_info.get("duration", 0),
+                    )
+
                     db.add_video({
-                        "id": message_id,
+                        "id": upload_info["message_id"],
                         "title": f"{name} — الحلقة {ep_num}",
                         "series": name,
                         "episode": ep_num,
-                        "size": video_path.stat().st_size,
+                        "file_id": upload_info["file_id"],
+                        "size": upload_info["size"],
+                        "width": upload_info.get("width", 0),
+                        "height": upload_info.get("height", 0),
+                        "duration": upload_info.get("duration", 0),
                         "date": time.strftime("%Y-%m-%dT%H:%M:%S"),
                     })
+
                     self.stats["episodes_uploaded"] += 1
 
                     # حذف الملف
                     if not config.KEEP_MEDIA:
-                        try: video_path.unlink()
-                        except Exception: pass
+                        try:
+                            video_path.unlink()
+                        except Exception:
+                            pass
 
                     # بناء تدريجي بعد كل حلقة
                     if config.AUTO_BUILD:
@@ -167,8 +192,9 @@ class Pipeline:
                 if name not in self.stats["changed"]:
                     self.stats["changed"].append(name)
 
-                # حفظ استمرارية
-                db.set_series(name, {"last_updated": time.strftime("%Y-%m-%dT%H:%M:%S")})
+                db.set_series(name, {
+                    "last_updated": time.strftime("%Y-%m-%dT%H:%M:%S")
+                })
 
         finally:
             await uploader.stop()
@@ -188,7 +214,10 @@ def print_summary(stats, start):
           f"{stats['episodes_uploaded']} مرفوعة، "
           f"{stats['episodes_failed']} فاشلة")
     if stats["changed"]:
-        print(f"🔄 محدّث: {', '.join(stats['changed'][:5])}")
+        preview = ", ".join(stats["changed"][:5])
+        if len(stats["changed"]) > 5:
+            preview += "..."
+        print(f"🔄 محدّث: {preview}")
     print("═" * 60)
 
 
@@ -202,7 +231,7 @@ async def main():
 
     except SooFatalError as e:
         print(f"\n{'🛑' * 30}")
-        print(f"❌ خطأ خطير في المرحلة: {e.stage}")
+        print(f"❌ خطأ خطير — المرحلة: {e.stage}")
         print(f"   {e.message}")
         if e.original:
             print(f"   السبب: {e.original}")

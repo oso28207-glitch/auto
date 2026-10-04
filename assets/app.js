@@ -1,6 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
    شوف — Shoof App
-   يقرأ series.json و videos.json ويعرضها
    ═══════════════════════════════════════════════════════════ */
 
 const API_BASE = (window.APP_CONFIG?.API_BASE || "").replace(/\/$/, "");
@@ -14,7 +13,6 @@ const state = {
   perPage: 30,
 };
 
-// ═══ Helpers ═══
 const $ = (id) => document.getElementById(id);
 
 function toast(msg, ms = 2000) {
@@ -23,14 +21,6 @@ function toast(msg, ms = 2000) {
   t.classList.remove("hidden");
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.classList.add("hidden"), ms);
-}
-
-function formatSize(bytes) {
-  if (!bytes) return "";
-  const u = ["B", "KB", "MB", "GB"];
-  let i = 0, n = bytes;
-  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
-  return `${n.toFixed(1)} ${u[i]}`;
 }
 
 function formatDate(iso) {
@@ -53,7 +43,6 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
-// ═══ Rendering ═══
 function renderStats() {
   $("statSeries").textContent = state.series.length;
   const totalEps = state.series.reduce((s, x) => s + (x.count || 0), 0);
@@ -67,7 +56,9 @@ function renderSeries(series) {
   card.className = "card";
   const initial = (series.name || "?").charAt(0);
   const epsCount = series.count || 0;
-  const isNew = series.last_updated && (Date.now() - new Date(series.last_updated)) < 7 * 86400000;
+  const isNew = series.last_updated &&
+    (Date.now() - new Date(series.last_updated)) < 7 * 86400000;
+
   card.innerHTML = `
     <div class="card-thumb">
       <div class="card-thumb-placeholder">${escapeHtml(initial)}</div>
@@ -96,9 +87,8 @@ function renderGrid() {
   }
   $("emptyBox").classList.add("hidden");
 
-  const start = 0;
   const end = state.page * state.perPage;
-  const visible = state.filtered.slice(start, end);
+  const visible = state.filtered.slice(0, end);
 
   const frag = document.createDocumentFragment();
   visible.forEach(s => frag.appendChild(renderSeries(s)));
@@ -123,7 +113,8 @@ function applySort() {
 
   switch (state.currentSort) {
     case "recent":
-      state.filtered.sort((a, b) => (b.last_updated || "").localeCompare(a.last_updated || ""));
+      state.filtered.sort((a, b) =>
+        (b.last_updated || "").localeCompare(a.last_updated || ""));
       break;
     case "name":
       state.filtered.sort((a, b) => a.name.localeCompare(b.name, "ar"));
@@ -137,7 +128,6 @@ function applySort() {
   renderGrid();
 }
 
-// ═══ Series Detail ═══
 function openSeries(series) {
   $("seriesTitle").textContent = series.name;
   $("seriesMeta").textContent = `${series.count} حلقة`;
@@ -169,7 +159,6 @@ function closeSeries() {
   document.body.style.overflow = "";
 }
 
-// ═══ Player ═══
 function openPlayer(ep, seriesName) {
   const modal = $("playerModal");
   const video = $("player");
@@ -178,18 +167,14 @@ function openPlayer(ep, seriesName) {
   $("modalTitle").textContent = `${seriesName} — الحلقة ${ep.episode}`;
   $("modalDesc").textContent = "";
 
-  const streamUrl = `${API_BASE}/stream?fid=${encodeURIComponent(ep.message_id)}&mid=${ep.message_id}`;
-
-  // ملاحظة: نحتاج file_id و size الفعليين، لكن نجرب أولاً بالـ message_id
-  // سيتم تعديله من builder.py ليشمل file_id الحقيقي
-
+  // ★ بناء رابط البث بالكامل
   if (!ep.file_id || !ep.size) {
-    // نحتاج بيانات إضافية
     video.src = "";
-    loader.innerHTML = '<p style="color:var(--text-2)">البيانات غير مكتملة (file_id/size مفقودان)</p>';
+    loader.innerHTML = '<p style="color:var(--error)">البيانات غير مكتملة</p>';
     loader.classList.remove("hidden");
   } else {
-    video.src = `${API_BASE}/stream?fid=${encodeURIComponent(ep.file_id)}&size=${ep.size}&mid=${ep.message_id}`;
+    const url = `${API_BASE}/stream?fid=${encodeURIComponent(ep.file_id)}&size=${ep.size}&mid=${ep.message_id}`;
+    video.src = url;
     loader.classList.remove("hidden");
     video.load();
     video.play().catch(() => {});
@@ -198,6 +183,7 @@ function openPlayer(ep, seriesName) {
   video.onloadeddata = () => loader.classList.add("hidden");
   video.onerror = () => {
     loader.innerHTML = '<p style="color:var(--error)">تعذر تشغيل الفيديو</p>';
+    loader.classList.remove("hidden");
   };
 
   modal.classList.remove("hidden");
@@ -214,7 +200,6 @@ function closePlayer() {
   document.body.style.overflow = "";
 }
 
-// ═══ Init ═══
 async function init() {
   $("year").textContent = new Date().getFullYear();
 
@@ -235,7 +220,6 @@ async function init() {
   renderStats();
   applySort();
 
-  // Events
   $("search").addEventListener("input", (e) => {
     state.search = e.target.value.trim();
     applySort();
@@ -255,14 +239,12 @@ async function init() {
     renderGrid();
   });
 
-  // Scroll top
   const scrollBtn = $("scrollTop");
   window.addEventListener("scroll", () => {
     if (window.scrollY > 400) scrollBtn.classList.remove("hidden");
     else scrollBtn.classList.add("hidden");
   }, { passive: true });
 
-  // Keyboard
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       if (!$("playerModal").classList.contains("hidden")) closePlayer();
