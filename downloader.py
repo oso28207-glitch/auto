@@ -1,10 +1,13 @@
 """
 downloader.py — تحميل من u.3seq.com
 
-★ التعديلات:
-  1. onclick() → el.click() (لأن getServer2 غير معرّفة عالمياً).
-  2. عند فشل كل السيرفرات: return None بدل raise.
-  3. الضغط إلى 240p.
+★ التعديلات الجوهرية:
+  1. انتظار تحميل getServer2 قبل النقر.
+  2. النقر الحقيقي عبر Input.dispatchMouseEvent.
+  3. مراقبة تغيير iframe أو div.watch بالكامل.
+  4. مهلة 5 ثوانٍ لكل سيرفر.
+  5. إرجاع None عند فشل كل السيرفرات (لتخطي المسلسل).
+  6. الضغط إلى 240p.
 """
 
 import base64
@@ -36,13 +39,11 @@ M3U8_LIMIT = 8
 MIN_SIZE = 100 * 1024
 COMPRESS_SCALE = 240
 
-
 # ═══════════════════════════════════════════════════════════════
-# أدوات
+# أدوات مساعدة
 # ═══════════════════════════════════════════════════════════════
 def _safe(name):
     return re.sub(r'[\\/:*?"<>|]', "_", name).strip()[:120]
-
 
 def _origin(url):
     try:
@@ -50,7 +51,6 @@ def _origin(url):
         return f"{p.scheme}://{p.netloc}"
     except Exception:
         return ""
-
 
 def _parse_m3u8(text, base):
     segs, variants = [], []
@@ -63,7 +63,6 @@ def _parse_m3u8(text, base):
         elif line.endswith(".ts") or ".ts?" in line or "seg" in line.lower() or ".m4s" in line:
             segs.append(line if line.startswith("http") else urljoin(base + "/", line))
     return segs, variants
-
 
 def _extract_m3u8_from_html(html):
     if not html:
@@ -80,7 +79,6 @@ def _extract_m3u8_from_html(html):
                 seen.add(u)
                 found.append(u)
     return found
-
 
 # ═══════════════════════════════════════════════════════════════
 # تحميل segments (cffi)
@@ -173,7 +171,6 @@ def _cffi_segments(segments, out, iframe_url):
     final_size = os.path.getsize(out)
     print(f"         ✅ نجح: {final_size/1048576:.1f} MB")
     return (final_size, True)
-
 
 # ═══════════════════════════════════════════════════════════════
 # تحميل segments (browser fallback)
@@ -283,7 +280,6 @@ def _browser_segments(sb, segments, out):
     print(f"         ✅ المتصفح: {final_size/1048576:.1f} MB")
     return (final_size, True)
 
-
 # ═══════════════════════════════════════════════════════════════
 # استخراج السيرفرات
 # ═══════════════════════════════════════════════════════════════
@@ -314,7 +310,6 @@ def _extract_servers(sb):
         print(f"   ⚠️ فشل استخراج السيرفرات: {e}")
         return []
 
-
 def _get_current_iframe(sb):
     try:
         return sb.cdp.execute_script("""
@@ -340,18 +335,44 @@ def _get_current_iframe(sb):
     except Exception:
         return None
 
+def _get_watch_html(sb):
+    try:
+        return sb.cdp.execute_script("""
+            (function(){
+                try {
+                    var w = document.querySelector('.watch');
+                    return w ? w.outerHTML : null;
+                } catch(e) { return null; }
+            })();
+        """)
+    except Exception:
+        return None
 
 # ═══════════════════════════════════════════════════════════════
-# ★ جمع روابط iframe — الآن نستخدم el.click()
+# ★ جمع روابط iframe — النقر الحقيقي + مراقبة watch
 # ═══════════════════════════════════════════════════════════════
 def _collect_iframe_urls(sb, servers):
     """
     لكل سيرفر:
-      1. el.click() — أبسط وأكثر موثوقية من onclick.call(el).
-      2. راقب تغيّر iframe src (poll كل 0.3s حتى 3s).
+      1. انتظر getServer2 (حتى 10 ثوانٍ).
+      2. انقر عبر Input.dispatchMouseEvent (نقر حقيقي).
+      3. راقب تغيّر iframe src أو div.watch بالكامل (حتى 5 ثوانٍ).
     """
     results = {}
     seen_urls = set()
+
+    # ★ انتظر تحميل getServer2
+    print("   ⏳ انتظار getServer2...")
+    getserver_ready = False
+    for i in range(20):
+        sb.cdp.sleep(0.5)
+        if sb.cdp.execute_script("return typeof getServer2 === 'function'"):
+            getserver_ready = True
+            print(f"   ✅ getServer2 جاهز ({i*0.5:.1f}s)")
+            break
+
+    if not getserver_ready:
+        print("   ⚠️ getServer2 غير معرّفة — سيتم استخدام النقر المباشر")
 
     for server in servers:
         sid = server.get("id")
@@ -361,55 +382,90 @@ def _collect_iframe_urls(sb, servers):
 
         print(f"      · {sname} ({sid})")
 
-        before = _get_current_iframe(sb)
+        before_iframe = _get_current_iframe(sb)
+        before_watch = _get_watch_html(sb)
 
-        # ★ el.click() — الحل الأكثر موثوقية
+        # ★ نقر حقيقي عبر Input.dispatchMouseEvent
         try:
-            r = sb.cdp.execute_script(f"""
+            rect = sb.cdp.execute_script(f"""
                 (function(){{
-                    try {{
-                        var el = document.getElementById('{sid}');
-                        if (!el) return 'notfound';
-                        el.click();
-                        return 'clicked';
-                    }} catch(e) {{ return 'err:' + e.message; }}
+                    var el = document.getElementById('{sid}');
+                    if (!el) return null;
+                    var r = el.getBoundingClientRect();
+                    if (r.width < 5 || r.height < 5) return null;
+                    return {{x: Math.round(r.left + r.width/2),
+                            y: Math.round(r.top + r.height/2)}};
                 }})();
             """)
-            print(f"         ↳ {r}")
+            if rect and rect.get("x", 0) > 0:
+                sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+                    "type": "mousePressed",
+                    "x": rect['x'], "y": rect['y'],
+                    "button": "left", "clickCount": 1,
+                })
+                sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+                    "type": "mouseReleased",
+                    "x": rect['x'], "y": rect['y'],
+                    "button": "left", "clickCount": 1,
+                })
+                print(f"         ↳ نقر حقيقي")
+            else:
+                # fallback: el.click()
+                sb.cdp.execute_script(f"document.getElementById('{sid}').click();")
+                print(f"         ↳ el.click()")
         except Exception as e:
-            print(f"         ⚠️ {str(e)[:80]}")
+            print(f"         ⚠️ فشل النقر: {str(e)[:80]}")
             continue
 
-        # polling سريع
-        after = before
-        deadline = time.time() + 3
+        # ★ راقب تغيّر iframe أو watch (حتى 5 ثوانٍ)
+        after_iframe = before_iframe
+        changed = False
+        deadline = time.time() + 5
+
         while time.time() < deadline:
             sb.cdp.sleep(0.3)
-            cur = _get_current_iframe(sb)
-            if cur and cur != before:
-                after = cur
+            cur_iframe = _get_current_iframe(sb)
+            cur_watch = _get_watch_html(sb)
+
+            # تغيّر iframe src؟
+            if cur_iframe and cur_iframe != before_iframe:
+                after_iframe = cur_iframe
+                changed = True
                 break
 
-        if after and after != before:
-            url = after.replace("&amp;", "&")
+            # تغيّر watch outerHTML؟
+            if cur_watch and cur_watch != before_watch:
+                # ابحث عن iframe جديد
+                new_iframe = _get_current_iframe(sb)
+                if new_iframe and new_iframe != before_iframe:
+                    after_iframe = new_iframe
+                    changed = True
+                    break
+                # إذا تغيّر watch لكن iframe نفسه، قد يكون هناك iframe جديد
+                if new_iframe:
+                    after_iframe = new_iframe
+                    changed = True
+                    break
+
+        if changed and after_iframe:
+            url = after_iframe.replace("&amp;", "&")
             if url not in seen_urls:
                 seen_urls.add(url)
                 results[f"{sname}_{sid}"] = {"iframe_url": url, "server_id": sid}
                 print(f"         ✅ {url[:90]}")
             else:
                 print(f"         ⚠️ مكرر: {url[:90]}")
-        elif before:
-            if before not in seen_urls:
-                seen_urls.add(before)
-                results[f"{sname}_{sid}"] = {"iframe_url": before, "server_id": sid}
-                print(f"         ⚠️ لم يتغير: {before[:80]}")
+        elif after_iframe:
+            if after_iframe not in seen_urls:
+                seen_urls.add(after_iframe)
+                results[f"{sname}_{sid}"] = {"iframe_url": after_iframe, "server_id": sid}
+                print(f"         ⚠️ لم يتغير: {after_iframe[:80]}")
             else:
-                print(f"         ⚠️ مكرر: {before[:80]}")
+                print(f"         ⚠️ مكرر: {after_iframe[:80]}")
         else:
             print(f"         ❌ لا iframe")
 
     return results
-
 
 # ═══════════════════════════════════════════════════════════════
 # محاولة تحميل من iframe
@@ -690,7 +746,6 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
 
     return None, iframe_url
 
-
 # ═══════════════════════════════════════════════════════════════
 # العملية الكاملة
 # ═══════════════════════════════════════════════════════════════
@@ -822,7 +877,6 @@ def _process_with_browser(url, out_path):
 
     return result
 
-
 # ═══════════════════════════════════════════════════════════════
 # الضغط
 # ═══════════════════════════════════════════════════════════════
@@ -866,9 +920,8 @@ def _compress(inp, out):
         print(f"   ❌ {e}")
         return False
 
-
 # ═══════════════════════════════════════════════════════════════
-# ★ الدالة الرئيسية — ترجع None بدل رفع خطأ
+# ★ الدالة الرئيسية — ترجع None عند الفشل
 # ═══════════════════════════════════════════════════════════════
 def download_episode(series_name, episode, url):
     """
@@ -894,7 +947,6 @@ def download_episode(series_name, episode, url):
         res = None
 
     if not res or not raw.exists():
-        # ★ لا نرفع خطأ — نرجع None
         print(f"    ⚠️ فشل تحميل {series_name} — حلقة {episode} (كل السيرفرات فشلت)")
         try:
             if raw.exists():
@@ -922,7 +974,6 @@ def download_episode(series_name, episode, url):
 
     print(f"    ✅ {final.name} ({final.stat().st_size/1048576:.1f}MB)")
     return final
-
 
 # ═══════════════════════════════════════════════════════════════
 # اختبار
