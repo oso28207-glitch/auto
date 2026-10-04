@@ -142,7 +142,7 @@ class Pipeline:
 
                     # ★ التحميل — يرجع None عند الفشل
                     try:
-                        video_path = download_episode(name, ep_num, ep_url)
+                        video_path = await asyncio.to_thread(download_episode, name, ep_num, ep_url)
                     except SooFatalError as e:
                         print(f"   ❌ خطأ خطير: {e.message}")
                         video_path = None
