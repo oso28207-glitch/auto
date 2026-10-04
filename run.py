@@ -131,7 +131,7 @@ class Pipeline:
 
                     # التحميل
                     try:
-                        video_path = download_episode(name, ep_num, ep_url)
+                        video_path = await asyncio.to_thread(download_episode, name, ep_num, ep_url)
                     except SooFatalError:
                         db.mark_failed(name, ep_num, "فشل التحميل")
                         self.stats["episodes_failed"] += 1
