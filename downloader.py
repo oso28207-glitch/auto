@@ -1,11 +1,11 @@
 """
 downloader.py — تحميل من u.3seq.com
 
-★ المنطق:
-  1. افتح ?do=watch.
-  2. استخرج السيرفرات + وسائط getServer2 من onclick.
-  3. لكل سيرفر: نادِ getServer2 مباشرة → راقب تغيّر الـ iframe → اجمع روابط فريدة.
-  4. جرّب كل iframe URL على حدة (play → m3u8 → segments).
+★ الإصلاحات الجديدة:
+  1. onclick() مع this الصحيح (لا getServer2(null,...)).
+  2. نقر CDP حقيقي (Input.dispatchMouseEvent) لتشغيل الفيديو.
+  3. polling سريع (3s بدل 8s).
+  4. البحث في m3u8 بطرق متعددة.
   5. الضغط إلى 240p.
 """
 
@@ -33,7 +33,7 @@ from errors import DownloadError
 IMPERSONATE = os.environ.get("IMPERSONATE_TARGET", "chrome120")
 CURL_WORKERS = int(os.environ.get("CURL_CFFI_WORKERS", "8"))
 JWPLAYER_WAIT = 20
-M3U8_WAIT = 20          # ★ زدناها لـ 20s
+M3U8_WAIT = 20
 M3U8_LIMIT = 8
 MIN_SIZE = 100 * 1024
 COMPRESS_SCALE = 240
@@ -287,7 +287,7 @@ def _browser_segments(sb, segments, out):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★ استخراج السيرفرات + وسائط getServer2
+# استخراج السيرفرات
 # ═══════════════════════════════════════════════════════════════
 def _extract_servers(sb):
     """يستخرج السيرفرات + يفكك onclick إلى args."""
@@ -303,16 +303,13 @@ def _extract_servers(sb):
                         var li = items[i];
                         var oc = li.getAttribute('onclick') || '';
 
-                        // ★ استخرج args من getServer2(...)
                         var args = [];
                         var m = oc.match(/getServer2\\s*\\(([^)]+)\\)/);
                         if (m) {
                             var parts = m[1].split(',').map(function(s){return s.trim();});
-                            // تجاهل "this" أو أي مرجع عنصر
                             for (var j=0; j<parts.length; j++) {
                                 var p = parts[j];
                                 if (p === 'this' || p.indexOf('document.') === 0) continue;
-                                // نظّف الأقواس والاقتباسات
                                 p = p.replace(/^['"]|['"]$/g, '');
                                 args.push(p);
                             }
@@ -336,9 +333,6 @@ def _extract_servers(sb):
         return []
 
 
-# ═══════════════════════════════════════════════════════════════
-# ★ جمع روابط iframe باستخدام getServer2 مباشرة
-# ═══════════════════════════════════════════════════════════════
 def _get_current_iframe(sb):
     """يقرأ src الـ iframe الحالي."""
     try:
@@ -365,12 +359,15 @@ def _get_current_iframe(sb):
         return None
 
 
+# ═══════════════════════════════════════════════════════════════
+# ★ جمع روابط iframe — onclick() مع this الصحيح + polling سريع
+# ═══════════════════════════════════════════════════════════════
 def _collect_iframe_urls(sb, servers):
     """
     لكل سيرفر:
-      1. نادِ getServer2(args...) مباشرة.
-      2. راقب تغيّر iframe src (poll كل 0.3s، حتى 8s).
-      3. إذا لم يتغير، جرّب li.click().
+      1. نادِ el.onclick.call(el) — this = العنصر (الحل الصحيح).
+      2. راقب تغيّر iframe src (poll كل 0.3s حتى 3s).
+      3. إذا لم يتغير، جرّب el.click().
     """
     results = {}
     seen_urls = set()
@@ -378,51 +375,37 @@ def _collect_iframe_urls(sb, servers):
     for server in servers:
         sid = server.get("id")
         sname = server.get("name", "unknown")
-        args = server.get("args", [])
         if not sid:
             continue
 
-        print(f"      · سيرفر: {sname} ({sid}) | args={args}")
+        print(f"      · {sname} ({sid})")
 
-        # اقرأ iframe قبل
         before = _get_current_iframe(sb)
 
-        # ★ الطريقة 1: نادِ getServer2 مباشرة (بدون this)
-        called = False
-        if args:
-            args_js = ", ".join(args)
-            try:
-                sb.cdp.execute_script(f"""
-                    (function(){{
-                        try {{
-                            if (typeof getServer2 === 'function') {{
-                                getServer2(null, {args_js});
-                                return 'ok';
-                            }}
-                        }} catch(e) {{ return 'err:' + e.message; }}
-                        return 'no-func';
-                    }})();
-                """)
-                called = True
-            except Exception as e:
-                print(f"         ⚠️ فشل getServer2: {str(e)[:80]}")
-
-        # ★ الطريقة 2: لو فشلت، جرّب li.click()
-        if not called:
-            try:
-                sb.cdp.execute_script(f"""
-                    (function(){{
+        # ★ الطريقة الصحيحة: onclick.call(el)
+        try:
+            r = sb.cdp.execute_script(f"""
+                (function(){{
+                    try {{
                         var el = document.getElementById('{sid}');
-                        if (el) {{ el.click(); return 'ok'; }}
-                        return 'notfound';
-                    }})();
-                """)
-            except Exception:
-                pass
+                        if (!el) return 'notfound';
+                        if (typeof el.onclick === 'function') {{
+                            el.onclick.call(el);
+                            return 'onclick';
+                        }}
+                        el.click();
+                        return 'click';
+                    }} catch(e) {{ return 'err:' + e.message; }}
+                }})();
+            """)
+            print(f"         ↳ {r}")
+        except Exception as e:
+            print(f"         ⚠️ {str(e)[:80]}")
+            continue
 
-        # ★ 3) راقب تغيّر iframe (poll كل 0.3s حتى 8s)
+        # ★ polling سريع (3s)
         after = before
-        deadline = time.time() + 8
+        deadline = time.time() + 3
         while time.time() < deadline:
             sb.cdp.sleep(0.3)
             cur = _get_current_iframe(sb)
@@ -438,15 +421,14 @@ def _collect_iframe_urls(sb, servers):
                 print(f"         ✅ {url[:90]}")
             else:
                 print(f"         ⚠️ مكرر: {url[:90]}")
-        elif after == before and before:
+        elif before:
             # لم يتغير - لكن قد يكون نفس الـ iframe مقصوداً
-            url = before.replace("&amp;", "&")
-            if url not in seen_urls:
-                seen_urls.add(url)
-                results[f"{sname}_{sid}"] = {"iframe_url": url, "server_id": sid}
-                print(f"         ⚠️ لم يتغير: {url[:90]}")
+            if before not in seen_urls:
+                seen_urls.add(before)
+                results[f"{sname}_{sid}"] = {"iframe_url": before, "server_id": sid}
+                print(f"         ⚠️ لم يتغير: {before[:80]}")
             else:
-                print(f"         ⚠️ مكرر: {url[:90]}")
+                print(f"         ⚠️ مكرر: {before[:80]}")
         else:
             print(f"         ❌ لا iframe")
 
@@ -454,7 +436,7 @@ def _collect_iframe_urls(sb, servers):
 
 
 # ═══════════════════════════════════════════════════════════════
-# محاولة تحميل من iframe
+# ★ محاولة تحميل من iframe — نقر CDP حقيقي
 # ═══════════════════════════════════════════════════════════════
 def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
     print(f"\n      🌐 الانتقال إلى: {iframe_url[:90]}")
@@ -511,8 +493,9 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
         except Exception:
             pass
 
-    # شغّل بقوة
-    for cycle in range(10):
+    # ★ شغّل بقوة مع نقر CDP حقيقي
+    for cycle in range(12):
+        # 1) النقر على أزرار التشغيل
         for sel in ["video", ".jw-icon-playback", ".jw-icon-display",
                     ".vjs-big-play-button", "[class*='play']",
                     "button[aria-label*='play']", ".play-btn", "#play"]:
@@ -521,31 +504,40 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
             except Exception:
                 pass
 
-        # click عند مركز الفيديو
+        # 2) ★ نقر CDP حقيقي (Input.dispatchMouseEvent)
         try:
-            sb.cdp.execute_script("""
-                (function(){try{
+            rect = sb.cdp.execute_script("""
+                (function(){
                     var v = document.querySelector('video');
-                    if (v) {
-                        var r = v.getBoundingClientRect();
-                        var ev = new MouseEvent('click', {
-                            bubbles: true, cancelable: true,
-                            clientX: r.left + r.width/2,
-                            clientY: r.top + r.height/2,
-                        });
-                        v.dispatchEvent(ev);
-                    }
-                }catch(e){}})();
+                    if (!v) return null;
+                    var r = v.getBoundingClientRect();
+                    if (r.width < 50 || r.height < 50) return null;
+                    return {x: Math.round(r.left + r.width/2),
+                            y: Math.round(r.top + r.height/2)};
+                })();
             """)
+            if rect and rect.get("x", 0) > 0:
+                for _ in range(2):
+                    sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+                        "type": "mousePressed",
+                        "x": rect['x'], "y": rect['y'],
+                        "button": "left", "clickCount": 1,
+                    })
+                    sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+                        "type": "mouseReleased",
+                        "x": rect['x'], "y": rect['y'],
+                        "button": "left", "clickCount": 1,
+                    })
+                    sb.cdp.sleep(0.4)
         except Exception:
             pass
 
+        # 3) jwplayer + video.play()
         try:
             sb.cdp.execute_script("""
                 (function(){try{
                     if(typeof jwplayer!=='undefined'){
-                        var p=jwplayer();
-                        if(p&&p.play){p.play(true);return;}
+                        var p=jwplayer(); if(p&&p.play){p.play(true);return;}
                     }
                     var v=document.querySelector('video');
                     if(v){v.muted=true;v.play&&v.play().catch(function(){});}
@@ -559,12 +551,12 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
             print(f"         ✨ m3u8 بعد دورة {cycle+1}")
             break
 
-    # انتظر إضافي
+    # انتظار إضافي
     if not any(x in u for u in netlog_read() for x in [".m3u8", ".mpd"]):
         for i in range(M3U8_WAIT):
             sb.cdp.sleep(1)
             if any(x in u for u in netlog_read() for x in [".m3u8", ".mpd"]):
-                print(f"         ✨ m3u8 بعد {(i+1)+10}s")
+                print(f"         ✨ m3u8 بعد {(i+1)+12}s")
                 break
 
     # اجمع m3u8
@@ -592,7 +584,7 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
     except Exception:
         pass
 
-    # ابحث في localStorage / sessionStorage
+    # البحث في localStorage / sessionStorage
     try:
         stor = sb.cdp.execute_script("""
             (function(){
@@ -624,15 +616,14 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
 
     if not m3u8:
         print("         ❌ لا m3u8")
-        # اطبع أول 500 حرف من HTML للتشخيص
         try:
             html = sb.cdp.get_page_source() or ""
             print(f"         📄 HTML: {len(html)} bytes")
-            # اطبع أي روابط مشبوهة
             for pat in [r'https?://[^"\']+\.(?:mp4|m3u8|mpd|ts)[^"\']*',
-                        r'/hls/[^"\']+', r'/playlist/[^"\']+']:
+                        r'/hls/[^"\']+', r'/playlist/[^"\']+',
+                        r'sources?\s*[:=]\s*\[', r'file\s*:\s*["\']']:
                 for m in re.finditer(pat, html):
-                    print(f"            · {m.group(0)[:100]}")
+                    print(f"            · {m.group(0)[:120]}")
                     break
         except Exception:
             pass
@@ -814,7 +805,6 @@ def _process_with_browser(url, out_path):
 
                 for s in servers:
                     print(f"      · {s.get('name', '?')} ({s.get('id', '?')})"
-                          f" args={s.get('args', [])}"
                           + (" [active]" if s.get('active') else ""))
 
                 # ★ اجمع الروابط
