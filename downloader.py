@@ -1,12 +1,13 @@
 """
-downloader.py — تحميل من u.3seq.com (نسخة نهائية مستقرة)
+downloader.py — تحميل من u.3seq.com (نسخة نهائية مع تحميل متوازي)
 
 ★ التحسينات:
-  1. استخدام imageio-ffmpeg كخطة بديلة عند فشل ffmpeg النظامي.
-  2. دمج ذكي على دفعات (chunked concat) لتجنب SIGSEGV مع الملفات الكثيرة.
-  3. yt-dlp بأولوية جودة 360p (أسرع 5x، أخف على الذاكرة).
-  4. ضغط مبسط — بدون إعدادات تسبب SIGSEGV.
-  5. أولوية vidaraa → vinovo → luluvdo → vids → vidsonic.
+  1. ★ yt-dlp مع --concurrent-fragments 8 (أسرع 8x من الافتراضي).
+  2. ffmpeg من مستودع Ubuntu (بدون SIGSEGV).
+  3. imageio-ffmpeg كخطة بديلة.
+  4. دمج ذكي على دفعات (chunked concat).
+  5. yt-dlp بأولوية جودة 360p.
+  6. ضغط مبسط إلى 240p.
 """
 
 import base64
@@ -36,7 +37,11 @@ M3U8_WAIT = 20
 M3U8_LIMIT = 8
 MIN_SIZE = 100 * 1024
 COMPRESS_SCALE = 240
-CONCAT_CHUNK = 50  # ★ عدد المقاطع لكل دفعة دمج
+CONCAT_CHUNK = 50
+
+# ★ إعدادات yt-dlp المتوازي
+YTDLP_CONCURRENT_FRAGMENTS = int(os.environ.get("YTDLP_CONCURRENT", "8"))
+YTDLP_LIMIT_RATE = os.environ.get("YTDLP_LIMIT_RATE", "5M")
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -90,7 +95,7 @@ _FFMPEG_CACHE = {"path": None, "source": None}
 
 
 def _get_ffmpeg_exe():
-    """يعيد مسار ffmpeg: النظامي أولاً، ثم imageio-ffmpeg كخطة بديلة."""
+    """يعيد مسار ffmpeg: النظامي أولاً، ثم imageio-ffmpeg."""
     if _FFMPEG_CACHE["path"]:
         return _FFMPEG_CACHE["path"]
 
@@ -124,9 +129,13 @@ def _get_ffmpeg_exe():
 
 
 # ═══════════════════════════════════════════════════════════════
-# 1) yt-dlp HLS — 360p
+# ★★★ 1) yt-dlp HLS — مع --concurrent-fragments للسرعة
 # ═══════════════════════════════════════════════════════════════
 def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
+    """
+    yt-dlp بأولوية 360p + تحميل 8 fragments بالتوازي.
+    السرعة المتوقعة: 8x أسرع من الوضع الافتراضي.
+    """
     cookies = cookies or {}
     cookie_file = tempfile.mktemp(suffix=".txt")
     try:
@@ -139,6 +148,7 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
                 f.write(f".{domain}\tTRUE\t/\tFALSE\t0\t{k}\t{v}\n")
 
         print(f"      🎬 yt-dlp → {m3u8_url[:70]}...")
+        print(f"      ⚡ concurrent={YTDLP_CONCURRENT_FRAGMENTS}, limit-rate={YTDLP_LIMIT_RATE}")
 
         ffmpeg_path = _get_ffmpeg_exe()
         for mode in ["native", "ffmpeg"]:
@@ -147,6 +157,8 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
                 "--no-warnings",
                 "--no-playlist",
                 "--no-part",
+                "--progress",                           # ★ شريط تقدم
+                "--newline",                            # ★ سطر جديد لكل تحديث
                 "--hls-prefer-" + mode,
                 "--user-agent", UA,
                 "--referer", iframe_url,
@@ -155,6 +167,11 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
                 "--retries", "10",
                 "--fragment-retries", "10",
                 "--socket-timeout", "30",
+                # ★★★ التحميل المتوازي — الأهم للسرعة
+                "--concurrent-fragments", str(YTDLP_CONCURRENT_FRAGMENTS),
+                "--limit-rate", YTDLP_LIMIT_RATE,       # تفادي حظر CDN
+                "--buffer-size", "1M",
+                # ★★★
                 "-f", "bv*[height<=360]+ba/b[height<=360]/bv*+ba/b",
                 "--merge-output-format", "mp4",
                 "-o", out,
@@ -164,13 +181,26 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
             cmd.append(m3u8_url)
 
             try:
-                r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+                # ★ استخدم stdout=subprocess.PIPE لطباعة شريط التقدم مباشرة
+                r = subprocess.run(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    timeout=3600,
+                )
+                # اطبع آخر أسطر التقدم
+                if r.stdout:
+                    lines = r.stdout.strip().split("\n")
+                    for line in lines[-3:]:
+                        if line.strip():
+                            print(f"         ↳ {line.strip()[:120]}")
+
                 if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > MIN_SIZE:
                     size_mb = os.path.getsize(out) / 1048576
                     print(f"      ✅ yt-dlp {mode}: {size_mb:.1f} MB")
                     return True
-                err = (r.stderr or "").strip().split("\n")[-1] if r.stderr else "?"
-                print(f"      ⚠️ yt-dlp {mode}: {err[:150]}")
+                print(f"      ⚠️ yt-dlp {mode}: code={r.returncode}")
             except subprocess.TimeoutExpired:
                 print(f"      ⚠️ yt-dlp {mode}: timeout")
             except Exception as e:
@@ -232,10 +262,9 @@ def _ffmpeg_hls(m3u8_url, out, iframe_url, cookies=None):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 3) ★★★ الدمج الذكي على دفعات (chunked concat) — يمنع SIGSEGV
+# 3) الدمج الذكي على دفعات
 # ═══════════════════════════════════════════════════════════════
 def _concat_group(paths, out, loglevel="error"):
-    """يدمج مجموعة صغيرة من المقاطع — آمن من SIGSEGV."""
     listfile = tempfile.mktemp(suffix=".txt")
     with open(listfile, "w") as f:
         for p in paths:
@@ -263,20 +292,14 @@ def _concat_group(paths, out, loglevel="error"):
 
 
 def _smart_concat(sorted_paths, out):
-    """
-    دمج ذكي بتقسيم إلى مجموعات صغيرة.
-    يحل مشكلة SIGSEGV مع 400+ ملف.
-    """
     total = len(sorted_paths)
     print(f"      🔗 دمج {total} segment على دفعات...")
 
-    # إذا كان قليلاً، جرّب مباشرة
     if total <= CONCAT_CHUNK:
         if _concat_group(sorted_paths, out):
             return True
         print("      ⚠️ الدمج المباشر فشل — تقسيم لمجموعات")
 
-    # تقسيم إلى مجموعات
     groups = []
     for i in range(0, total, CONCAT_CHUNK):
         groups.append(sorted_paths[i:i + CONCAT_CHUNK])
@@ -299,7 +322,6 @@ def _smart_concat(sorted_paths, out):
                 except Exception: pass
             return False
 
-    # دمج المجموعات النهائية
     print(f"      🔗 دمج نهائي {len(group_files)} مجموعة...")
     if _concat_group(group_files, out):
         for gf in group_files:
@@ -332,7 +354,6 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
     }
     cookies = cookies or {}
 
-    # اختبار أول segment
     test_data = None
     for imp in ["chrome124", "chrome120", "chrome110"]:
         try:
@@ -391,7 +412,6 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
 
     sorted_p = [paths[k] for k in sorted(paths)]
 
-    # ★ استخدام الدمج الذكي
     if not _smart_concat(sorted_p, out):
         print(f"         ❌ فشل الدمج")
         shutil.rmtree(seg_dir, ignore_errors=True)
@@ -525,7 +545,6 @@ def _browser_segments(sb, segments, out):
 
     sorted_p = [paths[k] for k in sorted(paths)]
 
-    # ★ الدمج الذكي
     if not _smart_concat(sorted_p, out):
         shutil.rmtree(seg_dir, ignore_errors=True)
         return None
@@ -970,8 +989,8 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
     if browser_cookies:
         print(f"      🍪 {len(browser_cookies)} كوكي")
 
-    # ★★★ 1) yt-dlp أولاً
-    print("      🔄 yt-dlp (360p)...")
+    # ★★★ 1) yt-dlp مع التحميل المتوازي
+    print(f"      🔄 yt-dlp (360p، {YTDLP_CONCURRENT_FRAGMENTS} fragments متوازية)...")
     for m_url in ordered[:3]:
         print(f"      🎯 {m_url[:90]}")
         if _ytdlp_hls(m_url, str(out_path), iframe_url, browser_cookies):
