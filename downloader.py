@@ -1,12 +1,13 @@
 """
-downloader.py — تحميل من u.3seq.com عبر SeleniumBase + curl_cffi + ضغط ffmpeg.
+downloader.py — تحميل من u.3seq.com
 
-★ الإصلاحات:
-  - استخدام ?do=watch للوصول لصفحة المشاهدة التي تحتوي على iframe.
-  - استخراج قائمة السيرفرات من ul.serversList.
-  - تجربة كل سيرفر بالتناوب حتى ينجح أحدها (fallback).
-  - ضبط الضغط إلى 240p.
-  - التعامل مع iframe المتداخل.
+★ المنطق الجديد:
+  1. افتح صفحة ?do=watch.
+  2. استخرج كل السيرفرات من ul.serversList.
+  3. لكل سيرفر، نادِ getServer2() واستخرج الـ iframe URL — بدون مغادرة الصفحة.
+  4. اجمع قائمة {server_name: iframe_url}.
+  5. لكل iframe URL، انتقل إليه وجرّب التحميل — إذا فشل، انتقل للتالي.
+  6. الضغط إلى 240p.
 """
 
 import base64
@@ -32,29 +33,28 @@ from errors import DownloadError
 # ═══════════════════════════════════════════════════════════════
 IMPERSONATE = os.environ.get("IMPERSONATE_TARGET", "chrome120")
 CURL_WORKERS = int(os.environ.get("CURL_CFFI_WORKERS", "8"))
-JWPLAYER_WAIT = 25
-M3U8_WAIT = 15
+JWPLAYER_WAIT = 20
+M3U8_WAIT = 12
 M3U8_LIMIT = 5
 MIN_SIZE = 100 * 1024
-COMPRESS_SCALE = 240  # ★ ضبط الضغط إلى 240p
+COMPRESS_SCALE = 240  # ★ 240p
 
 # ═══════════════════════════════════════════════════════════════
 # أدوات مساعدة
 # ═══════════════════════════════════════════════════════════════
 def _safe(name):
-    """ينظّف الاسم ليكون صالحاً كاسم ملف."""
     return re.sub(r'[\\/:*?"<>|]', "_", name).strip()[:120]
 
+
 def _origin(url):
-    """يستخرج origin من URL."""
     try:
         p = urlparse(url)
         return f"{p.scheme}://{p.netloc}"
     except Exception:
         return ""
 
+
 def _parse_m3u8(text, base):
-    """يستخرج segments و variants من محتوى m3u8."""
     segs, variants = [], []
     for raw in text.splitlines():
         line = raw.strip()
@@ -66,8 +66,8 @@ def _parse_m3u8(text, base):
             segs.append(line if line.startswith("http") else urljoin(base + "/", line))
     return segs, variants
 
+
 def _extract_m3u8_from_html(html):
-    """يبحث عن روابط m3u8/mpd في HTML."""
     if not html:
         return []
     found, seen = [], set()
@@ -82,14 +82,11 @@ def _extract_m3u8_from_html(html):
                 found.append(u)
     return found
 
+
 # ═══════════════════════════════════════════════════════════════
-# 1) تحميل segments عبر curl_cffi
+# تحميل segments عبر cffi
 # ═══════════════════════════════════════════════════════════════
 def _cffi_segments(segments, out, iframe_url):
-    """
-    يحمّل segments عبر curl_cffi مع TLS fingerprint لـ Chrome.
-    يرجع (size, True) عند النجاح، أو None عند الفشل.
-    """
     if not segments:
         return None
 
@@ -104,7 +101,6 @@ def _cffi_segments(segments, out, iframe_url):
         "Sec-Fetch-Site": "cross-site",
     }
 
-    # اختبار أول segment
     ok = False
     for imp in ["chrome124", "chrome120", "chrome110"]:
         try:
@@ -112,13 +108,12 @@ def _cffi_segments(segments, out, iframe_url):
                                   impersonate=imp, timeout=15, verify=False)
             if r.status_code == 200 and len(r.content) > 100:
                 ok = True
-                print(f"      ⚡ cffi[{imp}] segment test OK ({len(r.content)}b)")
+                print(f"         ⚡ cffi[{imp}] test OK")
                 break
         except Exception:
             continue
 
     if not ok:
-        print("      ⚠️ cffi segment test فشل")
         return None
 
     seg_dir = tempfile.mkdtemp(prefix="hls_")
@@ -139,7 +134,7 @@ def _cffi_segments(segments, out, iframe_url):
                 continue
         return (i, None, 0)
 
-    print(f"   ⚡ {len(segments)} segment عبر cffi parallel...")
+    print(f"         ⚡ {len(segments)} segment...")
     with ThreadPoolExecutor(max_workers=CURL_WORKERS) as ex:
         futs = [ex.submit(_dl, (i, s)) for i, s in enumerate(segments)]
         done = 0
@@ -152,11 +147,10 @@ def _cffi_segments(segments, out, iframe_url):
             else:
                 failed += 1
             if done % 40 == 0 or done == len(segments):
-                print(f"      📦 {done}/{len(segments)} | {total/1048576:.1f}MB | فشل: {failed}")
+                print(f"         📦 {done}/{len(segments)} | {total/1048576:.1f}MB | فشل: {failed}")
 
     if not paths or failed > len(segments) * 0.15:
         shutil.rmtree(seg_dir, ignore_errors=True)
-        print(f"      ❌ cffi: نسبة فشل عالية ({failed}/{len(segments)})")
         return None
 
     sorted_p = [paths[k] for k in sorted(paths)]
@@ -165,7 +159,7 @@ def _cffi_segments(segments, out, iframe_url):
         for p in sorted_p:
             f.write(f"file '{p}'\n")
 
-    print(f"   🔗 دمج {len(sorted_p)} segment...")
+    print(f"         🔗 دمج {len(sorted_p)} segment...")
     r = subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "warning",
          "-f", "concat", "-safe", "0", "-i", concat,
@@ -175,21 +169,20 @@ def _cffi_segments(segments, out, iframe_url):
     shutil.rmtree(seg_dir, ignore_errors=True)
 
     if r.returncode != 0 or not os.path.exists(out):
-        print(f"   ❌ فشل الدمج: {r.stderr[:200]}")
         return None
 
     final_size = os.path.getsize(out)
-    print(f"   ✅ cffi نجح: {final_size/1048576:.1f} MB")
+    print(f"         ✅ نجح: {final_size/1048576:.1f} MB")
     return (final_size, True)
 
+
 # ═══════════════════════════════════════════════════════════════
-# 2) تحميل segments عبر المتصفح (fallback)
+# تحميل segments عبر المتصفح (fallback)
 # ═══════════════════════════════════════════════════════════════
 def _browser_segments(sb, segments, out):
-    """يحمل segments عبر fetch داخل المتصفح باستخدام base64."""
     batch = 16
     total = len(segments)
-    print(f"   🌐 المتصفح: {total} segment (batch={batch})...")
+    print(f"         🌐 المتصفح: {total} segment...")
     seg_dir = tempfile.mkdtemp(prefix="hls_br_")
     paths, failed, total_bytes = {}, 0, 0
 
@@ -263,7 +256,7 @@ def _browser_segments(sb, segments, out):
 
         done = min(i + batch, total)
         if done % (batch * 2) == 0 or done == total:
-            print(f"      📦 {done}/{total} | {total_bytes/1048576:.1f}MB | فشل: {failed}")
+            print(f"         📦 {done}/{total} | {total_bytes/1048576:.1f}MB | فشل: {failed}")
 
     if not paths:
         shutil.rmtree(seg_dir, ignore_errors=True)
@@ -275,7 +268,7 @@ def _browser_segments(sb, segments, out):
         for p in sorted_p:
             f.write(f"file '{p}'\n")
 
-    print(f"   🔗 دمج {len(sorted_p)} segment...")
+    print(f"         🔗 دمج {len(sorted_p)}...")
     r = subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "warning",
          "-f", "concat", "-safe", "0", "-i", concat,
@@ -288,17 +281,15 @@ def _browser_segments(sb, segments, out):
         return None
 
     final_size = os.path.getsize(out)
-    print(f"   ✅ المتصفح نجح: {final_size/1048576:.1f} MB")
+    print(f"         ✅ المتصفح: {final_size/1048576:.1f} MB")
     return (final_size, True)
 
+
 # ═══════════════════════════════════════════════════════════════
-# 3) ★ استخراج قائمة السيرفرات من الصفحة
+# ★ استخراج قائمة السيرفرات
 # ═══════════════════════════════════════════════════════════════
 def _extract_servers(sb):
-    """
-    يستخرج قائمة السيرفرات من ul.serversList.
-    يعيد قائمة من dicts تحتوي على id, name, onclick.
-    """
+    """يستخرج قائمة السيرفرات من ul.serversList."""
     try:
         servers = sb.cdp.execute_script("""
             (function(){
@@ -325,77 +316,126 @@ def _extract_servers(sb):
         print(f"   ⚠️ فشل استخراج السيرفرات: {e}")
         return []
 
+
 # ═══════════════════════════════════════════════════════════════
-# 4) ★ محاولة سيرفر معين
+# ★ استخراج كل روابط iframe من كل السيرفرات (بدون مغادرة الصفحة)
 # ═══════════════════════════════════════════════════════════════
-def _try_server(sb, server, watch_url, netlog_read, out_path):
+def _collect_iframe_urls(sb, servers):
     """
-    ينقر على السيرفر المحدد، ينتظر iframe، يحاول التقاط m3u8.
-    يعيد (result, iframe_url) أو (None, None).
+    لكل سيرفر: نادِ onclick() ثم اقرأ src الـ iframe — بدون مغادرة الصفحة.
+    يعيد dict: {server_name: {iframe_url, server_id}}.
     """
-    server_id = server.get('id')
-    server_name = server.get('name', 'unknown')
-    if not server_id:
-        return None, None
+    results = {}
 
-    print(f"\n   ── تجربة سيرفر: {server_name} ({server_id}) ──")
-
-    # ★ 1) انقر على السيرفر
-    try:
-        sb.cdp.execute_script(f"document.getElementById('{server_id}').click();")
-        print(f"      ✅ نُقر على {server_id}")
-    except Exception as e:
-        print(f"      ⚠️ فشل النقر: {e}")
-        return None, None
-
-    sb.cdp.sleep(3)
-
-    # ★ 2) استخرج iframe الجديد
-    iframe_url = None
-    for sel in [
-        ".watch iframe",
-        "#watch iframe",
-        "iframe[src*='embed']",
-        "iframe[src*='luluvdo']",
-        "iframe[src*='vinovo']",
-        "iframe[src*='vids']",
-        "iframe[src*='vidsp']",
-        "iframe[src*='vidaraa']",
-        "iframe:not([src*='google'])",
-    ]:
-        try:
-            ifr = sb.find_element(sel)
-            src = ifr.get_attribute("src")
-            if src and src.startswith("http") and "google" not in src:
-                iframe_url = src.replace("&amp;", "&")
-                print(f"      ✅ iframe: {iframe_url[:90]}")
-                break
-        except Exception:
+    for server in servers:
+        sid = server.get("id")
+        sname = server.get("name", "unknown")
+        if not sid:
             continue
 
-    if not iframe_url:
-        print("      ❌ لا iframe")
-        return None, None
+        print(f"      · قراءة رابط: {sname} ({sid})")
 
-    # ★ 3) انتقل إلى iframe
+        # نادِ onclick() للسيرفر
+        try:
+            sb.cdp.execute_script(f"""
+                (function(){{
+                    try {{
+                        var li = document.getElementById('{sid}');
+                        if (li && li.onclick) {{
+                            li.onclick();
+                            return 'ok';
+                        }}
+                        if (li) {{
+                            li.click();
+                            return 'click';
+                        }}
+                    }} catch(e) {{ return 'err:' + e.message; }}
+                    return 'notfound';
+                }})();
+            """)
+        except Exception as e:
+            print(f"         ⚠️ فشل النقر: {str(e)[:80]}")
+            continue
+
+        # انتظر تحديث الـ iframe
+        sb.cdp.sleep(2)
+
+        # اقرأ src الـ iframe
+        iframe_src = None
+        try:
+            iframe_src = sb.cdp.execute_script("""
+                (function(){
+                    try {
+                        var sels = ['.watch iframe', '#watch iframe',
+                                    'iframe[src*="embed"]', 'iframe[src*="vidsp"]',
+                                    'iframe[src*="luluvdo"]', 'iframe[src*="vinovo"]',
+                                    'iframe[src*="vids"]', 'iframe[src*="vidaraa"]',
+                                    'iframe:not([src*="google"])'];
+                        for (var i=0; i<sels.length; i++) {
+                            var ifr = document.querySelector(sels[i]);
+                            if (ifr && ifr.src && ifr.src.startsWith('http')
+                                && ifr.src.indexOf('google') === -1) {
+                                return ifr.src;
+                            }
+                        }
+                    } catch(e) {}
+                    return null;
+                })();
+            """)
+        except Exception:
+            pass
+
+        if iframe_src:
+            iframe_src = iframe_src.replace("&amp;", "&")
+            results[sname] = {
+                "iframe_url": iframe_src,
+                "server_id": sid,
+            }
+            print(f"         ✅ {iframe_src[:90]}")
+        else:
+            print(f"         ❌ لا iframe")
+
+    return results
+
+
+# ═══════════════════════════════════════════════════════════════
+# ★ محاولة تحميل من iframe URL واحد
+# ═══════════════════════════════════════════════════════════════
+def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
+    """
+    ينتقل إلى iframe URL، يحاول التقاط m3u8 وتحميله.
+    يعيد (result, iframe_url) أو (None, None).
+    """
+    print(f"\n      🌐 الانتقال إلى: {iframe_url[:90]}")
+
+    # امسح سجل الشبكة السابق
+    try:
+        with open("/tmp/soo_netlog_marker", "w") as f:
+            f.write(str(time.time()))
+    except Exception:
+        pass
+
+    # انتقل إلى iframe
     try:
         sb.driver.execute_cdp_cmd("Page.navigate", {
             "url": iframe_url,
             "referrer": watch_url or "",
         })
-        sb.cdp.sleep(3)
     except Exception as e:
-        print(f"      ⚠️ فشل التنقل: {e}")
+        print(f"         ⚠️ فشل التنقل: {e}")
         return None, None
 
-    # ★ 4) تعامل مع iframe المتداخل
+    sb.cdp.sleep(3)
+
+    # تعامل مع iframe المتداخل
     for _ in range(3):
         try:
             nested = sb.cdp.execute_script("""
                 (function(){
                     try {
                         var ifr = document.querySelector('iframe');
-                        if (ifr && ifr.src && ifr.src.startsWith('http')) {
+                        if (ifr && ifr.src && ifr.src.startsWith('http')
+                            && ifr.src.indexOf('google') === -1) {
                             return ifr.src;
                         }
                     } catch(e) {}
@@ -403,7 +443,7 @@ def _try_server(sb, server, watch_url, netlog_read, out_path):
                 })();
             """)
             if nested and nested != iframe_url:
-                print(f"      🔄 iframe متداخل: {nested[:90]}")
+                print(f"         🔄 iframe متداخل: {nested[:80]}")
                 iframe_url = nested
                 sb.driver.execute_cdp_cmd("Page.navigate", {
                     "url": iframe_url,
@@ -415,7 +455,7 @@ def _try_server(sb, server, watch_url, netlog_read, out_path):
         except Exception:
             break
 
-    # ★ 5) انتظر المشغل
+    # انتظر المشغل
     for _ in range(JWPLAYER_WAIT):
         sb.cdp.sleep(1)
         try:
@@ -424,12 +464,12 @@ def _try_server(sb, server, watch_url, netlog_read, out_path):
                 "(document.querySelector('video')?'h5':'none')"
             )
             if p in ("jw", "h5"):
-                print(f"      ✅ {p} محمّل")
+                print(f"         ✅ {p} محمّل")
                 break
         except Exception:
             pass
 
-    # ★ 6) شغّل
+    # شغّل والتقط m3u8
     for cycle in range(8):
         for sel in ["video", ".jw-icon-playback", ".jw-icon-display",
                     ".vjs-big-play-button", "[class*='play']",
@@ -452,17 +492,17 @@ def _try_server(sb, server, watch_url, netlog_read, out_path):
             pass
         sb.cdp.sleep(1)
         if any(x in u for u in netlog_read() for x in [".m3u8", ".mpd"]):
-            print(f"      ✨ m3u8 بعد دورة {cycle+1}")
+            print(f"         ✨ m3u8 بعد دورة {cycle+1}")
             break
 
     if not any(x in u for u in netlog_read() for x in [".m3u8", ".mpd"]):
         for i in range(M3U8_WAIT):
             sb.cdp.sleep(1)
             if any(x in u for u in netlog_read() for x in [".m3u8", ".mpd"]):
-                print(f"      ✨ m3u8 بعد {(i+1)+8}s")
+                print(f"         ✨ m3u8 بعد {(i+1)+8}s")
                 break
 
-    # ★ 7) اجمع m3u8
+    # اجمع m3u8
     urls = netlog_read()
     m3u8 = [u for u in urls if ".m3u8" in u or ".mpd" in u]
 
@@ -488,7 +528,7 @@ def _try_server(sb, server, watch_url, netlog_read, out_path):
         pass
 
     if not m3u8:
-        print("      ❌ لا m3u8")
+        print("         ❌ لا m3u8")
         return None, iframe_url
 
     idx = [u for u in m3u8 if "index-" in u.lower()]
@@ -497,11 +537,10 @@ def _try_server(sb, server, watch_url, netlog_read, out_path):
     oth = [u for u in m3u8 if u not in idx and u not in mst and u not in mpd]
     ordered = idx + mst + mpd + oth
 
-    print(f"      🎯 {len(ordered)} مرشح m3u8")
+    print(f"         🎯 {len(ordered)} مرشح")
 
-    # ★ 8) حمّل segments
     for m_url in ordered[:M3U8_LIMIT]:
-        print(f"      🎯 محاولة: {m_url[:100]}")
+        print(f"         🎯 {m_url[:90]}")
 
         content = None
         for expr in [
@@ -537,7 +576,7 @@ def _try_server(sb, server, watch_url, netlog_read, out_path):
                 break
 
         if not content:
-            print("         ❌ فشل الجلب")
+            print("            ❌ فشل الجلب")
             continue
 
         segs, variants = _parse_m3u8(content, m_url.rsplit("/", 1)[0])
@@ -574,33 +613,32 @@ def _try_server(sb, server, watch_url, netlog_read, out_path):
                     break
 
         if segs:
-            print(f"         ✅ {len(segs)} segment")
-            # ⚡ cffi أولاً
+            print(f"            ✅ {len(segs)} segment")
             res = _cffi_segments(segs, str(out_path), iframe_url)
             if res:
                 return res, iframe_url
-            # 🌐 fallback
-            print("         🌐 المتصفح fallback")
+            print("            🌐 المتصفح fallback")
             res = _browser_segments(sb, segs, str(out_path))
             if res:
                 return res, iframe_url
 
     return None, iframe_url
 
+
 # ═══════════════════════════════════════════════════════════════
-# 5) العملية الكاملة عبر المتصفح (مع تجربة السيرفرات)
+# العملية الكاملة
 # ═══════════════════════════════════════════════════════════════
 def _process_with_browser(url, out_path):
     """
-    جلسة متصفح كاملة:
-      open → ?do=watch → servers list → try each server → download
+    1. افتح ?do=watch
+    2. استخرج كل السيرفرات
+    3. اجمع كل روابط iframe (بدون مغادرة)
+    4. جرّب كل iframe URL على حدة
     """
     from seleniumbase import SB
 
     netlog = tempfile.mktemp(suffix=".txt")
     open(netlog, "w").close()
-    result = None
-    iframe_url = None
 
     def _log(u):
         try:
@@ -616,6 +654,8 @@ def _process_with_browser(url, out_path):
                 return [l.strip() for l in fh if l.strip()]
         except Exception:
             return []
+
+    result = None
 
     try:
         with SB(uc=True, xvfb=True, headless=False, incognito=True,
@@ -646,14 +686,14 @@ def _process_with_browser(url, out_path):
                 sb.cdp.open(url)
                 sb.cdp.sleep(2)
 
-                # ═══ 2) انتقل إلى ?do=watch ═══
+                # ═══ 2) ?do=watch ═══
                 watch_url = None
                 try:
                     cur = sb.cdp.get_current_url() or url
-                    if not cur.endswith("/"):
-                        cur += "/"
                     if "?" in cur:
                         cur = cur.split("?")[0]
+                    if not cur.endswith("/"):
+                        cur += "/"
                     watch_url = cur + "?do=watch"
                     print(f"   🎬 watch: {watch_url[:100]}")
                     sb.cdp.open(watch_url)
@@ -661,7 +701,7 @@ def _process_with_browser(url, out_path):
                 except Exception as e:
                     print(f"   ⚠️ فشل ?do=watch: {e}")
 
-                # ═══ 3) انتظر قائمة السيرفرات ═══
+                # ═══ 3) انتظر السيرفرات ═══
                 servers = []
                 for i in range(20):
                     sb.cdp.sleep(1)
@@ -671,28 +711,46 @@ def _process_with_browser(url, out_path):
                         break
 
                 if not servers:
-                    print("   ❌ لا سيرفرات في serversList")
+                    print("   ❌ لا سيرفرات")
                     return None
 
-                # اطبع السيرفرات
                 for s in servers:
                     print(f"      · {s.get('name', '?')} ({s.get('id', '?')})"
                           + (" [active]" if s.get('active') else ""))
 
-                # ═══ 4) جرّب كل سيرفر بالترتيب ═══
-                # ابدأ بالسيرفر النشط، ثم البقية
-                ordered = [s for s in servers if s.get('active')] + \
-                          [s for s in servers if not s.get('active')]
+                # ═══ 4) ★ اجمع كل روابط iframe ═══
+                print(f"\n   📋 جمع روابط iframe لكل السيرفرات...")
+                iframe_map = _collect_iframe_urls(sb, servers)
 
-                for server in ordered:
-                    res, ifr = _try_server(sb, server, watch_url, _read, out_path)
+                if not iframe_map:
+                    print("   ❌ لم يتم العثور على أي iframe")
+                    return None
+
+                print(f"\n   ✅ تم جمع {len(iframe_map)} رابط iframe")
+
+                # ═══ 5) ★ جرّب كل iframe URL على حدة ═══
+                # ترتيب: السيرفر النشط أولاً
+                ordered_items = sorted(
+                    iframe_map.items(),
+                    key=lambda x: 0 if any(
+                        s.get("active") and s.get("name") == x[0]
+                        for s in servers
+                    ) else 1,
+                )
+
+                for sname, info in ordered_items:
+                    iframe_url = info["iframe_url"]
+                    print(f"\n   ═══ سيرفر: {sname} ═══")
+
+                    res, _ = _try_iframe_download(
+                        sb, iframe_url, watch_url, _read, out_path
+                    )
                     if res:
                         result = res
-                        iframe_url = ifr
-                        print(f"\n   ✅ نجح السيرفر: {server.get('name', '?')}")
+                        print(f"\n   ✅ نجح السيرفر: {sname}")
                         break
                     else:
-                        print(f"   ⏭️ فشل السيرفر: {server.get('name', '?')}")
+                        print(f"   ⏭️ فشل السيرفر: {sname}")
 
                 if not result:
                     print("\n   ❌ فشلت كل السيرفرات")
@@ -715,11 +773,11 @@ def _process_with_browser(url, out_path):
 
     return result
 
+
 # ═══════════════════════════════════════════════════════════════
-# 6) الضغط
+# الضغط
 # ═══════════════════════════════════════════════════════════════
 def _compress(inp, out):
-    """ضغط إلى 240p (افتراضي) لتصغير الحجم."""
     if not Path(inp).exists():
         return False
 
@@ -736,7 +794,7 @@ def _compress(inp, out):
         "-crf", str(config.COMPRESS_CRF),
         "-preset", config.COMPRESS_PRESET,
         "-threads", "2",
-        "-c:a", "aac", "-b:a", "64k",
+        "-c:a", "aac", "-b:a", "48k",
         "-f", "mp4", "-movflags", "+faststart",
         "-max_muxing_queue_size", "4096",
         "-y", str(out),
@@ -759,19 +817,11 @@ def _compress(inp, out):
         print(f"   ❌ {e}")
         return False
 
+
 # ═══════════════════════════════════════════════════════════════
-# 7) الدالة الرئيسية
+# الدالة الرئيسية
 # ═══════════════════════════════════════════════════════════════
 def download_episode(series_name, episode, url):
-    """
-    يحمّل الحلقة كاملة:
-      1. يفتح صفحة الحلقة في متصفح حقيقي.
-      2. ينتقل إلى ?do=watch.
-      3. يستخرج السيرفرات ويجربها واحدًا واحدًا.
-      4. يلتقط m3u8 ويحمّل segments.
-      5. يدمجها ويضغطها إلى 240p.
-    يرجع Path للملف النهائي.
-    """
     safe = _safe(series_name)
     out_dir = MEDIA_DIR / safe
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -811,6 +861,7 @@ def download_episode(series_name, episode, url):
     print(f"    ✅ {final.name} ({final.stat().st_size/1048576:.1f}MB)")
     return final
 
+
 # ═══════════════════════════════════════════════════════════════
 # اختبار سريع
 # ═══════════════════════════════════════════════════════════════
@@ -818,12 +869,11 @@ if __name__ == "__main__":
     import sys
 
     test_url = sys.argv[1] if len(sys.argv) > 1 else (
-        "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-01/"
+        "https://u.3seq.cam/video/modablaj-muhtemel-ask-episode-01/"
     )
 
     print("🧪 اختبار downloader.py")
     print(f"URL: {test_url}")
-    print(f"IMPERSONATE: {IMPERSONATE}")
     print(f"COMPRESS_SCALE: {COMPRESS_SCALE}")
     print()
 
