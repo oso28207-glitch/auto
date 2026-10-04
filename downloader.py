@@ -2,11 +2,11 @@
 downloader.py — تحميل من u.3seq.com (نسخة نهائية مستقرة)
 
 ★ التحسينات:
-  1. yt-dlp بأولوية جودة 360p (أسرع 5x، أخف بكثير).
-  2. ضغط ffmpeg مبسط — بدون إعدادات تسبب SIGSEGV.
-  3. cffi أولاً (نفس v18.2)، ثم yt-dlp، ثم ffmpeg HLS.
-  4. أولوية vidaraa → vinovo → luluvdo → vids → vidsonic.
-  5. luluvdo CF bypass + vinovo m3u8 builder.
+  1. استخدام imageio-ffmpeg كخطة بديلة عند فشل ffmpeg النظامي.
+  2. دمج ذكي على دفعات (chunked concat) لتجنب SIGSEGV مع الملفات الكثيرة.
+  3. yt-dlp بأولوية جودة 360p (أسرع 5x، أخف على الذاكرة).
+  4. ضغط مبسط — بدون إعدادات تسبب SIGSEGV.
+  5. أولوية vidaraa → vinovo → luluvdo → vids → vidsonic.
 """
 
 import base64
@@ -36,14 +36,12 @@ M3U8_WAIT = 20
 M3U8_LIMIT = 8
 MIN_SIZE = 100 * 1024
 COMPRESS_SCALE = 240
+CONCAT_CHUNK = 50  # ★ عدد المقاطع لكل دفعة دمج
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 
-# ═══════════════════════════════════════════════════════════════
-# أدوات
-# ═══════════════════════════════════════════════════════════════
 def _safe(name):
     return re.sub(r'[\\/:*?"<>|]', "_", name).strip()[:120]
 
@@ -86,12 +84,50 @@ def _extract_m3u8_from_html(html):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 1) yt-dlp HLS — بجودة منخفضة (360p) لتفادي SIGSEGV
+# ★ الحصول على مسار ffmpeg (نظامي أو imageio)
+# ═══════════════════════════════════════════════════════════════
+_FFMPEG_CACHE = {"path": None, "source": None}
+
+
+def _get_ffmpeg_exe():
+    """يعيد مسار ffmpeg: النظامي أولاً، ثم imageio-ffmpeg كخطة بديلة."""
+    if _FFMPEG_CACHE["path"]:
+        return _FFMPEG_CACHE["path"]
+
+    # 1) النظامي
+    try:
+        r = subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=5)
+        if r.returncode == 0:
+            _FFMPEG_CACHE["path"] = "ffmpeg"
+            _FFMPEG_CACHE["source"] = "system"
+            return "ffmpeg"
+    except Exception:
+        pass
+
+    # 2) imageio-ffmpeg
+    try:
+        import imageio_ffmpeg
+        path = imageio_ffmpeg.get_ffmpeg_exe()
+        r = subprocess.run([path, "-version"], capture_output=True, timeout=5)
+        if r.returncode == 0:
+            print(f"   ℹ️  استخدام imageio-ffmpeg: {path}")
+            _FFMPEG_CACHE["path"] = path
+            _FFMPEG_CACHE["source"] = "imageio"
+            return path
+    except Exception as e:
+        print(f"   ⚠️ imageio-ffmpeg غير متاح: {str(e)[:80]}")
+
+    # 3) fallback
+    _FFMPEG_CACHE["path"] = "ffmpeg"
+    _FFMPEG_CACHE["source"] = "system-fallback"
+    return "ffmpeg"
+
+
+# ═══════════════════════════════════════════════════════════════
+# 1) yt-dlp HLS — 360p
 # ═══════════════════════════════════════════════════════════════
 def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
-    """yt-dlp بأولوية 360p — أسرع 5x، أخف على الذاكرة."""
     cookies = cookies or {}
-
     cookie_file = tempfile.mktemp(suffix=".txt")
     try:
         domain = urlparse(m3u8_url).hostname or ""
@@ -104,7 +140,7 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
 
         print(f"      🎬 yt-dlp → {m3u8_url[:70]}...")
 
-        # ★ جودة 360p أولاً — أخف بكثير
+        ffmpeg_path = _get_ffmpeg_exe()
         for mode in ["native", "ffmpeg"]:
             cmd = [
                 "yt-dlp",
@@ -119,12 +155,14 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
                 "--retries", "10",
                 "--fragment-retries", "10",
                 "--socket-timeout", "30",
-                # ★ 360p أولاً، ثم أي جودة
                 "-f", "bv*[height<=360]+ba/b[height<=360]/bv*+ba/b",
                 "--merge-output-format", "mp4",
                 "-o", out,
-                m3u8_url,
             ]
+            if ffmpeg_path != "ffmpeg":
+                cmd.extend(["--ffmpeg-location", ffmpeg_path])
+            cmd.append(m3u8_url)
+
             try:
                 r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
                 if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > MIN_SIZE:
@@ -148,7 +186,6 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
 # 2) ffmpeg HLS مباشرة
 # ═══════════════════════════════════════════════════════════════
 def _ffmpeg_hls(m3u8_url, out, iframe_url, cookies=None):
-    """ffmpeg HLS مع أمر مبسط."""
     cookies = cookies or {}
     cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
 
@@ -161,11 +198,11 @@ def _ffmpeg_hls(m3u8_url, out, iframe_url, cookies=None):
         headers_parts.append(f"Cookie: {cookie_str}")
     headers = "\r\n".join(headers_parts) + "\r\n"
 
+    ffmpeg_exe = _get_ffmpeg_exe()
     print(f"      🎬 ffmpeg HLS → {m3u8_url[:70]}...")
 
-    # ★ أمر مبسط — بدون إعدادات خطرة
     cmd = [
-        "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "warning",
+        ffmpeg_exe, "-nostdin", "-hide_banner", "-loglevel", "warning",
         "-headers", headers,
         "-user_agent", UA,
         "-reconnect", "1",
@@ -195,7 +232,89 @@ def _ffmpeg_hls(m3u8_url, out, iframe_url, cookies=None):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 3) cffi segments (نفس v18.2 — يعمل)
+# 3) ★★★ الدمج الذكي على دفعات (chunked concat) — يمنع SIGSEGV
+# ═══════════════════════════════════════════════════════════════
+def _concat_group(paths, out, loglevel="error"):
+    """يدمج مجموعة صغيرة من المقاطع — آمن من SIGSEGV."""
+    listfile = tempfile.mktemp(suffix=".txt")
+    with open(listfile, "w") as f:
+        for p in paths:
+            escaped = p.replace("'", "'\\''")
+            f.write(f"file '{escaped}'\n")
+
+    ffmpeg_exe = _get_ffmpeg_exe()
+    cmd = [
+        ffmpeg_exe, "-nostdin", "-hide_banner", "-loglevel", loglevel,
+        "-f", "concat", "-safe", "0", "-i", listfile,
+        "-c", "copy", "-f", "mpegts", "-y", out,
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
+        if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 5000:
+            os.remove(listfile)
+            return True
+        err = (r.stderr or "").strip().split("\n")[-1] if r.stderr else f"code={r.returncode}"
+        print(f"      ⚠️ دمج مجموعة: {err[:120]}")
+    except Exception as e:
+        print(f"      ⚠️ دمج مجموعة: {str(e)[:100]}")
+    try: os.remove(listfile)
+    except Exception: pass
+    return False
+
+
+def _smart_concat(sorted_paths, out):
+    """
+    دمج ذكي بتقسيم إلى مجموعات صغيرة.
+    يحل مشكلة SIGSEGV مع 400+ ملف.
+    """
+    total = len(sorted_paths)
+    print(f"      🔗 دمج {total} segment على دفعات...")
+
+    # إذا كان قليلاً، جرّب مباشرة
+    if total <= CONCAT_CHUNK:
+        if _concat_group(sorted_paths, out):
+            return True
+        print("      ⚠️ الدمج المباشر فشل — تقسيم لمجموعات")
+
+    # تقسيم إلى مجموعات
+    groups = []
+    for i in range(0, total, CONCAT_CHUNK):
+        groups.append(sorted_paths[i:i + CONCAT_CHUNK])
+
+    print(f"      📦 تقسيم إلى {len(groups)} مجموعة (كل مجموعة {CONCAT_CHUNK})")
+
+    group_files = []
+    for gi, grp in enumerate(groups):
+        gpath = out + f".part{gi:04d}.ts"
+        if os.path.exists(gpath):
+            try: os.remove(gpath)
+            except Exception: pass
+        if _concat_group(grp, gpath):
+            group_files.append(gpath)
+            print(f"      ✅ مجموعة {gi+1}/{len(groups)} ({len(grp)} segment)")
+        else:
+            print(f"      ❌ فشل مجموعة {gi+1}")
+            for gf in group_files:
+                try: os.remove(gf)
+                except Exception: pass
+            return False
+
+    # دمج المجموعات النهائية
+    print(f"      🔗 دمج نهائي {len(group_files)} مجموعة...")
+    if _concat_group(group_files, out):
+        for gf in group_files:
+            try: os.remove(gf)
+            except Exception: pass
+        return True
+
+    for gf in group_files:
+        try: os.remove(gf)
+        except Exception: pass
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════
+# 4) cffi segments
 # ═══════════════════════════════════════════════════════════════
 def _cffi_segments(segments, out, iframe_url, cookies=None):
     if not segments:
@@ -271,32 +390,10 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
         return None
 
     sorted_p = [paths[k] for k in sorted(paths)]
-    concat_file = os.path.join(seg_dir, "concat.txt")
-    with open(concat_file, "w") as f:
-        for p in sorted_p:
-            f.write(f"file '{p}'\n")
 
-    # ★ أمر بسيط (نفس v18.2)
-    print(f"   🔗 دمج {len(sorted_p)} segment (ffmpeg simple concat)...")
-    concat_cmd = [
-        "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
-        "-f", "concat", "-safe", "0", "-i", concat_file,
-        "-c", "copy", "-f", "mpegts", "-y", out,
-    ]
-
-    try:
-        r = subprocess.run(concat_cmd, capture_output=True, text=True, timeout=1200)
-        if r.returncode != 0 or not os.path.exists(out):
-            err = (r.stderr or "").strip().split("\n")[-1] if r.stderr else f"code={r.returncode}"
-            print(f"      ❌ فشل الدمج: {err[:200]}")
-            shutil.rmtree(seg_dir, ignore_errors=True)
-            return None
-    except subprocess.TimeoutExpired:
-        print("      ❌ فشل الدمج: timeout")
-        shutil.rmtree(seg_dir, ignore_errors=True)
-        return None
-    except Exception as e:
-        print(f"      ❌ فشل الدمج: {str(e)[:150]}")
+    # ★ استخدام الدمج الذكي
+    if not _smart_concat(sorted_p, out):
+        print(f"         ❌ فشل الدمج")
         shutil.rmtree(seg_dir, ignore_errors=True)
         return None
 
@@ -307,7 +404,7 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 4) المتصفح fallback
+# 5) المتصفح fallback
 # ═══════════════════════════════════════════════════════════════
 def _browser_fetch_batch_b64(sb, urls, timeout=30):
     if not urls:
@@ -427,23 +524,9 @@ def _browser_segments(sb, segments, out):
         return None
 
     sorted_p = [paths[k] for k in sorted(paths)]
-    concat_file = os.path.join(seg_dir, "concat.txt")
-    with open(concat_file, "w") as f:
-        for p in sorted_p:
-            f.write(f"file '{p}'\n")
 
-    print(f"   🔗 دمج {len(sorted_p)} segment...")
-    concat_cmd = [
-        "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
-        "-f", "concat", "-safe", "0", "-i", concat_file,
-        "-c", "copy", "-f", "mpegts", "-y", out,
-    ]
-    try:
-        r = subprocess.run(concat_cmd, capture_output=True, text=True, timeout=1200)
-        if r.returncode != 0 or not os.path.exists(out):
-            shutil.rmtree(seg_dir, ignore_errors=True)
-            return None
-    except Exception:
+    # ★ الدمج الذكي
+    if not _smart_concat(sorted_p, out):
         shutil.rmtree(seg_dir, ignore_errors=True)
         return None
 
@@ -600,7 +683,6 @@ def _get_watch_html(sb):
 
 
 def _get_cookies_full(sb):
-    """Network.getAllCookies — يعطي كل الكوكيز."""
     try:
         r = sb.driver.execute_cdp_cmd("Network.getAllCookies", {})
         if r and r.get("cookies"):
@@ -713,7 +795,7 @@ def _collect_iframe_urls(sb, servers):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★ محاولة التحميل — cffi أولاً، ثم yt-dlp، ثم ffmpeg HLS
+# محاولة التحميل
 # ═══════════════════════════════════════════════════════════════
 def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
     print(f"\n      🌐 الانتقال إلى: {iframe_url[:90]}")
@@ -739,7 +821,6 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
 
     sb.cdp.sleep(3)
 
-    # iframe متداخل
     for _ in range(3):
         try:
             nested = sb.cdp.execute_script("""
@@ -766,7 +847,6 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
         except Exception:
             break
 
-    # انتظر المشغل
     for _ in range(JWPLAYER_WAIT):
         sb.cdp.sleep(1)
         try:
@@ -784,7 +864,6 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
     if server_name == "vinovo":
         m3u8_urls = _extract_vinovo_m3u8(sb, iframe_url)
 
-    # شغّل بقوة
     for cycle in range(12):
         for sel in ["video", ".jw-icon-playback", ".jw-icon-display",
                     ".vjs-big-play-button", "[class*='play']",
@@ -891,7 +970,7 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
     if browser_cookies:
         print(f"      🍪 {len(browser_cookies)} كوكي")
 
-    # ★★★ 1) yt-dlp أولاً (الأكثر استقراراً، نزّل 499MB بنجاح)
+    # ★★★ 1) yt-dlp أولاً
     print("      🔄 yt-dlp (360p)...")
     for m_url in ordered[:3]:
         print(f"      🎯 {m_url[:90]}")
@@ -899,7 +978,7 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
             size = os.path.getsize(out_path)
             return (size, True), iframe_url
 
-    # ★★★ 2) cffi + دمج
+    # ★★★ 2) cffi + دمج ذكي
     print("      🔄 cffi segments...")
     for m_url in ordered[:M3U8_LIMIT]:
         content = None
@@ -1120,21 +1199,18 @@ def _process_with_browser(url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ الضغط المبسط — يمنع SIGSEGV
+# الضغط
 # ═══════════════════════════════════════════════════════════════
 def _compress(inp, out):
-    """
-    ضغط مبسط إلى 240p.
-    ★ لا يستخدم -err_detect -fflags -analyzeduration -probesize التي تسبب SIGSEGV.
-    """
     if not Path(inp).exists():
         return False
 
     im = Path(inp).stat().st_size / 1048576
     print(f"   🗜️  {im:.2f}MB → {COMPRESS_SCALE}p...")
 
+    ffmpeg_exe = _get_ffmpeg_exe()
     cmd = [
-        "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+        ffmpeg_exe, "-nostdin", "-hide_banner", "-loglevel", "error",
         "-i", str(inp),
         "-vf", f"scale=-2:{COMPRESS_SCALE}",
         "-c:v", "libx264",
@@ -1214,9 +1290,6 @@ def download_episode(series_name, episode, url):
     return final
 
 
-# ═══════════════════════════════════════════════════════════════
-# اختبار
-# ═══════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     import sys
     test_url = sys.argv[1] if len(sys.argv) > 1 else (
