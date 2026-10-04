@@ -1,6 +1,6 @@
 """
 checker.py — كشف الجديد من u.3seq.com عبر WordPress REST API.
-يستخدم cloudscraper لتجاوز Cloudflare.
+يتجاهل المسلسلات الفاشلة.
 """
 
 import re
@@ -26,7 +26,6 @@ def _get_scraper():
 
 
 def _extract_ep(text):
-    """استخراج رقم الحلقة من العنوان."""
     if not text:
         return 0
     for p in [r"الحلقة\s*(\d+)", r"[Ee]pisode\s*(\d+)", r"(\d+)"]:
@@ -37,7 +36,6 @@ def _extract_ep(text):
 
 
 def _clean_series_name(title):
-    """يستخرج اسم المسلسل النقي من العنوان."""
     t = re.sub(r"\s*الحلقة\s*\d+.*$", "", title).strip()
     t = re.sub(r"\s*[Ee]pisode\s*\d+.*$", "", t).strip()
     t = re.sub(r"\s*مدبلجة?\s*$", "", t).strip()
@@ -83,10 +81,6 @@ def _api_get(path, params=None, retries=3):
 
 
 def fetch_series_list():
-    """
-    يجلب كل المسلسلات مع حلقاتها من التصنيف المحدد.
-    يعيد: [{name, url, slug, posts: [{episode, title, link, id, date}]}]
-    """
     print(f"📋 جلب قائمة المسلسلات (تصنيف {config.SOURCE_CATEGORY})...")
     all_posts = []
     per_page = 100
@@ -121,7 +115,6 @@ def fetch_series_list():
     if not all_posts:
         raise SourceError(f"لا منشورات في التصنيف {config.SOURCE_CATEGORY}")
 
-    # تجميع حسب المسلسل
     series_map = {}
     for post in all_posts:
         link = post.get("link", "")
@@ -161,8 +154,12 @@ def fetch_series_list():
 def find_new_episodes(series_data, series_name):
     """
     يقارن حلقات المصدر مع قاعدة البيانات.
-    يعيد قائمة الحلقات الجديدة فقط (غير المرفوعة، غير الفاشلة).
+    ★ يتجاهل المسلسلات التي فُشلت بالكامل.
     """
+    # ★ تجاهل المسلسلات الفاشلة
+    if db.has_failed(series_name):
+        return []
+
     new = []
     for post in series_data.get("posts", []):
         ep = post["episode"]
@@ -170,6 +167,6 @@ def find_new_episodes(series_data, series_name):
         if status == "uploaded":
             continue
         if status == "failed":
-            continue  # لا نعيد المحاولة تلقائياً
+            continue
         new.append(post)
     return new

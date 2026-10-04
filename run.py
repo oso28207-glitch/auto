@@ -2,7 +2,7 @@
 """
 run.py — 🚀 نقطة التشغيل الوحيدة لنظام شوف
 يشتغل بضغطة واحدة: فحص → تحميل → ضغط → رفع → بناء تدريجي.
-أي خطأ يوقف كل شيء فوراً.
+★ عند فشل مسلسل كامل: يتخطاه وينتقل للتالي.
 """
 
 import asyncio
@@ -28,10 +28,12 @@ class Pipeline:
         self.stats = {
             "series_checked": 0,
             "series_with_new": 0,
+            "series_failed": 0,
             "episodes_new": 0,
             "episodes_uploaded": 0,
             "episodes_failed": 0,
             "changed": [],
+            "failed_series": [],
         }
 
     async def run(self):
@@ -49,6 +51,7 @@ class Pipeline:
         print(f"   المسلسلات: {s['series']}")
         print(f"   الحلقات المرفوعة: {s['uploaded']} من {s['episodes']}")
         print(f"   الفيديوهات في الفهرس: {s['videos']}")
+        print(f"   مسلسلات فاشلة: {s.get('failed_series', 0)}")
 
         # ═══ 1) جلب قائمة المسلسلات ═══
         print()
@@ -60,6 +63,12 @@ class Pipeline:
         work_queue = []
         for s in series_list:
             name = s["name"]
+
+            # ★ تجاهل المسلسلات الفاشلة
+            if db.has_failed(name):
+                print(f"   ⏭️  تخطي (فشل سابق): {name}")
+                continue
+
             new_eps = find_new_episodes(s, name)
             if not new_eps:
                 continue
@@ -109,6 +118,9 @@ class Pipeline:
                 print(f"📺 {name} ({len(eps)} حلقة)")
                 print(f"{'═' * 60}")
 
+                series_failed = False
+                first_ep = eps[0]["episode"] if eps else 0
+
                 for ep_data in eps:
                     # حد أقصى؟
                     if (config.MAX_EPISODES_PER_RUN > 0 and
@@ -121,7 +133,6 @@ class Pipeline:
 
                     print(f"\n   ── الحلقة {ep_num} ──")
 
-                    # تحديث الحالة: تحميل
                     db.set_episode(
                         name, ep_num,
                         status="downloading",
@@ -129,27 +140,51 @@ class Pipeline:
                         title=ep_data.get("title", ""),
                     )
 
-                    # التحميل
+                    # ★ التحميل — يرجع None عند الفشل
                     try:
-                        video_path = await asyncio.to_thread(download_episode, name, ep_num, ep_url)
-                    except SooFatalError:
-                        db.mark_failed(name, ep_num, "فشل التحميل")
-                        self.stats["episodes_failed"] += 1
-                        raise
+                        video_path = download_episode(name, ep_num, ep_url)
+                    except SooFatalError as e:
+                        print(f"   ❌ خطأ خطير: {e.message}")
+                        video_path = None
+                    except Exception as e:
+                        print(f"   ❌ خطأ: {str(e)[:150]}")
+                        video_path = None
 
-                    # تحديث الحالة: رفع
-                    db.set_episode(name, ep_num, status="uploading")
+                    if video_path is None:
+                        print(f"   ⚠️ فشل تحميل الحلقة {ep_num}")
+                        db.mark_failed(name, ep_num, "فشلت كل السيرفرات")
+                        self.stats["episodes_failed"] += 1
+
+                        # ★ إذا فشلت أول حلقة، نتجاهل المسلسل كاملاً
+                        if ep_num == first_ep:
+                            print(f"\n   🚫 تخطي المسلسل: {name} (فشلت أول حلقة)")
+                            series_failed = True
+                            break
+
+                        continue  # جرّب الحلقة التالية
 
                     # الرفع
+                    db.set_episode(name, ep_num, status="uploading")
+
                     caption = f"📺 {name}\n🎬 الحلقة {ep_num}"
+                    upload_info = None
                     try:
                         upload_info = await uploader.upload(video_path, caption)
-                    except SooFatalError:
+                    except SooFatalError as e:
+                        print(f"   ❌ فشل الرفع: {e.message}")
+                    except Exception as e:
+                        print(f"   ❌ فشل الرفع: {str(e)[:150]}")
+
+                    if not upload_info:
                         db.mark_failed(name, ep_num, "فشل الرفع")
                         self.stats["episodes_failed"] += 1
-                        raise
+                        try:
+                            video_path.unlink()
+                        except Exception:
+                            pass
+                        continue
 
-                    # حفظ في قاعدة البيانات
+                    # حفظ
                     db.set_episode(
                         name, ep_num,
                         status="uploaded",
@@ -176,25 +211,42 @@ class Pipeline:
 
                     self.stats["episodes_uploaded"] += 1
 
-                    # حذف الملف
                     if not config.KEEP_MEDIA:
                         try:
                             video_path.unlink()
                         except Exception:
                             pass
 
-                    # بناء تدريجي بعد كل حلقة
                     if config.AUTO_BUILD:
                         build_incremental(changed_series=[name])
 
                     print(f"   ✅ الحلقة {ep_num} اكتملت")
 
+                if series_failed:
+                    self.stats["series_failed"] += 1
+                    self.stats["failed_series"].append(name)
+                    db.set_series(name, {
+                        "status": "failed",
+                        "failed_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "reason": "فشلت كل السيرفرات",
+                    })
+                    self.stats["changed"].append(name)
+                    continue
+
                 if name not in self.stats["changed"]:
                     self.stats["changed"].append(name)
 
                 db.set_series(name, {
-                    "last_updated": time.strftime("%Y-%m-%dT%H:%M:%S")
+                    "last_updated": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "status": "ok",
                 })
+
+            # ★ طباعة المسلسلات المتخطاة
+            if self.stats["failed_series"]:
+                print(f"\n⚠️  مسلسلات متخطاة ({len(self.stats['failed_series'])}):")
+                for s in self.stats["failed_series"]:
+                    print(f"   · {s}")
+                print("\n   💡 لإعادة المحاولة، احذف state.json أو استخدم db.reset_all_failed()")
 
         finally:
             await uploader.stop()
@@ -209,7 +261,8 @@ def print_summary(stats, start):
     print(f"\n{'═' * 60}")
     print(f"⏱️  المدة: {elapsed/60:.1f} دقيقة")
     print(f"📊 المسلسلات: {stats['series_checked']} مفحوصة، "
-          f"{stats['series_with_new']} فيها جديد")
+          f"{stats['series_with_new']} فيها جديد، "
+          f"{stats['series_failed']} متخطاة")
     print(f"🎬 الحلقات: {stats['episodes_new']} جديدة، "
           f"{stats['episodes_uploaded']} مرفوعة، "
           f"{stats['episodes_failed']} فاشلة")
@@ -236,7 +289,6 @@ async def main():
         if e.original:
             print(f"   السبب: {e.original}")
         print(f"{'🛑' * 30}")
-        print("\n⚠️  توقف كل شيء حتى إصلاح الخطأ")
         print_summary(pipeline.stats, pipeline.start)
         return 1
 

@@ -1,12 +1,10 @@
 """
 downloader.py — تحميل من u.3seq.com
 
-★ الإصلاحات الجديدة:
-  1. onclick() مع this الصحيح (لا getServer2(null,...)).
-  2. نقر CDP حقيقي (Input.dispatchMouseEvent) لتشغيل الفيديو.
-  3. polling سريع (3s بدل 8s).
-  4. البحث في m3u8 بطرق متعددة.
-  5. الضغط إلى 240p.
+★ التعديلات:
+  1. onclick() → el.click() (لأن getServer2 غير معرّفة عالمياً).
+  2. عند فشل كل السيرفرات: return None بدل raise.
+  3. الضغط إلى 240p.
 """
 
 import base64
@@ -290,7 +288,6 @@ def _browser_segments(sb, segments, out):
 # استخراج السيرفرات
 # ═══════════════════════════════════════════════════════════════
 def _extract_servers(sb):
-    """يستخرج السيرفرات + يفكك onclick إلى args."""
     try:
         servers = sb.cdp.execute_script("""
             (function(){
@@ -301,25 +298,10 @@ def _extract_servers(sb):
                     var out = [];
                     for (var i = 0; i < items.length; i++) {
                         var li = items[i];
-                        var oc = li.getAttribute('onclick') || '';
-
-                        var args = [];
-                        var m = oc.match(/getServer2\\s*\\(([^)]+)\\)/);
-                        if (m) {
-                            var parts = m[1].split(',').map(function(s){return s.trim();});
-                            for (var j=0; j<parts.length; j++) {
-                                var p = parts[j];
-                                if (p === 'this' || p.indexOf('document.') === 0) continue;
-                                p = p.replace(/^['"]|['"]$/g, '');
-                                args.push(p);
-                            }
-                        }
-
                         out.push({
                             id: li.id || '',
                             name: (li.textContent || '').trim(),
-                            onclick: oc,
-                            args: args,
+                            onclick: li.getAttribute('onclick') || '',
                             active: li.classList.contains('active')
                         });
                     }
@@ -334,7 +316,6 @@ def _extract_servers(sb):
 
 
 def _get_current_iframe(sb):
-    """يقرأ src الـ iframe الحالي."""
     try:
         return sb.cdp.execute_script("""
             (function(){
@@ -343,6 +324,7 @@ def _get_current_iframe(sb):
                                 'iframe[src*="embed"]', 'iframe[src*="vidsp"]',
                                 'iframe[src*="luluvdo"]', 'iframe[src*="vinovo"]',
                                 'iframe[src*="vids"]', 'iframe[src*="vidaraa"]',
+                                'iframe[src*="vidsonic"]',
                                 'iframe:not([src*="google"])'];
                     for (var i=0; i<sels.length; i++) {
                         var ifr = document.querySelector(sels[i]);
@@ -360,14 +342,13 @@ def _get_current_iframe(sb):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★ جمع روابط iframe — onclick() مع this الصحيح + polling سريع
+# ★ جمع روابط iframe — الآن نستخدم el.click()
 # ═══════════════════════════════════════════════════════════════
 def _collect_iframe_urls(sb, servers):
     """
     لكل سيرفر:
-      1. نادِ el.onclick.call(el) — this = العنصر (الحل الصحيح).
+      1. el.click() — أبسط وأكثر موثوقية من onclick.call(el).
       2. راقب تغيّر iframe src (poll كل 0.3s حتى 3s).
-      3. إذا لم يتغير، جرّب el.click().
     """
     results = {}
     seen_urls = set()
@@ -382,19 +363,15 @@ def _collect_iframe_urls(sb, servers):
 
         before = _get_current_iframe(sb)
 
-        # ★ الطريقة الصحيحة: onclick.call(el)
+        # ★ el.click() — الحل الأكثر موثوقية
         try:
             r = sb.cdp.execute_script(f"""
                 (function(){{
                     try {{
                         var el = document.getElementById('{sid}');
                         if (!el) return 'notfound';
-                        if (typeof el.onclick === 'function') {{
-                            el.onclick.call(el);
-                            return 'onclick';
-                        }}
                         el.click();
-                        return 'click';
+                        return 'clicked';
                     }} catch(e) {{ return 'err:' + e.message; }}
                 }})();
             """)
@@ -403,7 +380,7 @@ def _collect_iframe_urls(sb, servers):
             print(f"         ⚠️ {str(e)[:80]}")
             continue
 
-        # ★ polling سريع (3s)
+        # polling سريع
         after = before
         deadline = time.time() + 3
         while time.time() < deadline:
@@ -422,7 +399,6 @@ def _collect_iframe_urls(sb, servers):
             else:
                 print(f"         ⚠️ مكرر: {url[:90]}")
         elif before:
-            # لم يتغير - لكن قد يكون نفس الـ iframe مقصوداً
             if before not in seen_urls:
                 seen_urls.add(before)
                 results[f"{sname}_{sid}"] = {"iframe_url": before, "server_id": sid}
@@ -436,7 +412,7 @@ def _collect_iframe_urls(sb, servers):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★ محاولة تحميل من iframe — نقر CDP حقيقي
+# محاولة تحميل من iframe
 # ═══════════════════════════════════════════════════════════════
 def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
     print(f"\n      🌐 الانتقال إلى: {iframe_url[:90]}")
@@ -495,7 +471,6 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
 
     # ★ شغّل بقوة مع نقر CDP حقيقي
     for cycle in range(12):
-        # 1) النقر على أزرار التشغيل
         for sel in ["video", ".jw-icon-playback", ".jw-icon-display",
                     ".vjs-big-play-button", "[class*='play']",
                     "button[aria-label*='play']", ".play-btn", "#play"]:
@@ -504,7 +479,7 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
             except Exception:
                 pass
 
-        # 2) ★ نقر CDP حقيقي (Input.dispatchMouseEvent)
+        # نقر CDP حقيقي في مركز الفيديو
         try:
             rect = sb.cdp.execute_script("""
                 (function(){
@@ -532,7 +507,6 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
         except Exception:
             pass
 
-        # 3) jwplayer + video.play()
         try:
             sb.cdp.execute_script("""
                 (function(){try{
@@ -584,7 +558,7 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
     except Exception:
         pass
 
-    # البحث في localStorage / sessionStorage
+    # localStorage / sessionStorage
     try:
         stor = sb.cdp.execute_script("""
             (function(){
@@ -619,12 +593,6 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
         try:
             html = sb.cdp.get_page_source() or ""
             print(f"         📄 HTML: {len(html)} bytes")
-            for pat in [r'https?://[^"\']+\.(?:mp4|m3u8|mpd|ts)[^"\']*',
-                        r'/hls/[^"\']+', r'/playlist/[^"\']+',
-                        r'sources?\s*[:=]\s*\[', r'file\s*:\s*["\']']:
-                for m in re.finditer(pat, html):
-                    print(f"            · {m.group(0)[:120]}")
-                    break
         except Exception:
             pass
         return None, iframe_url
@@ -790,7 +758,6 @@ def _process_with_browser(url, out_path):
                 except Exception as e:
                     print(f"   ⚠️ {e}")
 
-                # انتظر السيرفرات
                 servers = []
                 for i in range(20):
                     sb.cdp.sleep(1)
@@ -807,7 +774,6 @@ def _process_with_browser(url, out_path):
                     print(f"      · {s.get('name', '?')} ({s.get('id', '?')})"
                           + (" [active]" if s.get('active') else ""))
 
-                # ★ اجمع الروابط
                 print(f"\n   📋 جمع روابط iframe...")
                 iframe_map = _collect_iframe_urls(sb, servers)
 
@@ -817,7 +783,6 @@ def _process_with_browser(url, out_path):
 
                 print(f"\n   ✅ {len(iframe_map)} رابط iframe فريد")
 
-                # ★ جرّب كل رابط
                 ordered = sorted(
                     iframe_map.items(),
                     key=lambda x: 0 if "s_0" in x[0] else 1,
@@ -903,9 +868,13 @@ def _compress(inp, out):
 
 
 # ═══════════════════════════════════════════════════════════════
-# الدالة الرئيسية
+# ★ الدالة الرئيسية — ترجع None بدل رفع خطأ
 # ═══════════════════════════════════════════════════════════════
 def download_episode(series_name, episode, url):
+    """
+    يحمّل الحلقة كاملة.
+    يرجع Path للملف النهائي، أو None إذا فشلت كل السيرفرات.
+    """
     safe = _safe(series_name)
     out_dir = MEDIA_DIR / safe
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -918,13 +887,21 @@ def download_episode(series_name, episode, url):
         return final
 
     print(f"    ↳ تحميل الحلقة {episode}...")
-    res = _process_with_browser(url, raw)
+    try:
+        res = _process_with_browser(url, raw)
+    except Exception as e:
+        print(f"    ⚠️ خطأ في المتصفح: {str(e)[:150]}")
+        res = None
 
     if not res or not raw.exists():
-        raise DownloadError(
-            f"فشل تحميل {series_name} — حلقة {episode}\n"
-            f"   URL: {url}"
-        )
+        # ★ لا نرفع خطأ — نرجع None
+        print(f"    ⚠️ فشل تحميل {series_name} — حلقة {episode} (كل السيرفرات فشلت)")
+        try:
+            if raw.exists():
+                raw.unlink()
+        except Exception:
+            pass
+        return None
 
     size = raw.stat().st_size
     print(f"    📦 {size/1048576:.1f}MB")
@@ -940,7 +917,8 @@ def download_episode(series_name, episode, url):
         raw.unlink()
 
     if not final.exists():
-        raise DownloadError(f"لا ملف نهائي للحلقة {episode}")
+        print(f"    ⚠️ لا ملف نهائي للحلقة {episode}")
+        return None
 
     print(f"    ✅ {final.name} ({final.stat().st_size/1048576:.1f}MB)")
     return final
@@ -956,9 +934,9 @@ if __name__ == "__main__":
     )
     print("🧪 اختبار downloader.py")
     print(f"URL: {test_url}")
-    try:
-        path = download_episode("test", 1, test_url)
-        print(f"\n✅ نجح: {path}")
-    except DownloadError as e:
-        print(f"\n❌ فشل:\n{e}")
+    result = download_episode("test", 1, test_url)
+    if result:
+        print(f"\n✅ نجح: {result}")
+    else:
+        print(f"\n⚠️ فشل")
         sys.exit(1)

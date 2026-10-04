@@ -1,4 +1,6 @@
-"""قاعدة بيانات JSON مع دمج عميق وكتابة ذرّية."""
+"""
+database.py — قاعدة بيانات JSON مع دمج عميق وكتابة ذرّية.
+"""
 
 import json
 import os
@@ -73,6 +75,37 @@ class Database:
         with self._lock:
             return list(self._data["series"].keys())
 
+    # ★ جديد
+    def has_failed(self, series):
+        """هل فشل هذا المسلسل بالكامل؟"""
+        with self._lock:
+            s = self._data["series"].get(series, {})
+            return s.get("status") == "failed"
+
+    # ★ جديد
+    def reset_series(self, series):
+        """يصفّر حالة مسلسل لإعادة المحاولة."""
+        with self._lock:
+            if series in self._data["series"]:
+                self._data["series"][series]["status"] = "pending"
+                self._data["series"][series].pop("failed_at", None)
+                self._data["series"][series].pop("reason", None)
+                self._save()
+
+    def reset_all_failed(self):
+        """يصفّر كل المسلسلات الفاشلة — لإعادة المحاولة يدوياً."""
+        with self._lock:
+            count = 0
+            for s in self._data["series"].values():
+                if s.get("status") == "failed":
+                    s["status"] = "pending"
+                    s.pop("failed_at", None)
+                    s.pop("reason", None)
+                    count += 1
+            if count:
+                self._save()
+            return count
+
     # ─── Episodes ───
     def episode_status(self, series, ep):
         with self._lock:
@@ -103,6 +136,11 @@ class Database:
                 if v.get("status") == "uploaded"
             )
 
+    def get_episode(self, series, ep):
+        with self._lock:
+            s = self._data["series"].get(series, {})
+            return s.get("episodes", {}).get(str(ep), {})
+
     # ─── Videos ───
     def add_video(self, video):
         if not video or "id" not in video:
@@ -128,14 +166,20 @@ class Database:
                 len(s.get("episodes", {})) for s in self._data["series"].values()
             )
             uploaded = sum(
-                sum(1 for e in s.get("episodes", {}).values() if e.get("status") == "uploaded")
+                sum(1 for e in s.get("episodes", {}).values()
+                    if e.get("status") == "uploaded")
                 for s in self._data["series"].values()
+            )
+            failed_series = sum(
+                1 for s in self._data["series"].values()
+                if s.get("status") == "failed"
             )
             return {
                 "series": len(self._data["series"]),
                 "episodes": total_eps,
                 "uploaded": uploaded,
                 "videos": len(self._data["videos"]),
+                "failed_series": failed_series,
                 "last_run": self._data.get("last_run"),
             }
 
