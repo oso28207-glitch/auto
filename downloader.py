@@ -1,13 +1,12 @@
 """
-downloader.py — تحميل من u.3seq.com (نسخة محسّنة)
+downloader.py — تحميل من u.3seq.com (نسخة نهائية)
 
-★ التحسينات:
-  1. تجاوز Cloudflare في luluvdo.com عبر SeleniumBase UC Mode.
-  2. بناء رابط m3u8 لـ vinovo.to عبر data-base + file_code.
-  3. إعطاء أولوية لـ vidaraa.cc (الأكثر نجاحاً).
-  4. تمرير كوكيز المتصفح إلى cffi.
-  5. اختبار مبكر وتوقف مبكر لتسريع الفشل.
-  6. الضغط إلى 240p.
+★ الإصلاحات:
+  1. اكتشاف تلقائي لنوع segments (TS vs fMP4).
+  2. 4 استراتيجيات دمج متتالية مع طباعة الأخطاء.
+  3. لا fallback للمتصفح إذا نجح cffi — فقط أعد الدمج.
+  4. أولوية vidaraa + vinovo m3u8 builder + luluvdo CF bypass.
+  5. الضغط 240p.
 """
 
 import base64
@@ -77,8 +76,29 @@ def _extract_m3u8_from_html(html):
     return found
 
 
+def _detect_segment_type(sample_path):
+    """يكتشف نوع الـ segment من أول بايتات."""
+    try:
+        with open(sample_path, "rb") as f:
+            head = f.read(16)
+        if len(head) < 8:
+            return "ts"
+        # MPEG-TS يبدأ بـ 0x47
+        if head[0:1] == b"\x47":
+            return "ts"
+        # MP4/fMP4 يبدأ بـ box size ثم "ftyp" أو "styp" أو "moof"
+        if head[4:8] in (b"ftyp", b"styp", b"moof", b"moov", b"mdat"):
+            return "mp4"
+        # فحص إضافي
+        if b"ftyp" in head or b"styp" in head:
+            return "mp4"
+    except Exception:
+        pass
+    return "ts"
+
+
 # ═══════════════════════════════════════════════════════════════
-# ★ 1) تحميل segments عبر cffi (مع كوكيز + اختبار مبكر)
+# ★ تحميل segments عبر cffi — مع دمج ذكي متعدد المحاولات
 # ═══════════════════════════════════════════════════════════════
 def _cffi_segments(segments, out, iframe_url, cookies=None):
     if not segments:
@@ -96,7 +116,7 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
     }
     cookies = cookies or {}
 
-    # اختبار مبكر: 5 segments
+    # اختبار مبكر
     test_count = min(5, len(segments))
     tested_ok = 0
     for i in range(test_count):
@@ -165,25 +185,89 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
         for p in sorted_p:
             f.write(f"file '{p}'\n")
 
-    print(f"         🔗 دمج {len(sorted_p)} segment...")
-    r = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-loglevel", "warning",
-         "-f", "concat", "-safe", "0", "-i", concat,
-         "-c", "copy", "-f", "mpegts", "-y", out],
-        capture_output=True, text=True, timeout=600,
-    )
-    shutil.rmtree(seg_dir, ignore_errors=True)
+    # ★ اكتشف نوع الـ segments
+    seg_type = _detect_segment_type(sorted_p[0])
+    print(f"         🔗 دمج {len(sorted_p)} segment (type={seg_type})...")
 
-    if r.returncode != 0 or not os.path.exists(out):
+    # ★ 4 استراتيجيات دمج
+    def _try_concat(fmt, codec_args, loglevel="error"):
+        # احذف الإخراج السابق إن وُجد
+        try:
+            if os.path.exists(out):
+                os.remove(out)
+        except Exception:
+            pass
+
+        cmd = (
+            ["ffmpeg", "-hide_banner", "-loglevel", loglevel,
+             "-err_detect", "ignore_err",
+             "-fflags", "+discardcorrupt+genpts",
+             "-f", "concat", "-safe", "0",
+             "-i", concat]
+            + codec_args
+            + ["-f", fmt, "-y", out]
+        )
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+            if r.returncode != 0:
+                err = (r.stderr or "").strip().split("\n")[-1] if r.stderr else "unknown"
+                return False, err[:200]
+            if not os.path.exists(out) or os.path.getsize(out) < 5000:
+                return False, "output too small or missing"
+            return True, ""
+        except subprocess.TimeoutExpired:
+            return False, "ffmpeg timeout"
+        except Exception as e:
+            return False, str(e)[:200]
+
+    attempts = []
+
+    if seg_type == "mp4":
+        attempts = [
+            ("mp4", ["-c", "copy", "-movflags", "+faststart"]),
+            ("mp4", ["-c:v", "copy", "-c:a", "aac", "-movflags", "+faststart"]),
+            ("mpegts", ["-c", "copy"]),
+            ("mkv", ["-c", "copy"]),
+            ("mp4", ["-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+                     "-c:a", "aac", "-movflags", "+faststart"]),
+        ]
+    else:
+        attempts = [
+            ("mpegts", ["-c", "copy"]),
+            ("mp4", ["-c", "copy", "-movflags", "+faststart",
+                     "-bsf:a", "aac_adtstoasc"]),
+            ("mkv", ["-c", "copy"]),
+            ("mp4", ["-c:v", "copy", "-c:a", "aac", "-movflags", "+faststart"]),
+            ("mp4", ["-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+                     "-c:a", "aac", "-movflags", "+faststart"]),
+        ]
+
+    success = False
+    for fmt, args in attempts:
+        ok, err = _try_concat(fmt, args)
+        if ok:
+            print(f"         ✅ دمج ناجح ({fmt})")
+            success = True
+            break
+        print(f"         ⚠️ فشل ({fmt}): {err[:120]}")
+
+    if not success:
+        print(f"         ❌ فشلت كل استراتيجيات الدمج")
+        shutil.rmtree(seg_dir, ignore_errors=True)
         return None
+
+    # إذا نجح الدمج إلى mkv، حوّله إلى mp4
+    if out.endswith(".ts") or out.endswith(".mkv"):
+        pass  # سيتم التعامل معه في _compress
 
     final_size = os.path.getsize(out)
     print(f"         ✅ نجح: {final_size/1048576:.1f} MB")
+    shutil.rmtree(seg_dir, ignore_errors=True)
     return (final_size, True)
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★ 2) تحميل segments عبر المتصفح (credentials:'include')
+# تحميل segments عبر المتصفح (fallback نادر)
 # ═══════════════════════════════════════════════════════════════
 def _browser_segments(sb, segments, out):
     batch = 12
@@ -274,11 +358,14 @@ def _browser_segments(sb, segments, out):
         for p in sorted_p:
             f.write(f"file '{p}'\n")
 
-    print(f"         🔗 دمج {len(sorted_p)}...")
+    seg_type = _detect_segment_type(sorted_p[0])
+    print(f"         🔗 دمج {len(sorted_p)} (type={seg_type})...")
+
+    fmt = "mp4" if seg_type == "mp4" else "mpegts"
     r = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-loglevel", "warning",
+        ["ffmpeg", "-hide_banner", "-loglevel", "error",
          "-f", "concat", "-safe", "0", "-i", concat,
-         "-c", "copy", "-f", "mpegts", "-y", out],
+         "-c", "copy", "-f", fmt, "-y", out],
         capture_output=True, text=True, timeout=600,
     )
     shutil.rmtree(seg_dir, ignore_errors=True)
@@ -292,33 +379,21 @@ def _browser_segments(sb, segments, out):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★ 3) تجاوز Cloudflare (luluvdo.com)
+# تجاوز Cloudflare
 # ═══════════════════════════════════════════════════════════════
 def _bypass_cloudflare(sb, iframe_url):
-    """
-    يتعامل مع Cloudflare Challenge في luluvdo.com.
-    يستخدم uc_gui_click_captcha لتجاوز التحدي.
-    """
     print("         🔄 محاولة تجاوز Cloudflare...")
-
-    # افتح الصفحة في وضع CDP
     sb.activate_cdp_mode(iframe_url)
     sb.sleep(3)
 
-    # حاول تجاوز التحدي
     for attempt in range(3):
         try:
-            # uc_gui_click_captcha تتعامل مع Turnstile و JS Challenge
             sb.uc_gui_click_captcha()
             sb.sleep(3)
-
-            # تحقق من نجاح التجاوز
             title = sb.get_page_title()
             html = sb.cdp.get_page_source() or ""
-
-            # إذا اختفى "Just a moment" أو "Attention Required" فقد نجحنا
             if "Just a moment" not in title and "Attention Required" not in title:
-                if len(html) > 5000:  # صفحة حقيقية وليست صفحة التحدي
+                if len(html) > 5000:
                     print(f"         ✅ تم تجاوز Cloudflare (محاولة {attempt+1})")
                     return True
         except Exception as e:
@@ -329,29 +404,20 @@ def _bypass_cloudflare(sb, iframe_url):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★ 4) استخراج m3u8 من vinovo.to
+# استخراج m3u8 من vinovo.to
 # ═══════════════════════════════════════════════════════════════
 def _extract_vinovo_m3u8(sb, iframe_url):
-    """
-    يستخرج رابط m3u8 من vinovo.to باستخدام data-base و file_code.
-    """
     print("         🔄 محاولة استخراج m3u8 من vinovo.to...")
-
-    # اقرأ HTML الصفحة
     html = sb.cdp.get_page_source() or ""
 
-    # ابحث عن data-base (رابط CDN)
     base_match = re.search(r'data-base=["\']([^"\']+)["\']', html)
     base_url = base_match.group(1) if base_match else None
 
-    # ابحث عن file_code أو file-code
     code_match = re.search(r'file[_-]?code["\']?\s*[:=]\s*["\']([^"\']+)["\']', html, re.IGNORECASE)
     file_code = code_match.group(1) if code_match else None
 
-    # ابحث عن أي رابط m3u8 في HTML أو JS
     m3u8_urls = _extract_m3u8_from_html(html)
 
-    # جرّب بناء الرابط يدوياً
     if base_url and file_code:
         candidates = [
             f"{base_url}/hls/{file_code}/master.m3u8",
@@ -372,12 +438,9 @@ def _extract_vinovo_m3u8(sb, iframe_url):
             except Exception:
                 continue
 
-    # إذا وُجد m3u8 في HTML، أضفه
     if m3u8_urls:
-        print(f"         ✅ وُجد {len(m3u8_urls)} مرشح m3u8")
         return m3u8_urls
 
-    # كحل أخير: شغّل الفيديو وانتظر m3u8 في الشبكة
     print("         ⏳ تشغيل الفيديو لالتقاط m3u8...")
     for sel in ["video", ".vjs-big-play-button", "[class*='play']"]:
         try:
@@ -389,10 +452,6 @@ def _extract_vinovo_m3u8(sb, iframe_url):
             (function(){try{
                 var v = document.querySelector('video');
                 if (v) { v.muted = true; v.play && v.play().catch(function(){}); }
-                if (window.videojs) {
-                    var p = videojs.getPlayers();
-                    for (var k in p) { try { p[k].play(); } catch(e){} }
-                }
             }catch(e){}})();
         """)
     except Exception:
@@ -400,11 +459,7 @@ def _extract_vinovo_m3u8(sb, iframe_url):
 
     sb.sleep(10)
     html2 = sb.cdp.get_page_source() or ""
-    m3u8_urls2 = _extract_m3u8_from_html(html2)
-    if m3u8_urls2:
-        return m3u8_urls2
-
-    return []
+    return _extract_m3u8_from_html(html2)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -433,8 +488,7 @@ def _extract_servers(sb):
             })();
         """)
         return servers or []
-    except Exception as e:
-        print(f"   ⚠️ فشل استخراج السيرفرات: {e}")
+    except Exception:
         return []
 
 
@@ -582,7 +636,7 @@ def _collect_iframe_urls(sb, servers):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★ 5) محاولة تحميل من iframe (مع دعم vinovo و luluvdo)
+# محاولة تحميل من iframe — ★ لا fallback إذا نجح cffi
 # ═══════════════════════════════════════════════════════════════
 def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
     print(f"\n      🌐 الانتقال إلى: {iframe_url[:90]}")
@@ -593,7 +647,6 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
             server_name = name
             break
 
-    # ★ تجاوز Cloudflare لـ luluvdo
     if server_name == "luluvdo":
         if not _bypass_cloudflare(sb, iframe_url):
             print("         ⏭️ فشل تجاوز Cloudflare")
@@ -610,7 +663,6 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
 
     sb.cdp.sleep(3)
 
-    # iframe متداخل
     for _ in range(3):
         try:
             nested = sb.cdp.execute_script("""
@@ -637,7 +689,6 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
         except Exception:
             break
 
-    # انتظر المشغل
     for _ in range(JWPLAYER_WAIT):
         sb.cdp.sleep(1)
         try:
@@ -651,12 +702,10 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
         except Exception:
             pass
 
-    # ★ إذا كان vinovo، جرّب استخراج m3u8 مباشرة
     m3u8_urls = []
     if server_name == "vinovo":
         m3u8_urls = _extract_vinovo_m3u8(sb, iframe_url)
 
-    # شغّل بقوة مع نقر CDP حقيقي
     for cycle in range(12):
         for sel in ["video", ".jw-icon-playback", ".jw-icon-display",
                     ".vjs-big-play-button", "[class*='play']",
@@ -750,13 +799,25 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
         print("         ❌ لا m3u8")
         return None, iframe_url
 
-    idx = [u for u in m3u8_urls if "index-" in u.lower()]
+    # ★ فلترة: استبعد ping.gif و غيرها
+    m3u8_urls = [u for u in m3u8_urls
+                 if ".m3u8" in u or ".mpd" in u]
+    # ★ استبعد الروابط غير الفيديو
+    m3u8_urls = [u for u in m3u8_urls
+                 if "ping.gif" not in u and "jwpltx" not in u]
+
+    if not m3u8_urls:
+        print("         ❌ لا m3u8 صالح")
+        return None, iframe_url
+
+    idx = [u for u in m3u8_urls if "index" in u.lower()]
     mst = [u for u in m3u8_urls if "master" in u.lower()]
     mpd = [u for u in m3u8_urls if ".mpd" in u.lower()]
     oth = [u for u in m3u8_urls if u not in idx and u not in mst and u not in mpd]
+    # ★ الأفضل: index أولاً، ثم master، ثم الباقي
     ordered = idx + mst + mpd + oth
 
-    print(f"         🎯 {len(ordered)} مرشح")
+    print(f"         🎯 {len(ordered)} مرشح صالح")
 
     browser_cookies = _get_browser_cookies(sb)
     if browser_cookies:
@@ -838,11 +899,13 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
         if segs:
             print(f"            ✅ {len(segs)} segment")
 
+            # ★ cffi — لا fallback إذا نجح
             res = _cffi_segments(segs, str(out_path), iframe_url,
                                   cookies=browser_cookies)
             if res:
                 return res, iframe_url
 
+            # fallback نادر للمتصفح (فقط إذا فشل cffi تماماً)
             print("            🌐 المتصفح fallback")
             res = _browser_segments(sb, segs, str(out_path))
             if res:
@@ -891,8 +954,6 @@ def _process_with_browser(url, out_path):
                         try:
                             u = e.request.url
                             _log(u)
-                            if ".m3u8" in u or ".mpd" in u:
-                                print(f"      ✅ [net] {u[:120]}")
                         except Exception:
                             pass
 
@@ -943,7 +1004,6 @@ def _process_with_browser(url, out_path):
 
                 print(f"\n   ✅ {len(iframe_map)} رابط iframe فريد")
 
-                # ★ أولوية لـ vidaraa
                 def _priority(item):
                     key = item[0].lower()
                     if "vidaraa" in key:
@@ -1023,6 +1083,8 @@ def _compress(inp, out):
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
         if r.returncode != 0 or not Path(out).exists():
             print(f"   ❌ ffmpeg code={r.returncode}")
+            if r.stderr:
+                print(f"      {r.stderr[-300:]}")
             return False
         om = Path(out).stat().st_size / 1048576
         print(f"   ✅ {im:.2f}→{om:.2f}MB في {time.time()-t0:.1f}s")
