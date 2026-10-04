@@ -6,6 +6,9 @@ downloader.py — تحميل من u.3seq.com عبر SeleniumBase + curl_cffi + �
   - محاولة 6 selectors مختلفة لإيجاد الـ iframe.
   - النقر على أول سيرفر كـ fallback.
   - البحث عن m3u8 في HTML مباشرة.
+  - ★ التعامل مع iframe المتداخل (nested iframe).
+  - ★ محاولات إضافية لاستخراج m3u8 من performance و network log.
+  - ★ محاولات متعددة لتشغيل الفيديو (click, jwplayer().play()).
 """
 
 import base64
@@ -36,14 +39,12 @@ M3U8_WAIT = 15
 M3U8_LIMIT = 5
 MIN_SIZE = 100 * 1024
 
-
 # ═══════════════════════════════════════════════════════════════
 # أدوات مساعدة
 # ═══════════════════════════════════════════════════════════════
 def _safe(name):
     """ينظّف الاسم ليكون صالحاً كاسم ملف."""
     return re.sub(r'[\\/:*?"<>|]', "_", name).strip()[:120]
-
 
 def _origin(url):
     """يستخرج origin من URL."""
@@ -52,7 +53,6 @@ def _origin(url):
         return f"{p.scheme}://{p.netloc}"
     except Exception:
         return ""
-
 
 def _parse_m3u8(text, base):
     """يستخرج segments و variants من محتوى m3u8."""
@@ -66,7 +66,6 @@ def _parse_m3u8(text, base):
         elif line.endswith(".ts") or ".ts?" in line or "seg" in line.lower() or ".m4s" in line:
             segs.append(line if line.startswith("http") else urljoin(base + "/", line))
     return segs, variants
-
 
 def _extract_m3u8_from_html(html):
     """يبحث عن روابط m3u8/mpd في HTML."""
@@ -83,7 +82,6 @@ def _extract_m3u8_from_html(html):
                 seen.add(u)
                 found.append(u)
     return found
-
 
 # ═══════════════════════════════════════════════════════════════
 # 1) تحميل segments عبر curl_cffi
@@ -184,7 +182,6 @@ def _cffi_segments(segments, out, iframe_url):
     final_size = os.path.getsize(out)
     print(f"   ✅ cffi نجح: {final_size/1048576:.1f} MB")
     return (final_size, True)
-
 
 # ═══════════════════════════════════════════════════════════════
 # 2) تحميل segments عبر المتصفح (fallback)
@@ -295,7 +292,6 @@ def _browser_segments(sb, segments, out):
     print(f"   ✅ المتصفح نجح: {final_size/1048576:.1f} MB")
     return (final_size, True)
 
-
 # ═══════════════════════════════════════════════════════════════
 # 3) العملية الكاملة عبر المتصفح
 # ═══════════════════════════════════════════════════════════════
@@ -303,6 +299,7 @@ def _process_with_browser(url, out_path):
     """
     جلسة متصفح كاملة:
       open → ?do=watch → servers → iframe → play → capture → download
+    ★ التعامل مع iframe المتداخل.
     """
     from seleniumbase import SB
 
@@ -361,7 +358,6 @@ def _process_with_browser(url, out_path):
                     cur = sb.cdp.get_current_url() or url
                     if not cur.endswith("/"):
                         cur += "/"
-                    # احذف أي query string موجود
                     if "?" in cur:
                         cur = cur.split("?")[0]
                     watch_url = cur + "?do=watch"
@@ -395,6 +391,7 @@ def _process_with_browser(url, out_path):
                     "iframe[src*='luluvdo']",
                     "iframe[src*='vinovo']",
                     "iframe[src*='vids']",
+                    "iframe[src*='vidsp']",
                     "iframe:not([src*='google'])",
                 ]
 
@@ -410,7 +407,6 @@ def _process_with_browser(url, out_path):
                     except Exception:
                         continue
 
-                # إذا لم يُعثر، انقر على أول سيرفر
                 if not iframe_url and servers_found:
                     print("   🔄 محاولة النقر على أول سيرفر")
                     try:
@@ -450,14 +446,12 @@ def _process_with_browser(url, out_path):
                     try:
                         html = sb.get_page_source() or ""
                         print(f"   📄 HTML: {len(html)} bytes")
-                        # حاول استخراج m3u8 من HTML
                         m3u8_in_html = _extract_m3u8_from_html(html)
                         if m3u8_in_html:
                             print(f"   🔍 وُجد {len(m3u8_in_html)} m3u8 في HTML")
                             for u in m3u8_in_html[:3]:
                                 print(f"      · {u[:120]}")
                         else:
-                            # اطبع أي iframe موجود
                             try:
                                 count = sb.cdp.execute_script(
                                     "return document.querySelectorAll('iframe').length"
@@ -491,7 +485,36 @@ def _process_with_browser(url, out_path):
                     return None
                 sb.cdp.sleep(3)
 
-                # ═══ 6) انتظر المشغل ═══
+                # ═══ 6) ★ التعامل مع iframe المتداخل ═══
+                # بعد الانتقال إلى iframe، قد نكون في صفحة تحتوي على iframe آخر
+                # نتحقق من ذلك وننتقل إليه إذا لزم الأمر
+                for _ in range(3):  # 3 مستويات كحد أقصى
+                    try:
+                        nested_iframe = sb.cdp.execute_script("""
+                            (function(){
+                                try {
+                                    var ifr = document.querySelector('iframe');
+                                    if (ifr && ifr.src && ifr.src.startsWith('http')) {
+                                        return ifr.src;
+                                    }
+                                } catch(e) {}
+                                return null;
+                            })();
+                        """)
+                        if nested_iframe and nested_iframe != iframe_url:
+                            print(f"   🔄 iframe متداخل: {nested_iframe[:100]}")
+                            iframe_url = nested_iframe
+                            sb.driver.execute_cdp_cmd(
+                                "Page.navigate",
+                                {"url": iframe_url, "referrer": url},
+                            )
+                            sb.cdp.sleep(3)
+                        else:
+                            break
+                    except Exception:
+                        break
+
+                # ═══ 7) انتظر المشغل ═══
                 for _ in range(JWPLAYER_WAIT):
                     sb.cdp.sleep(1)
                     try:
@@ -505,10 +528,11 @@ def _process_with_browser(url, out_path):
                     except Exception:
                         pass
 
-                # ═══ 7) شغّل والتقط m3u8 ═══
-                for cycle in range(6):
+                # ═══ 8) شغّل والتقط m3u8 ═══
+                for cycle in range(8):
                     for sel in ["video", ".jw-icon-playback", ".jw-icon-display",
-                                ".vjs-big-play-button", "[class*='play']"]:
+                                ".vjs-big-play-button", "[class*='play']",
+                                "button[aria-label*='play']"]:
                         try:
                             sb.cdp.click_if_visible(sel)
                         except Exception:
@@ -534,10 +558,10 @@ def _process_with_browser(url, out_path):
                     for i in range(M3U8_WAIT):
                         sb.cdp.sleep(1)
                         if any(x in u for u in _read() for x in [".m3u8", ".mpd"]):
-                            print(f"   ✨ m3u8 بعد {(i+1)+6}s")
+                            print(f"   ✨ m3u8 بعد {(i+1)+8}s")
                             break
 
-                # ═══ 8) اجمع كل m3u8 ═══
+                # ═══ 9) اجمع كل m3u8 ═══
                 urls = _read()
                 m3u8 = [u for u in urls if ".m3u8" in u or ".mpd" in u]
 
@@ -573,13 +597,12 @@ def _process_with_browser(url, out_path):
                 for u in ordered[:3]:
                     print(f"      · {u[:120]}")
 
-                # ═══ 9) حمّل الـ segments ═══
+                # ═══ 10) حمّل الـ segments ═══
                 for m_url in ordered[:M3U8_LIMIT]:
                     if result:
                         break
                     print(f"   🎯 محاولة: {m_url[:100]}")
 
-                    # جلب محتوى m3u8
                     content = None
                     for expr in [
                         f"fetch({json.dumps(m_url)},{{mode:'cors'}})",
@@ -619,7 +642,6 @@ def _process_with_browser(url, out_path):
 
                     segs, variants = _parse_m3u8(content, m_url.rsplit("/", 1)[0])
 
-                    # جرّب variants إذا لم توجد segments
                     if not segs and variants:
                         for v in variants[:2]:
                             js = f"""
@@ -653,12 +675,10 @@ def _process_with_browser(url, out_path):
 
                     if segs:
                         print(f"      ✅ {len(segs)} segment")
-                        # ⚡ cffi أولاً
                         res = _cffi_segments(segs, str(out_path), iframe_url)
                         if res:
                             result = res
                             break
-                        # 🌐 fallback للمتصفح
                         print("      🌐 المتصفح fallback")
                         res = _browser_segments(sb, segs, str(out_path))
                         if res:
@@ -681,7 +701,6 @@ def _process_with_browser(url, out_path):
             pass
 
     return result
-
 
 # ═══════════════════════════════════════════════════════════════
 # 4) الضغط
@@ -727,7 +746,6 @@ def _compress(inp, out):
         print(f"   ❌ {e}")
         return False
 
-
 # ═══════════════════════════════════════════════════════════════
 # 5) الدالة الرئيسية
 # ═══════════════════════════════════════════════════════════════
@@ -748,7 +766,6 @@ def download_episode(series_name, episode, url):
     raw = out_dir / f"ep{episode:03d}_raw.ts"
     final = out_dir / f"ep{episode:03d}.mp4"
 
-    # موجودة مسبقاً؟
     if final.exists() and final.stat().st_size > MIN_SIZE:
         print(f"    ↳ موجودة مسبقاً: {final.name}")
         return final
@@ -765,7 +782,6 @@ def download_episode(series_name, episode, url):
     size = raw.stat().st_size
     print(f"    📦 {size/1048576:.1f}MB")
 
-    # الضغط
     if config.SKIP_COMPRESS:
         shutil.move(str(raw), str(final))
     else:
@@ -781,7 +797,6 @@ def download_episode(series_name, episode, url):
 
     print(f"    ✅ {final.name} ({final.stat().st_size/1048576:.1f}MB)")
     return final
-
 
 # ═══════════════════════════════════════════════════════════════
 # اختبار سريع
