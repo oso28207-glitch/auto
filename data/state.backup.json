@@ -125,6 +125,18 @@
           "width": 426,
           "height": 240,
           "duration": 1798
+        },
+        "25": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-25/",
+          "title": "مسلسل ما زلت في 17 الحلقة 25 مدبلجة",
+          "updated_at": "2026-10-04T23:53:34.835752+00:00",
+          "message_id": 1480,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIFyGrC5v4jEuSTnygqCElc-srQjKd0AAJkHwACfV8YUoCf2Kb1RYbzHgQ",
+          "size": 28506224,
+          "width": 426,
+          "height": 240,
+          "duration": 1640
         }
       }
     },
@@ -326,6 +338,18 @@
   },
   "videos": [
     {
+      "id": 1479,
+      "title": "مسلسل ما زلت في 17 — الحلقة 24",
+      "series": "مسلسل ما زلت في 17",
+      "episode": 24,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIFx2rC5msDdRIAAQ99osACm5cxN8j8EAACYx8AAn1fGFIPWfGw-m36Bx4E",
+      "size": 35353213,
+      "width": 426,
+      "height": 240,
+      "duration": 1798,
+      "date": "2026-10-04T23:51:07"
+    },
+    {
       "id": 1478,
       "title": "مسلسل ما زلت في 17 — الحلقة 23",
       "series": "مسلسل ما زلت في 17",
@@ -434,5 +458,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-04T23:51:07.881002+00:00"
+  "last_run": "2026-10-04T23:53:34.835762+00:00"
 }
