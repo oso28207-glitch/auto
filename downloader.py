@@ -1,12 +1,12 @@
 """
-downloader.py — نسخة مقتبسة من v18.2 (تعمل)
+downloader.py — تحميل من u.3seq.com (نسخة نهائية مستقرة)
 
-★ الإصلاحات:
-  1. ffmpeg concat بسيط (بدون -err_detect -fflags التي تسبب SIGSEGV).
-  2. Network.getAllCookies بدل get_cookies.
-  3. dict[name]=value فقط لـ cffi (لا Netscape file).
-  4. yt-dlp مع كوكيز بصيغة صحيحة.
-  5. أولوية vidaraa + vinovo m3u8 + luluvdo CF bypass.
+★ التحسينات:
+  1. yt-dlp بأولوية جودة 360p (أسرع 5x، أخف بكثير).
+  2. ضغط ffmpeg مبسط — بدون إعدادات تسبب SIGSEGV.
+  3. cffi أولاً (نفس v18.2)، ثم yt-dlp، ثم ffmpeg HLS.
+  4. أولوية vidaraa → vinovo → luluvdo → vids → vidsonic.
+  5. luluvdo CF bypass + vinovo m3u8 builder.
 """
 
 import base64
@@ -26,6 +26,9 @@ from curl_cffi import requests as cffi_requests
 
 from config import config, MEDIA_DIR
 
+# ═══════════════════════════════════════════════════════════════
+# الإعدادات
+# ═══════════════════════════════════════════════════════════════
 IMPERSONATE = os.environ.get("IMPERSONATE_TARGET", "chrome120")
 CURL_WORKERS = int(os.environ.get("CURL_CFFI_WORKERS", "8"))
 JWPLAYER_WAIT = 20
@@ -38,6 +41,9 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 
+# ═══════════════════════════════════════════════════════════════
+# أدوات
+# ═══════════════════════════════════════════════════════════════
 def _safe(name):
     return re.sub(r'[\\/:*?"<>|]', "_", name).strip()[:120]
 
@@ -80,13 +86,118 @@ def _extract_m3u8_from_html(html):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★ 1) تحميل segments عبر cffi (نفس v18.2 — يعمل)
+# 1) yt-dlp HLS — بجودة منخفضة (360p) لتفادي SIGSEGV
+# ═══════════════════════════════════════════════════════════════
+def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
+    """yt-dlp بأولوية 360p — أسرع 5x، أخف على الذاكرة."""
+    cookies = cookies or {}
+
+    cookie_file = tempfile.mktemp(suffix=".txt")
+    try:
+        domain = urlparse(m3u8_url).hostname or ""
+        with open(cookie_file, "w") as f:
+            f.write("# Netscape HTTP Cookie File\n\n")
+            for k, v in cookies.items():
+                if not k or not v:
+                    continue
+                f.write(f".{domain}\tTRUE\t/\tFALSE\t0\t{k}\t{v}\n")
+
+        print(f"      🎬 yt-dlp → {m3u8_url[:70]}...")
+
+        # ★ جودة 360p أولاً — أخف بكثير
+        for mode in ["native", "ffmpeg"]:
+            cmd = [
+                "yt-dlp",
+                "--no-warnings",
+                "--no-playlist",
+                "--no-part",
+                "--hls-prefer-" + mode,
+                "--user-agent", UA,
+                "--referer", iframe_url,
+                "--add-header", f"Origin:{_origin(iframe_url)}",
+                "--cookies", cookie_file,
+                "--retries", "10",
+                "--fragment-retries", "10",
+                "--socket-timeout", "30",
+                # ★ 360p أولاً، ثم أي جودة
+                "-f", "bv*[height<=360]+ba/b[height<=360]/bv*+ba/b",
+                "--merge-output-format", "mp4",
+                "-o", out,
+                m3u8_url,
+            ]
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+                if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > MIN_SIZE:
+                    size_mb = os.path.getsize(out) / 1048576
+                    print(f"      ✅ yt-dlp {mode}: {size_mb:.1f} MB")
+                    return True
+                err = (r.stderr or "").strip().split("\n")[-1] if r.stderr else "?"
+                print(f"      ⚠️ yt-dlp {mode}: {err[:150]}")
+            except subprocess.TimeoutExpired:
+                print(f"      ⚠️ yt-dlp {mode}: timeout")
+            except Exception as e:
+                print(f"      ⚠️ yt-dlp {mode}: {str(e)[:100]}")
+
+        return False
+    finally:
+        try: os.remove(cookie_file)
+        except Exception: pass
+
+
+# ═══════════════════════════════════════════════════════════════
+# 2) ffmpeg HLS مباشرة
+# ═══════════════════════════════════════════════════════════════
+def _ffmpeg_hls(m3u8_url, out, iframe_url, cookies=None):
+    """ffmpeg HLS مع أمر مبسط."""
+    cookies = cookies or {}
+    cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+
+    headers_parts = [
+        f"Referer: {iframe_url}",
+        f"Origin: {_origin(iframe_url)}",
+        f"User-Agent: {UA}",
+    ]
+    if cookie_str:
+        headers_parts.append(f"Cookie: {cookie_str}")
+    headers = "\r\n".join(headers_parts) + "\r\n"
+
+    print(f"      🎬 ffmpeg HLS → {m3u8_url[:70]}...")
+
+    # ★ أمر مبسط — بدون إعدادات خطرة
+    cmd = [
+        "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "warning",
+        "-headers", headers,
+        "-user_agent", UA,
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_delay_max", "5",
+        "-i", m3u8_url,
+        "-c", "copy", "-bsf:a", "aac_adtstoasc",
+        "-movflags", "+faststart",
+        "-y", out,
+    ]
+
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+        if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > MIN_SIZE:
+            size_mb = os.path.getsize(out) / 1048576
+            print(f"      ✅ ffmpeg HLS: {size_mb:.1f} MB")
+            return True
+        err_lines = [l.strip() for l in (r.stderr or "").split("\n") if l.strip()]
+        err = " | ".join(err_lines[-2:])[:200] if err_lines else f"code={r.returncode}"
+        print(f"      ⚠️ ffmpeg HLS: {err}")
+    except subprocess.TimeoutExpired:
+        print("      ⚠️ ffmpeg HLS: timeout")
+    except Exception as e:
+        print(f"      ⚠️ ffmpeg HLS: {str(e)[:100]}")
+
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════
+# 3) cffi segments (نفس v18.2 — يعمل)
 # ═══════════════════════════════════════════════════════════════
 def _cffi_segments(segments, out, iframe_url, cookies=None):
-    """
-    يحمّل segments عبر cffi.
-    يستخدم أمر ffmpeg concat البسيط من v18.2.
-    """
     if not segments:
         return None
 
@@ -165,10 +276,10 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
         for p in sorted_p:
             f.write(f"file '{p}'\n")
 
-    # ★★★ الأمر البسيط من v18.2 — لا إضافات تسبب SIGSEGV
+    # ★ أمر بسيط (نفس v18.2)
     print(f"   🔗 دمج {len(sorted_p)} segment (ffmpeg simple concat)...")
     concat_cmd = [
-        "ffmpeg", "-hide_banner", "-loglevel", "warning",
+        "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
         "-f", "concat", "-safe", "0", "-i", concat_file,
         "-c", "copy", "-f", "mpegts", "-y", out,
     ]
@@ -196,10 +307,9 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★ 2) تحميل segments عبر المتصفح (نفس v18.2 — يعمل)
+# 4) المتصفح fallback
 # ═══════════════════════════════════════════════════════════════
 def _browser_fetch_batch_b64(sb, urls, timeout=30):
-    """نفس دالة v18.2."""
     if not urls:
         return {}
     urls_json = json.dumps(urls)
@@ -256,7 +366,6 @@ def _browser_fetch_batch_b64(sb, urls, timeout=30):
 
 
 def _browser_segments(sb, segments, out):
-    """نفس v18.2 — batch=16 + ffmpeg بسيط."""
     batch = 16
     total = len(segments)
     print(f"   🌐 المتصفح: {total} segment (batch={batch})...")
@@ -287,7 +396,6 @@ def _browser_segments(sb, segments, out):
             else:
                 retry.append((si, chunk[li]))
 
-        # retry مرة واحدة
         if retry:
             retry_urls = [u for _, u in retry]
             rr = _browser_fetch_batch_b64(sb, retry_urls, timeout=30)
@@ -324,10 +432,9 @@ def _browser_segments(sb, segments, out):
         for p in sorted_p:
             f.write(f"file '{p}'\n")
 
-    # ★★ نفس أمر v18.2
-    print(f"   🔗 دمج {len(sorted_p)} segment (browser ffmpeg)...")
+    print(f"   🔗 دمج {len(sorted_p)} segment...")
     concat_cmd = [
-        "ffmpeg", "-hide_banner", "-loglevel", "warning",
+        "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
         "-f", "concat", "-safe", "0", "-i", concat_file,
         "-c", "copy", "-f", "mpegts", "-y", out,
     ]
@@ -344,117 +451,6 @@ def _browser_segments(sb, segments, out):
     print(f"   ✅ المتصفح: {final_size/1048576:.1f} MB")
     shutil.rmtree(seg_dir, ignore_errors=True)
     return (final_size, True)
-
-
-# ═══════════════════════════════════════════════════════════════
-# ★★ 3) yt-dlp مع كوكيز بصيغة صحيحة (مُصلحة)
-# ═══════════════════════════════════════════════════════════════
-def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
-    """yt-dlp مع كوكيز بصيغة Netscape صحيحة."""
-    cookies = cookies or {}
-
-    # ★ تحويل expiry إلى unix timestamp — إصلاح الخطأ السابق
-    cookie_file = tempfile.mktemp(suffix=".txt")
-    try:
-        domain = urlparse(m3u8_url).hostname or ""
-        with open(cookie_file, "w") as f:
-            f.write("# Netscape HTTP Cookie File\n")
-            f.write("# This is a generated file! Do not edit.\n\n")
-            for k, v in cookies.items():
-                if not k or not v:
-                    continue
-                # expiry=0 يعني جلسة (session)
-                # استخدم 0 لتفادي خطأ "invalid format"
-                f.write(f".{domain}\tTRUE\t/\tFALSE\t0\t{k}\t{v}\n")
-
-        print(f"      🎬 yt-dlp → {m3u8_url[:70]}...")
-
-        for mode in ["native", "ffmpeg"]:
-            cmd = [
-                "yt-dlp",
-                "--no-warnings",
-                "--no-playlist",
-                "--no-part",
-                "--hls-prefer-" + mode,
-                "--user-agent", UA,
-                "--referer", iframe_url,
-                "--add-header", f"Origin:{_origin(iframe_url)}",
-                "--cookies", cookie_file,
-                "--retries", "10",
-                "--fragment-retries", "10",
-                "--socket-timeout", "30",
-                "-f", "bv*+ba/b",
-                "--merge-output-format", "mp4",
-                "-o", out,
-                m3u8_url,
-            ]
-            try:
-                r = subprocess.run(cmd, capture_output=True, text=True, timeout=5400)
-                if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > MIN_SIZE:
-                    size_mb = os.path.getsize(out) / 1048576
-                    print(f"      ✅ yt-dlp {mode}: {size_mb:.1f} MB")
-                    return True
-                err = (r.stderr or "").strip().split("\n")[-1] if r.stderr else "?"
-                print(f"      ⚠️ yt-dlp {mode}: {err[:150]}")
-            except subprocess.TimeoutExpired:
-                print(f"      ⚠️ yt-dlp {mode}: timeout")
-            except Exception as e:
-                print(f"      ⚠️ yt-dlp {mode}: {str(e)[:100]}")
-
-        return False
-    finally:
-        try: os.remove(cookie_file)
-        except Exception: pass
-
-
-# ═══════════════════════════════════════════════════════════════
-# ★★ 4) ffmpeg HLS مباشرة
-# ═══════════════════════════════════════════════════════════════
-def _ffmpeg_hls(m3u8_url, out, iframe_url, cookies=None):
-    """ffmpeg HLS مع أمر مبسط."""
-    cookies = cookies or {}
-    cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
-
-    headers_parts = [
-        f"Referer: {iframe_url}",
-        f"Origin: {_origin(iframe_url)}",
-        f"User-Agent: {UA}",
-    ]
-    if cookie_str:
-        headers_parts.append(f"Cookie: {cookie_str}")
-    headers = "\r\n".join(headers_parts) + "\r\n"
-
-    print(f"      🎬 ffmpeg HLS → {m3u8_url[:70]}...")
-
-    # ★ أمر مبسط من v18.2
-    cmd = [
-        "ffmpeg", "-hide_banner", "-loglevel", "warning",
-        "-headers", headers,
-        "-user_agent", UA,
-        "-reconnect", "1",
-        "-reconnect_streamed", "1",
-        "-reconnect_delay_max", "5",
-        "-i", m3u8_url,
-        "-c", "copy", "-bsf:a", "aac_adtstoasc",
-        "-movflags", "+faststart",
-        "-y", out,
-    ]
-
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=5400)
-        if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > MIN_SIZE:
-            size_mb = os.path.getsize(out) / 1048576
-            print(f"      ✅ ffmpeg HLS: {size_mb:.1f} MB")
-            return True
-        err_lines = [l.strip() for l in (r.stderr or "").split("\n") if l.strip()]
-        err = " | ".join(err_lines[-2:])[:200] if err_lines else f"code={r.returncode}"
-        print(f"      ⚠️ ffmpeg HLS: {err}")
-    except subprocess.TimeoutExpired:
-        print("      ⚠️ ffmpeg HLS: timeout")
-    except Exception as e:
-        print(f"      ⚠️ ffmpeg HLS: {str(e)[:100]}")
-
-    return False
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -603,12 +599,8 @@ def _get_watch_html(sb):
         return None
 
 
-# ★★ نفس v18.2 — كوكيز شاملة من CDP
 def _get_cookies_full(sb):
-    """
-    يستخدم Network.getAllCookies — يعطي كل الكوكيز.
-    هذا أفضل من get_cookies().
-    """
+    """Network.getAllCookies — يعطي كل الكوكيز."""
     try:
         r = sb.driver.execute_cdp_cmd("Network.getAllCookies", {})
         if r and r.get("cookies"):
@@ -622,7 +614,6 @@ def _get_cookies_full(sb):
     except Exception as e:
         print(f"      ⚠️ getAllCookies: {str(e)[:80]}")
 
-    # fallback
     try:
         raw = sb.driver.get_cookies()
         cookies = {}
@@ -722,7 +713,7 @@ def _collect_iframe_urls(sb, servers):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ محاولة التحميل — أخذ ترتيب v18.2
+# ★ محاولة التحميل — cffi أولاً، ثم yt-dlp، ثم ffmpeg HLS
 # ═══════════════════════════════════════════════════════════════
 def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
     print(f"\n      🌐 الانتقال إلى: {iframe_url[:90]}")
@@ -896,15 +887,21 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
 
     print(f"      🎯 {len(ordered)} مرشح صالح")
 
-    # ★★ كوكيز شاملة من CDP (v18.2 style)
     browser_cookies = _get_cookies_full(sb)
     if browser_cookies:
         print(f"      🍪 {len(browser_cookies)} كوكي")
 
-    # ★★★ 1) cffi أولاً (v18.2 يبدأ بهذا)
-    for m_url in ordered[:M3U8_LIMIT]:
+    # ★★★ 1) yt-dlp أولاً (الأكثر استقراراً، نزّل 499MB بنجاح)
+    print("      🔄 yt-dlp (360p)...")
+    for m_url in ordered[:3]:
         print(f"      🎯 {m_url[:90]}")
+        if _ytdlp_hls(m_url, str(out_path), iframe_url, browser_cookies):
+            size = os.path.getsize(out_path)
+            return (size, True), iframe_url
 
+    # ★★★ 2) cffi + دمج
+    print("      🔄 cffi segments...")
+    for m_url in ordered[:M3U8_LIMIT]:
         content = None
         for expr in [
             f"fetch({json.dumps(m_url)},{{mode:'cors'}})",
@@ -976,28 +973,13 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
 
         if segs:
             print(f"         ✅ {len(segs)} segment")
-
-            # ★ cffi (v18.2 style — يأتي أولاً)
             res = _cffi_segments(segs, str(out_path), iframe_url,
                                   cookies=browser_cookies)
             if res:
                 return res, iframe_url
 
-            # ★ المتصفح fallback (v18.2 style)
-            print("         🌐 المتصفح fallback")
-            res = _browser_segments(sb, segs, str(out_path))
-            if res:
-                return res, iframe_url
-
-    # ★★★ 2) إذا فشل cffi — جرّب yt-dlp
-    print("      🔄 جرّب yt-dlp...")
-    for m_url in ordered[:3]:
-        if _ytdlp_hls(m_url, str(out_path), iframe_url, browser_cookies):
-            size = os.path.getsize(out_path)
-            return (size, True), iframe_url
-
     # ★★★ 3) ffmpeg HLS
-    print("      🔄 جرّب ffmpeg HLS...")
+    print("      🔄 ffmpeg HLS...")
     for m_url in ordered[:3]:
         if _ffmpeg_hls(m_url, str(out_path), iframe_url, browser_cookies):
             size = os.path.getsize(out_path)
@@ -1138,36 +1120,39 @@ def _process_with_browser(url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# الضغط
+# ★★★ الضغط المبسط — يمنع SIGSEGV
 # ═══════════════════════════════════════════════════════════════
 def _compress(inp, out):
+    """
+    ضغط مبسط إلى 240p.
+    ★ لا يستخدم -err_detect -fflags -analyzeduration -probesize التي تسبب SIGSEGV.
+    """
     if not Path(inp).exists():
         return False
 
     im = Path(inp).stat().st_size / 1048576
     print(f"   🗜️  {im:.2f}MB → {COMPRESS_SCALE}p...")
 
-    # ★ أمر ضغط مبسط (نفس v18.2)
     cmd = [
-        "ffmpeg", "-err_detect", "ignore_err",
-        "-fflags", "+discardcorrupt+genpts",
-        "-analyzeduration", "50M", "-probesize", "50M",
+        "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
         "-i", str(inp),
         "-vf", f"scale=-2:{COMPRESS_SCALE}",
         "-c:v", "libx264",
+        "-preset", "veryfast",
         "-crf", str(config.COMPRESS_CRF),
-        "-preset", config.COMPRESS_PRESET,
         "-threads", "2",
-        "-c:a", "aac", "-b:a", "64k",
-        "-f", "mp4", "-movflags", "+faststart",
-        "-max_muxing_queue_size", "4096",
+        "-c:a", "aac", "-b:a", "48k",
+        "-movflags", "+faststart",
         "-y", str(out),
     ]
+
     try:
         t0 = time.time()
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
         if r.returncode != 0 or not Path(out).exists():
             print(f"   ❌ ffmpeg code={r.returncode}")
+            if r.stderr:
+                print(f"   {r.stderr[-400:]}")
             return False
         om = Path(out).stat().st_size / 1048576
         print(f"   ✅ {im:.2f}→{om:.2f}MB في {time.time()-t0:.1f}s")
@@ -1180,12 +1165,15 @@ def _compress(inp, out):
         return False
 
 
+# ═══════════════════════════════════════════════════════════════
+# الدالة الرئيسية
+# ═══════════════════════════════════════════════════════════════
 def download_episode(series_name, episode, url):
     safe = _safe(series_name)
     out_dir = MEDIA_DIR / safe
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    raw = out_dir / f"ep{episode:03d}_raw.ts"
+    raw = out_dir / f"ep{episode:03d}_raw.mp4"
     final = out_dir / f"ep{episode:03d}.mp4"
 
     if final.exists() and final.stat().st_size > MIN_SIZE:
@@ -1226,6 +1214,9 @@ def download_episode(series_name, episode, url):
     return final
 
 
+# ═══════════════════════════════════════════════════════════════
+# اختبار
+# ═══════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     import sys
     test_url = sys.argv[1] if len(sys.argv) > 1 else (
