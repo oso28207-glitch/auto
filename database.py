@@ -1,77 +1,143 @@
-"""
-قاعدة بيانات خفيفة (JSON) لتتبع حالة كل حلقة.
-تضمن عدم إعادة تحميل أو رفع ما تم سابقاً.
-"""
+"""قاعدة بيانات JSON مع دمج عميق وكتابة ذرّية."""
 
 import json
+import os
+import shutil
+import tempfile
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
 
 from config import DATA_DIR
 
+STATE_FILE = DATA_DIR / "state.json"
+BACKUP_FILE = DATA_DIR / "state.backup.json"
+
+DEFAULT = {"version": 2, "series": {}, "videos": [], "last_run": None}
+
 
 class Database:
-    def __init__(self, path: Path = None):
-        self.path = path or DATA_DIR / "state.json"
-        self._lock = threading.Lock()
+    def __init__(self, path=None):
+        self.path = Path(path) if path else STATE_FILE
+        self._lock = threading.RLock()
         self._data = self._load()
 
-    def _load(self) -> dict:
-        if self.path.exists():
+    def _load(self):
+        for c in (self.path, BACKUP_FILE):
+            if not c.exists():
+                continue
             try:
-                return json.loads(self.path.read_text(encoding="utf-8"))
-            except Exception:
-                return {"series": {}, "videos": []}
-        return {"series": {}, "videos": []}
+                d = json.loads(c.read_text(encoding="utf-8"))
+                for k, v in DEFAULT.items():
+                    d.setdefault(k, v)
+                print(f"💾 تم تحميل الحالة ({len(d.get('series', {}))} مسلسل)")
+                return d
+            except Exception as e:
+                print(f"⚠️ فشل تحميل {c.name}: {e}")
+        return dict(DEFAULT)
 
     def _save(self):
-        self.path.write_text(
-            json.dumps(self._data, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-
-    def get_series(self, name: str) -> dict:
         with self._lock:
-            return self._data["series"].get(name, {})
+            self._data["last_run"] = datetime.now(timezone.utc).isoformat()
+            tmp_fd, tmp = tempfile.mkstemp(dir=str(self.path.parent), suffix=".tmp")
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                    json.dump(self._data, f, ensure_ascii=False, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+                if self.path.exists():
+                    shutil.copy2(self.path, BACKUP_FILE)
+                os.replace(tmp, self.path)
+            except Exception:
+                try: os.unlink(tmp)
+                except Exception: pass
+                raise
 
-    def set_series(self, name: str, value: dict):
+    # ─── Series ───
+    def get_series(self, name):
         with self._lock:
-            self._data["series"][name] = value
+            return dict(self._data["series"].get(name, {}))
+
+    def set_series(self, name, value):
+        with self._lock:
+            old = self._data["series"].get(name, {})
+            merged = {**old, **value}
+            old_eps = old.get("episodes", {}) or {}
+            new_eps = value.get("episodes", {}) or {}
+            if old_eps or new_eps:
+                merged["episodes"] = {**old_eps, **new_eps}
+            self._data["series"][name] = merged
             self._save()
 
-    def episode_status(self, series: str, episode: int) -> Optional[str]:
-        s = self.get_series(series)
-        return s.get("episodes", {}).get(str(episode), {}).get("status")
-
-    def set_episode(self, series: str, episode: int, **kwargs):
+    def all_series(self):
         with self._lock:
-            s = self._data["series"].setdefault(series, {"episodes": {}})
-            ep = s["episodes"].setdefault(str(episode), {})
-            ep.update(kwargs)
-            ep["updated_at"] = datetime.utcnow().isoformat()
+            return list(self._data["series"].keys())
+
+    # ─── Episodes ───
+    def episode_status(self, series, ep):
+        with self._lock:
+            s = self._data["series"].get(series, {})
+            ep_data = s.get("episodes", {}).get(str(ep), {})
+            return ep_data.get("status")
+
+    def is_uploaded(self, series, ep):
+        return self.episode_status(series, ep) == "uploaded"
+
+    def set_episode(self, series, ep, **kw):
+        with self._lock:
+            s = self._data["series"].setdefault(series, {"url": "", "episodes": {}})
+            s.setdefault("episodes", {})
+            e = s["episodes"].setdefault(str(ep), {})
+            e.update(kw)
+            e["updated_at"] = datetime.now(timezone.utc).isoformat()
             self._save()
 
-    def add_video(self, video: dict):
+    def mark_failed(self, series, ep, reason=""):
+        self.set_episode(series, ep, status="failed", error=reason[:500])
+
+    def uploaded_episodes(self, series):
         with self._lock:
-            ids = {v["id"] for v in self._data["videos"]}
-            if video["id"] not in ids:
-                self._data["videos"].append(video)
-                self._save()
+            s = self._data["series"].get(series, {})
+            return sorted(
+                int(k) for k, v in s.get("episodes", {}).items()
+                if v.get("status") == "uploaded"
+            )
 
-    def all_videos(self) -> list:
-        return list(self._data["videos"])
+    # ─── Videos ───
+    def add_video(self, video):
+        if not video or "id" not in video:
+            return
+        with self._lock:
+            ids = {v.get("id") for v in self._data["videos"]}
+            if video["id"] in ids:
+                return
+            self._data["videos"].append(video)
+            self._data["videos"].sort(
+                key=lambda v: v.get("date", ""), reverse=True
+            )
+            self._save()
 
-    def latest_episode(self, series: str) -> int:
-        s = self.get_series(series)
-        eps = s.get("episodes", {})
-        if not eps:
-            return 0
-        return max(int(k) for k in eps.keys())
+    def all_videos(self):
+        with self._lock:
+            return list(self._data["videos"])
 
-    def all_series(self) -> list:
-        return list(self._data["series"].keys())
+    # ─── Stats ───
+    def stats(self):
+        with self._lock:
+            total_eps = sum(
+                len(s.get("episodes", {})) for s in self._data["series"].values()
+            )
+            uploaded = sum(
+                sum(1 for e in s.get("episodes", {}).values() if e.get("status") == "uploaded")
+                for s in self._data["series"].values()
+            )
+            return {
+                "series": len(self._data["series"]),
+                "episodes": total_eps,
+                "uploaded": uploaded,
+                "videos": len(self._data["videos"]),
+                "last_run": self._data.get("last_run"),
+            }
 
 
 db = Database()

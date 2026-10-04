@@ -1,10 +1,7 @@
-"""
-نظام أخطاء موحّد. أي خطأ هنا يوقف البرنامج بالكامل.
-"""
+"""نظام الأخطاء المركزي — أي خطأ هنا يوقف كل شيء فوراً."""
 
 
 class SooFatalError(Exception):
-    """خطأ خطير يوقف كل العمليات فوراً."""
     def __init__(self, stage: str, message: str, original: Exception = None):
         self.stage = stage
         self.message = message
@@ -12,26 +9,21 @@ class SooFatalError(Exception):
         super().__init__(f"[{stage}] {message}")
 
 
-class DownloadError(SooFatalError):
-    def __init__(self, message, original=None):
-        super().__init__("DOWNLOAD", message, original)
-
-
-class UploadError(SooFatalError):
-    def __init__(self, message, original=None):
-        super().__init__("UPLOAD", message, original)
+class ConfigError(SooFatalError):
+    def __init__(self, m, o=None): super().__init__("CONFIG", m, o)
 
 
 class SourceError(SooFatalError):
-    def __init__(self, message, original=None):
-        super().__init__("SOURCE", message, original)
+    def __init__(self, m, o=None): super().__init__("SOURCE", m, o)
 
 
-class ConfigError(SooFatalError):
-    def __init__(self, message, original=None):
-        super().__init__("CONFIG", message, original)
+class DownloadError(SooFatalError):
+    def __init__(self, m, o=None): super().__init__("DOWNLOAD", m, o)
+
+
+class UploadError(SooFatalError):
+    def __init__(self, m, o=None): super().__init__("UPLOAD", m, o)
 
 
 class BuildError(SooFatalError):
-    def __init__(self, message, original=None):
-        super().__init__("BUILD", message, original)
+    def __init__(self, m, o=None): super().__init__("BUILD", m, o)

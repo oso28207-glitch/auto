@@ -1,96 +1,171 @@
-"""
-يفحص الموقع الخارجي بحثاً عن حلقات جديدة.
-يدعم yt-dlp للكشف عن الفيديوهات، أو requests + BeautifulSoup.
-"""
+"""كشف الجديد من u.3seq.com عبر WordPress REST API."""
 
 import re
+import time
+from urllib.parse import urlparse
 
-import requests
-from bs4 import BeautifulSoup
+import cloudscraper
 
 from config import config
-from database import db
 from errors import SourceError
 
+_scraper = None
 
-def _extract_episode_number(text: str) -> int:
-    """يستخرج رقم الحلقة من نص مثل 'الحلقة 5' أو 'Episode 5'."""
-    patterns = [
-        r"الحلقة\s*(\d+)",
-        r"[Ee]pisode\s*(\d+)",
-        r"[Ee]p\.?\s*(\d+)",
-        r"(\d+)",
-    ]
-    for p in patterns:
+
+def _get_scraper():
+    global _scraper
+    if _scraper is None:
+        _scraper = cloudscraper.create_scraper(
+            browser={"browser": "chrome", "platform": "windows", "mobile": False},
+            delay=5,
+        )
+    return _scraper
+
+
+def _extract_ep(text):
+    """استخراج رقم الحلقة من العنوان."""
+    if not text:
+        return 0
+    for p in [r"الحلقة\s*(\d+)", r"[Ee]pisode\s*(\d+)", r"(\d+)"]:
         m = re.search(p, text)
         if m:
             return int(m.group(1))
     return 0
 
 
-def fetch_series_list() -> list[dict]:
-    """يجلب قائمة المسلسلات من الموقع."""
-    url = config.SOURCE_BASE_URL + config.SOURCE_SERIES_PATH
-    try:
-        r = requests.get(url, headers={"User-Agent": config.USER_AGENT}, timeout=30)
-        r.raise_for_status()
-    except Exception as e:
-        raise SourceError(f"فشل جلب قائمة المسلسلات من {url}: {e}", e)
+def _clean_series_name(title):
+    """يستخرج اسم المسلسل النقي من العنوان."""
+    t = re.sub(r"\s*الحلقة\s*\d+.*$", "", title).strip()
+    t = re.sub(r"\s*[Ee]pisode\s*\d+.*$", "", t).strip()
+    t = re.sub(r"\s*مدبلجة?\s*$", "", t).strip()
+    t = re.sub(r"\s*مترجمة?\s*$", "", t).strip()
+    t = re.sub(r"\s*كاملة\s*$", "", t).strip()
+    return t or title
 
-    soup = BeautifulSoup(r.text, "html.parser")
-    items = soup.select(config.SOURCE_LIST_SELECTOR)
-    if not items:
-        raise SourceError(f"لم يتم العثور على مسلسلات في {url}")
 
-    series = []
-    for a in items:
-        href = a.get("href", "")
-        name = a.get_text(strip=True) or href
-        if href:
-            series.append({
+def _api_get(path, params=None, retries=3):
+    if not config.SOURCE_BASE_URL:
+        raise SourceError("SOURCE_BASE_URL فارغ")
+
+    url = config.SOURCE_BASE_URL + path
+    headers = {
+        "Accept": "application/json",
+        "Accept-Language": "ar,en;q=0.9",
+        "Referer": config.SOURCE_BASE_URL + "/",
+    }
+    scraper = _get_scraper()
+    last_err = None
+
+    for attempt in range(1, retries + 1):
+        try:
+            r = scraper.get(url, headers=headers, params=params, timeout=60)
+            if r.status_code == 200:
+                return r.json()
+            if r.status_code == 403:
+                last_err = f"403 Cloudflare (محاولة {attempt})"
+                time.sleep(5 * attempt)
+                continue
+            if r.status_code == 404:
+                raise SourceError(f"404: {url}")
+            last_err = f"HTTP {r.status_code}"
+            time.sleep(3)
+        except SourceError:
+            raise
+        except Exception as e:
+            last_err = str(e)
+            time.sleep(3)
+
+    raise SourceError(f"فشل جلب {url} — {last_err}")
+
+
+def fetch_series_list():
+    """
+    يجلب كل المسلسلات مع حلقاتها من التصنيف المحدد.
+    يعيد: [{name, url, slug, posts: [{episode, title, link, id}]}]
+    """
+    print(f"📋 جلب قائمة المسلسلات (تصنيف {config.SOURCE_CATEGORY})...")
+    all_posts = []
+    per_page = 100
+    max_pages = config.SOURCE_MAX_PAGES
+
+    for page in range(1, max_pages + 1):
+        try:
+            posts = _api_get(
+                "/wp-json/wp/v2/posts",
+                params={
+                    "categories": config.SOURCE_CATEGORY,
+                    "per_page": per_page,
+                    "page": page,
+                    "_fields": "id,link,title,date,slug",
+                },
+            )
+        except SourceError as e:
+            if "404" in str(e) and page > 1:
+                break
+            raise
+
+        if not isinstance(posts, list) or not posts:
+            break
+
+        all_posts.extend(posts)
+        print(f"   صفحة {page}: {len(posts)} منشور (المجموع: {len(all_posts)})")
+
+        if len(posts) < per_page:
+            break
+        time.sleep(0.8)
+
+    if not all_posts:
+        raise SourceError(f"لا منشورات في التصنيف {config.SOURCE_CATEGORY}")
+
+    # تجميع حسب المسلسل
+    series_map = {}
+    for post in all_posts:
+        link = post.get("link", "")
+        title = (post.get("title") or {}).get("rendered", "")
+        if not link or not title:
+            continue
+
+        name = _clean_series_name(title)
+        ep_num = _extract_ep(title)
+        if not ep_num:
+            continue  # تجاهل المنشورات بدون رقم حلقة
+
+        if name not in series_map:
+            series_map[name] = {
                 "name": name,
-                "url": href if href.startswith("http") else config.SOURCE_BASE_URL + href,
-            })
-    return series
+                "url": link,
+                "slug": post.get("slug", ""),
+                "posts": [],
+            }
+
+        series_map[name]["posts"].append({
+            "id": post.get("id"),
+            "episode": ep_num,
+            "title": title,
+            "link": link,
+            "date": post.get("date", ""),
+        })
+
+    # ترتيب الحلقات
+    for s in series_map.values():
+        s["posts"].sort(key=lambda x: x["episode"])
+
+    result = list(series_map.values())
+    print(f"✅ {len(result)} مسلسل، {len(all_posts)} منشور\n")
+    return result
 
 
-def fetch_episodes(series_url: str) -> list[dict]:
-    """يجلب قائمة الحلقات من صفحة المسلسل."""
-    try:
-        r = requests.get(series_url, headers={"User-Agent": config.USER_AGENT}, timeout=30)
-        r.raise_for_status()
-    except Exception as e:
-        raise SourceError(f"فشل جلب حلقات {series_url}: {e}", e)
-
-    soup = BeautifulSoup(r.text, "html.parser")
-    episodes = []
-
-    for a in soup.select(config.SOURCE_EP_SELECTOR):
-        href = a.get("href", "")
-        text = a.get_text(strip=True)
-        ep_num = _extract_episode_number(text) or _extract_episode_number(href)
-        if ep_num and href:
-            episodes.append({
-                "number": ep_num,
-                "url": href if href.startswith("http") else config.SOURCE_BASE_URL + href,
-                "title": text,
-            })
-
-    # ترتيب تصاعدي
-    episodes.sort(key=lambda x: x["number"])
-    return episodes
-
-
-def find_new_episodes(series_name: str) -> list[dict]:
-    """يعيد الحلقات الجديدة التي لم تُرفع بعد."""
-    series = db.get_series(series_name)
-    if not series.get("url"):
-        return []
-
-    all_eps = fetch_episodes(series["url"])
+def find_new_episodes(series_data, series_name):
+    """
+    يقارن حلقات المصدر مع قاعدة البيانات.
+    يعيد قائمة الحلقات الجديدة فقط.
+    """
     new = []
-    for ep in all_eps:
-        status = db.episode_status(series_name, ep["number"])
-        if status != "uploaded":
-            new.append(ep)
+    for post in series_data.get("posts", []):
+        ep = post["episode"]
+        if db.is_uploaded(series_name, ep):
+            continue
+        if db.episode_status(series_name, ep) == "failed":
+            continue  # لا نعيد المحاولة تلقائياً
+        new.append(post)
     return new

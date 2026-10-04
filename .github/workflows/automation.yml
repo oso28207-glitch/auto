@@ -1,0 +1,125 @@
+name: Shoof Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_episodes:
+        description: 'حد أقصى للحلقات (0 = بلا حد)'
+        required: false
+        default: '0'
+
+  schedule:
+    - cron: '0 */6 * * *'
+
+  push:
+    branches: [main]
+    paths:
+      - 'checker.py'
+      - 'downloader.py'
+      - 'uploader.py'
+      - 'builder.py'
+      - 'database.py'
+      - 'config.py'
+      - 'run.py'
+      - 'requirements.txt'
+      - '.github/workflows/automation.yml'
+
+jobs:
+  automate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 1
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install ffmpeg
+        uses: FedericoCarboni/setup-ffmpeg@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ✅ Verify ffmpeg
+        run: ffmpeg -version | head -1
+
+      - name: 🖥️ Install Xvfb + Chrome
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb
+          wget -q -O /tmp/chrome.deb \
+            "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb"
+          sudo apt-get install -y -qq /tmp/chrome.deb
+          sudo Xvfb :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+          sleep 2
+          echo "✅ Xvfb و Chrome جاهزان"
+
+      - name: 📦 Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip check || true
+
+      - name: 🔑 Create .env
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          SESSION_STRING: ${{ secrets.SESSION_STRING }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          SOURCE_BASE_URL: ${{ secrets.SOURCE_BASE_URL }}
+          SOURCE_CATEGORY: ${{ secrets.SOURCE_CATEGORY }}
+          API_BASE: ${{ secrets.API_BASE }}
+          MAX_EPISODES: ${{ github.event.inputs.max_episodes || '0' }}
+        run: |
+          {
+            echo "API_ID=${API_ID}"
+            echo "API_HASH=${API_HASH}"
+            echo "SESSION_STRING=${SESSION_STRING}"
+            echo "CHANNEL_ID=${CHANNEL_ID}"
+            echo "SOURCE_BASE_URL=${SOURCE_BASE_URL:-https://u.3seq.com}"
+            echo "SOURCE_CATEGORY=${SOURCE_CATEGORY:-712}"
+            echo "SOURCE_MAX_PAGES=20"
+            echo "API_BASE=${API_BASE}"
+            echo "MAX_EPISODES_PER_RUN=${MAX_EPISODES}"
+            echo "AUTO_BUILD=true"
+            echo "SKIP_COMPRESS=false"
+            echo "KEEP_MEDIA=false"
+            echo "COMPRESS_SCALE=480"
+            echo "COMPRESS_CRF=28"
+          } > .env
+          grep -v -E "API_HASH|SESSION_STRING|API_ID" .env
+
+      - name: 🚀 Run
+        run: python run.py
+
+      - name: 💾 Commit state + docs
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p data docs
+          git add data/state.json data/state.backup.json docs/ 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "لا تغييرات"
+          else
+            git commit -m "🤖 تحديث: $(date -u +'%Y-%m-%d %H:%M')"
+            git push || {
+              sleep 5
+              git pull --rebase --autostash || true
+              git push || echo "❌ فشل الدفع"
+            }
+          fi
+
+      - name: 🧹 Cleanup
+        if: always()
+        run: |
+          rm -rf data/media/* 2>/dev/null || true
+          df -h | head -3
