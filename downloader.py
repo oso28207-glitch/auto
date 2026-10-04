@@ -1,12 +1,13 @@
 """
-downloader.py — تحميل من u.3seq.com
+downloader.py — تحميل من u.3seq.com (نسخة محسّنة)
 
-★ الإصلاحات الجديدة:
-  1. نقل كوكيز المتصفح إلى cffi.
-  2. اختبار مبكر (5 segments) — التحويل للمتصفح إذا فشل >40%.
-  3. توقف مبكر إذا تجاوز الفشل 30% أثناء التحميل.
-  4. _browser_segments يستخدم credentials:'include'.
-  5. الضغط إلى 240p.
+★ التحسينات:
+  1. تجاوز Cloudflare في luluvdo.com عبر SeleniumBase UC Mode.
+  2. بناء رابط m3u8 لـ vinovo.to عبر data-base + file_code.
+  3. إعطاء أولوية لـ vidaraa.cc (الأكثر نجاحاً).
+  4. تمرير كوكيز المتصفح إلى cffi.
+  5. اختبار مبكر وتوقف مبكر لتسريع الفشل.
+  6. الضغط إلى 240p.
 """
 
 import base64
@@ -25,7 +26,6 @@ import requests
 from curl_cffi import requests as cffi_requests
 
 from config import config, MEDIA_DIR
-from errors import DownloadError
 
 IMPERSONATE = os.environ.get("IMPERSONATE_TARGET", "chrome120")
 CURL_WORKERS = int(os.environ.get("CURL_CFFI_WORKERS", "8"))
@@ -78,13 +78,9 @@ def _extract_m3u8_from_html(html):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★ تحميل segments (cffi) — مع كوكيز + اختبار مبكر
+# ★ 1) تحميل segments عبر cffi (مع كوكيز + اختبار مبكر)
 # ═══════════════════════════════════════════════════════════════
 def _cffi_segments(segments, out, iframe_url, cookies=None):
-    """
-    يحمّل segments عبر cffi مع كوكيز المتصفح.
-    يستخدم اختبار مبكر للتحقق من الجدوى.
-    """
     if not segments:
         return None
 
@@ -100,7 +96,7 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
     }
     cookies = cookies or {}
 
-    # ★ اختبار مبكر: 5 segments
+    # اختبار مبكر: 5 segments
     test_count = min(5, len(segments))
     tested_ok = 0
     for i in range(test_count):
@@ -115,7 +111,6 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
             except Exception:
                 continue
 
-    # ★ إذا نجح أقل من 60%، التحويل للمتصفح فوراً
     if tested_ok < test_count * 0.6:
         print(f"      ⚠️ cffi: {tested_ok}/{test_count} نجحت فقط — التحويل للمتصفح")
         return None
@@ -155,7 +150,6 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
             if done % 40 == 0 or done == len(segments):
                 print(f"         📦 {done}/{len(segments)} | {total/1048576:.1f}MB | فشل: {failed}")
 
-            # ★ توقف مبكر: إذا تجاوز الفشل 30% بعد 20 segment
             if done >= 20 and failed > done * 0.3:
                 print(f"         ❌ cffi: نسبة فشل عالية ({failed}/{done}) — التحويل للمتصفح")
                 shutil.rmtree(seg_dir, ignore_errors=True)
@@ -189,12 +183,9 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★ تحميل segments (browser) — مع credentials:'include'
+# ★ 2) تحميل segments عبر المتصفح (credentials:'include')
 # ═══════════════════════════════════════════════════════════════
 def _browser_segments(sb, segments, out):
-    """
-    يحمّل segments عبر المتصفح مع credentials:'include'.
-    """
     batch = 12
     total = len(segments)
     print(f"         🌐 المتصفح: {total} segment...")
@@ -203,7 +194,6 @@ def _browser_segments(sb, segments, out):
 
     for i in range(0, total, batch):
         chunk = segments[i:i + batch]
-        # ★ credentials:'include' لإرسال الكوكيز
         js = """
         (function(){
             window.__r = {}; window.__d = false;
@@ -302,6 +292,122 @@ def _browser_segments(sb, segments, out):
 
 
 # ═══════════════════════════════════════════════════════════════
+# ★ 3) تجاوز Cloudflare (luluvdo.com)
+# ═══════════════════════════════════════════════════════════════
+def _bypass_cloudflare(sb, iframe_url):
+    """
+    يتعامل مع Cloudflare Challenge في luluvdo.com.
+    يستخدم uc_gui_click_captcha لتجاوز التحدي.
+    """
+    print("         🔄 محاولة تجاوز Cloudflare...")
+
+    # افتح الصفحة في وضع CDP
+    sb.activate_cdp_mode(iframe_url)
+    sb.sleep(3)
+
+    # حاول تجاوز التحدي
+    for attempt in range(3):
+        try:
+            # uc_gui_click_captcha تتعامل مع Turnstile و JS Challenge
+            sb.uc_gui_click_captcha()
+            sb.sleep(3)
+
+            # تحقق من نجاح التجاوز
+            title = sb.get_page_title()
+            html = sb.cdp.get_page_source() or ""
+
+            # إذا اختفى "Just a moment" أو "Attention Required" فقد نجحنا
+            if "Just a moment" not in title and "Attention Required" not in title:
+                if len(html) > 5000:  # صفحة حقيقية وليست صفحة التحدي
+                    print(f"         ✅ تم تجاوز Cloudflare (محاولة {attempt+1})")
+                    return True
+        except Exception as e:
+            print(f"         ⚠️ محاولة {attempt+1}: {str(e)[:80]}")
+
+    print("         ❌ فشل تجاوز Cloudflare")
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════
+# ★ 4) استخراج m3u8 من vinovo.to
+# ═══════════════════════════════════════════════════════════════
+def _extract_vinovo_m3u8(sb, iframe_url):
+    """
+    يستخرج رابط m3u8 من vinovo.to باستخدام data-base و file_code.
+    """
+    print("         🔄 محاولة استخراج m3u8 من vinovo.to...")
+
+    # اقرأ HTML الصفحة
+    html = sb.cdp.get_page_source() or ""
+
+    # ابحث عن data-base (رابط CDN)
+    base_match = re.search(r'data-base=["\']([^"\']+)["\']', html)
+    base_url = base_match.group(1) if base_match else None
+
+    # ابحث عن file_code أو file-code
+    code_match = re.search(r'file[_-]?code["\']?\s*[:=]\s*["\']([^"\']+)["\']', html, re.IGNORECASE)
+    file_code = code_match.group(1) if code_match else None
+
+    # ابحث عن أي رابط m3u8 في HTML أو JS
+    m3u8_urls = _extract_m3u8_from_html(html)
+
+    # جرّب بناء الرابط يدوياً
+    if base_url and file_code:
+        candidates = [
+            f"{base_url}/hls/{file_code}/master.m3u8",
+            f"{base_url}/{file_code}/playlist.m3u8",
+            f"{base_url}/hls/{file_code}/index.m3u8",
+            f"{base_url}/stream/{file_code}/master.m3u8",
+        ]
+        for cand in candidates:
+            try:
+                r = cffi_requests.get(cand, headers={
+                    "Referer": iframe_url,
+                    "Origin": _origin(iframe_url),
+                }, impersonate="chrome120", timeout=10, verify=False)
+                if r.status_code == 200 and ("#EXTM3U" in r.text or ".ts" in r.text):
+                    print(f"         ✅ وُجد m3u8: {cand[:80]}")
+                    m3u8_urls.insert(0, cand)
+                    break
+            except Exception:
+                continue
+
+    # إذا وُجد m3u8 في HTML، أضفه
+    if m3u8_urls:
+        print(f"         ✅ وُجد {len(m3u8_urls)} مرشح m3u8")
+        return m3u8_urls
+
+    # كحل أخير: شغّل الفيديو وانتظر m3u8 في الشبكة
+    print("         ⏳ تشغيل الفيديو لالتقاط m3u8...")
+    for sel in ["video", ".vjs-big-play-button", "[class*='play']"]:
+        try:
+            sb.cdp.click_if_visible(sel)
+        except Exception:
+            pass
+    try:
+        sb.cdp.execute_script("""
+            (function(){try{
+                var v = document.querySelector('video');
+                if (v) { v.muted = true; v.play && v.play().catch(function(){}); }
+                if (window.videojs) {
+                    var p = videojs.getPlayers();
+                    for (var k in p) { try { p[k].play(); } catch(e){} }
+                }
+            }catch(e){}})();
+        """)
+    except Exception:
+        pass
+
+    sb.sleep(10)
+    html2 = sb.cdp.get_page_source() or ""
+    m3u8_urls2 = _extract_m3u8_from_html(html2)
+    if m3u8_urls2:
+        return m3u8_urls2
+
+    return []
+
+
+# ═══════════════════════════════════════════════════════════════
 # استخراج السيرفرات
 # ═══════════════════════════════════════════════════════════════
 def _extract_servers(sb):
@@ -341,7 +447,6 @@ def _get_current_iframe(sb):
                                 'iframe[src*="embed"]', 'iframe[src*="vidsp"]',
                                 'iframe[src*="luluvdo"]', 'iframe[src*="vinovo"]',
                                 'iframe[src*="vids"]', 'iframe[src*="vidaraa"]',
-                                'iframe[src*="vidsonic"]',
                                 'iframe:not([src*="google"])'];
                     for (var i=0; i<sels.length; i++) {
                         var ifr = document.querySelector(sels[i]);
@@ -373,7 +478,6 @@ def _get_watch_html(sb):
 
 
 def _get_browser_cookies(sb):
-    """يجمع كل كوكيز المتصفح في dict."""
     try:
         cookies = sb.driver.get_cookies()
         return {c['name']: c['value'] for c in cookies if c.get('name')}
@@ -478,10 +582,22 @@ def _collect_iframe_urls(sb, servers):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★ محاولة تحميل من iframe — مع نقل الكوكيز
+# ★ 5) محاولة تحميل من iframe (مع دعم vinovo و luluvdo)
 # ═══════════════════════════════════════════════════════════════
 def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
     print(f"\n      🌐 الانتقال إلى: {iframe_url[:90]}")
+
+    server_name = ""
+    for name in ["vidaraa", "vinovo", "luluvdo", "vids", "vidsp"]:
+        if name in iframe_url.lower():
+            server_name = name
+            break
+
+    # ★ تجاوز Cloudflare لـ luluvdo
+    if server_name == "luluvdo":
+        if not _bypass_cloudflare(sb, iframe_url):
+            print("         ⏭️ فشل تجاوز Cloudflare")
+            return None, iframe_url
 
     try:
         sb.driver.execute_cdp_cmd("Page.navigate", {
@@ -494,6 +610,7 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
 
     sb.cdp.sleep(3)
 
+    # iframe متداخل
     for _ in range(3):
         try:
             nested = sb.cdp.execute_script("""
@@ -520,6 +637,7 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
         except Exception:
             break
 
+    # انتظر المشغل
     for _ in range(JWPLAYER_WAIT):
         sb.cdp.sleep(1)
         try:
@@ -533,6 +651,12 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
         except Exception:
             pass
 
+    # ★ إذا كان vinovo، جرّب استخراج m3u8 مباشرة
+    m3u8_urls = []
+    if server_name == "vinovo":
+        m3u8_urls = _extract_vinovo_m3u8(sb, iframe_url)
+
+    # شغّل بقوة مع نقر CDP حقيقي
     for cycle in range(12):
         for sel in ["video", ".jw-icon-playback", ".jw-icon-display",
                     ".vjs-big-play-button", "[class*='play']",
@@ -595,7 +719,11 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
                 break
 
     urls = netlog_read()
-    m3u8 = [u for u in urls if ".m3u8" in u or ".mpd" in u]
+    m3u8_net = [u for u in urls if ".m3u8" in u or ".mpd" in u]
+
+    for u in m3u8_net:
+        if u not in m3u8_urls:
+            m3u8_urls.append(u)
 
     try:
         perf = sb.cdp.execute_script("""
@@ -605,61 +733,31 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
         """)
         if isinstance(perf, list):
             for u in perf:
-                if (".m3u8" in u or ".mpd" in u) and u not in m3u8:
-                    m3u8.append(u)
+                if (".m3u8" in u or ".mpd" in u) and u not in m3u8_urls:
+                    m3u8_urls.append(u)
     except Exception:
         pass
 
     try:
         html = sb.cdp.get_page_source() or ""
         for u in _extract_m3u8_from_html(html):
-            if u not in m3u8:
-                m3u8.append(u)
+            if u not in m3u8_urls:
+                m3u8_urls.append(u)
     except Exception:
         pass
 
-    try:
-        stor = sb.cdp.execute_script("""
-            (function(){
-                var out = [];
-                try {
-                    for (var k in localStorage) {
-                        try {
-                            var v = localStorage.getItem(k);
-                            if (v && v.indexOf('m3u8') !== -1) out.push(v);
-                        } catch(e){}
-                    }
-                    for (var k in sessionStorage) {
-                        try {
-                            var v = sessionStorage.getItem(k);
-                            if (v && v.indexOf('m3u8') !== -1) out.push(v);
-                        } catch(e){}
-                    }
-                } catch(e){}
-                return out;
-            })();
-        """)
-        if stor:
-            for s in stor:
-                for u in _extract_m3u8_from_html(s):
-                    if u not in m3u8:
-                        m3u8.append(u)
-    except Exception:
-        pass
-
-    if not m3u8:
+    if not m3u8_urls:
         print("         ❌ لا m3u8")
         return None, iframe_url
 
-    idx = [u for u in m3u8 if "index-" in u.lower()]
-    mst = [u for u in m3u8 if "master" in u.lower()]
-    mpd = [u for u in m3u8 if ".mpd" in u.lower()]
-    oth = [u for u in m3u8 if u not in idx and u not in mst and u not in mpd]
+    idx = [u for u in m3u8_urls if "index-" in u.lower()]
+    mst = [u for u in m3u8_urls if "master" in u.lower()]
+    mpd = [u for u in m3u8_urls if ".mpd" in u.lower()]
+    oth = [u for u in m3u8_urls if u not in idx and u not in mst and u not in mpd]
     ordered = idx + mst + mpd + oth
 
     print(f"         🎯 {len(ordered)} مرشح")
 
-    # ★ اجمع كوكيز المتصفح
     browser_cookies = _get_browser_cookies(sb)
     if browser_cookies:
         print(f"         🍪 {len(browser_cookies)} كوكي")
@@ -740,13 +838,11 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
         if segs:
             print(f"            ✅ {len(segs)} segment")
 
-            # ★ cffi أولاً مع كوكيز
             res = _cffi_segments(segs, str(out_path), iframe_url,
                                   cookies=browser_cookies)
             if res:
                 return res, iframe_url
 
-            # 🌐 المتصفح fallback
             print("            🌐 المتصفح fallback")
             res = _browser_segments(sb, segs, str(out_path))
             if res:
@@ -847,10 +943,20 @@ def _process_with_browser(url, out_path):
 
                 print(f"\n   ✅ {len(iframe_map)} رابط iframe فريد")
 
-                ordered = sorted(
-                    iframe_map.items(),
-                    key=lambda x: 0 if "s_0" in x[0] else 1,
-                )
+                # ★ أولوية لـ vidaraa
+                def _priority(item):
+                    key = item[0].lower()
+                    if "vidaraa" in key:
+                        return 0
+                    if "vinovo" in key:
+                        return 1
+                    if "luluvdo" in key:
+                        return 2
+                    if "vids" in key:
+                        return 3
+                    return 4
+
+                ordered = sorted(iframe_map.items(), key=_priority)
 
                 for sname, info in ordered:
                     iframe_url = info["iframe_url"]
