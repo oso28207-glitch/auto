@@ -1,13 +1,14 @@
 """
-downloader.py — تحميل من u.3seq.com (نسخة نهائية مع تحميل متوازي)
+downloader.py — تحميل من u.3seq.com (نسخة نهائية مستقرة)
 
-★ التحسينات:
-  1. ★ yt-dlp مع --concurrent-fragments 8 (أسرع 8x من الافتراضي).
-  2. ffmpeg من مستودع Ubuntu (بدون SIGSEGV).
-  3. imageio-ffmpeg كخطة بديلة.
-  4. دمج ذكي على دفعات (chunked concat).
-  5. yt-dlp بأولوية جودة 360p.
-  6. ضغط مبسط إلى 240p.
+★ الميزات:
+  1. ★ نسبة تقدم لحظية كل 10% مع السرعة والوقت المتبقي.
+  2. ★ --throttled-rate للتعامل مع CDN البطيء تلقائياً.
+  3. yt-dlp مع --concurrent-fragments (تحميل 8x أسرع).
+  4. ffmpeg من Ubuntu repo (بدون SIGSEGV) + imageio-ffmpeg بديل.
+  5. دمج ذكي على دفعات (chunked concat).
+  6. أولوية vidaraa → vinovo → luluvdo → vids → vidsonic.
+  7. luluvdo CF bypass + vinovo m3u8 builder.
 """
 
 import base64
@@ -39,14 +40,19 @@ MIN_SIZE = 100 * 1024
 COMPRESS_SCALE = 240
 CONCAT_CHUNK = 50
 
-# ★ إعدادات yt-dlp المتوازي
+# ★ إعدادات yt-dlp
 YTDLP_CONCURRENT_FRAGMENTS = int(os.environ.get("YTDLP_CONCURRENT", "8"))
-YTDLP_LIMIT_RATE = os.environ.get("YTDLP_LIMIT_RATE", "5M")
+YTDLP_LIMIT_RATE = os.environ.get("YTDLP_LIMIT_RATE", "").strip()  # فارغ = بلا حد
+YTDLP_THROTTLED_RATE = os.environ.get("YTDLP_THROTTLED_RATE", "1M")  # إعادة محاولة عند البطء
+YTDLP_PROGRESS_STEP = int(os.environ.get("YTDLP_PROGRESS_STEP", "10"))  # كل 10%
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 
+# ═══════════════════════════════════════════════════════════════
+# أدوات
+# ═══════════════════════════════════════════════════════════════
 def _safe(name):
     return re.sub(r'[\\/:*?"<>|]', "_", name).strip()[:120]
 
@@ -89,13 +95,12 @@ def _extract_m3u8_from_html(html):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★ الحصول على مسار ffmpeg (نظامي أو imageio)
+# ★ ffmpeg — نظامي أو imageio
 # ═══════════════════════════════════════════════════════════════
 _FFMPEG_CACHE = {"path": None, "source": None}
 
 
 def _get_ffmpeg_exe():
-    """يعيد مسار ffmpeg: النظامي أولاً، ثم imageio-ffmpeg."""
     if _FFMPEG_CACHE["path"]:
         return _FFMPEG_CACHE["path"]
 
@@ -129,12 +134,12 @@ def _get_ffmpeg_exe():
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ 1) yt-dlp HLS — مع --concurrent-fragments للسرعة
+# ★★★ 1) yt-dlp HLS — مع نسبة تقدم لحظية كل 10%
 # ═══════════════════════════════════════════════════════════════
 def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
     """
-    yt-dlp بأولوية 360p + تحميل 8 fragments بالتوازي.
-    السرعة المتوقعة: 8x أسرع من الوضع الافتراضي.
+    yt-dlp بأولوية 360p + تحميل 8 fragments بالتوازي + نسبة تقدم لحظية.
+    ★ --throttled-rate يعيد المحاولة إذا نزلت السرعة تحت الحد.
     """
     cookies = cookies or {}
     cookie_file = tempfile.mktemp(suffix=".txt")
@@ -148,7 +153,9 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
                 f.write(f".{domain}\tTRUE\t/\tFALSE\t0\t{k}\t{v}\n")
 
         print(f"      🎬 yt-dlp → {m3u8_url[:70]}...")
-        print(f"      ⚡ concurrent={YTDLP_CONCURRENT_FRAGMENTS}, limit-rate={YTDLP_LIMIT_RATE}")
+        print(f"      ⚡ concurrent={YTDLP_CONCURRENT_FRAGMENTS}, "
+              f"limit-rate={YTDLP_LIMIT_RATE or 'بلا حد'}, "
+              f"throttled-rate={YTDLP_THROTTLED_RATE}")
 
         ffmpeg_path = _get_ffmpeg_exe()
         for mode in ["native", "ffmpeg"]:
@@ -157,8 +164,13 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
                 "--no-warnings",
                 "--no-playlist",
                 "--no-part",
-                "--progress",                           # ★ شريط تقدم
-                "--newline",                            # ★ سطر جديد لكل تحديث
+                "--newline",
+                "--progress",
+                # ★★ إخراج النسبة بصيغة موحدة
+                "--progress-template",
+                "download:PROGRESS:%(progress._percent_str)s|"
+                "%(progress._speed_str)s|ETA:%(progress._eta_str)s|"
+                "size:%(progress._total_bytes_str)s",
                 "--hls-prefer-" + mode,
                 "--user-agent", UA,
                 "--referer", iframe_url,
@@ -167,44 +179,94 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
                 "--retries", "10",
                 "--fragment-retries", "10",
                 "--socket-timeout", "30",
-                # ★★★ التحميل المتوازي — الأهم للسرعة
+                # التحميل المتوازي
                 "--concurrent-fragments", str(YTDLP_CONCURRENT_FRAGMENTS),
-                "--limit-rate", YTDLP_LIMIT_RATE,       # تفادي حظر CDN
+                # ★ throttled-rate: إعادة المحاولة إذا نزلت السرعة تحت الحد
+                "--throttled-rate", YTDLP_THROTTLED_RATE,
+            ]
+
+            # limit-rate فقط إذا كان محدداً
+            if YTDLP_LIMIT_RATE:
+                cmd.extend(["--limit-rate", YTDLP_LIMIT_RATE])
+
+            cmd.extend([
                 "--buffer-size", "1M",
-                # ★★★
                 "-f", "bv*[height<=360]+ba/b[height<=360]/bv*+ba/b",
                 "--merge-output-format", "mp4",
                 "-o", out,
-            ]
+            ])
             if ffmpeg_path != "ffmpeg":
                 cmd.extend(["--ffmpeg-location", ffmpeg_path])
             cmd.append(m3u8_url)
 
             try:
-                # ★ استخدم stdout=subprocess.PIPE لطباعة شريط التقدم مباشرة
-                r = subprocess.run(
+                # ★★★ Popen + قراءة لحظية
+                proc = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
-                    timeout=3600,
+                    bufsize=1,
+                    universal_newlines=True,
                 )
-                # اطبع آخر أسطر التقدم
-                if r.stdout:
-                    lines = r.stdout.strip().split("\n")
-                    for line in lines[-3:]:
-                        if line.strip():
-                            print(f"         ↳ {line.strip()[:120]}")
 
-                if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > MIN_SIZE:
+                last_printed_pct = -YTDLP_PROGRESS_STEP
+                start_time = time.time()
+                last_update_ts = 0.0
+
+                for line in iter(proc.stdout.readline, ""):
+                    line = line.rstrip()
+                    if not line:
+                        continue
+
+                    # ★ استخرج النسبة من PROGRESS:...
+                    if "PROGRESS:" in line:
+                        try:
+                            after = line.split("PROGRESS:", 1)[1].strip()
+                            parts = after.split("|")
+                            pct_str = parts[0].replace("%", "").strip()
+                            pct = float(pct_str)
+                            speed = parts[1].strip() if len(parts) > 1 else "?"
+                            eta = parts[2].replace("ETA:", "").strip() if len(parts) > 2 else "?"
+                            size = parts[3].replace("size:", "").strip() if len(parts) > 3 else "?"
+
+                            # اطبع عند كل 10% أو 100%
+                            if (pct >= last_printed_pct + YTDLP_PROGRESS_STEP
+                                    or pct >= 99.5):
+                                last_printed_pct = int(pct // YTDLP_PROGRESS_STEP) * YTDLP_PROGRESS_STEP
+                                elapsed = time.time() - start_time
+                                print(f"         📊 {pct:5.1f}%  |  "
+                                      f"سرعة: {speed}  |  ETA: {eta}  |  "
+                                      f"حجم: {size}  |  مضى: {elapsed:.0f}s")
+                                last_update_ts = time.time()
+                            # تحديث إضافي كل 30s حتى لو لم يتغير 10%
+                            elif time.time() - last_update_ts > 30:
+                                elapsed = time.time() - start_time
+                                print(f"         ⏳ {pct:5.1f}% (مضى: {elapsed:.0f}s)")
+                                last_update_ts = time.time()
+                        except (ValueError, IndexError):
+                            pass
+                    else:
+                        # اطبع سطور yt-dlp المهمة
+                        if any(k in line for k in
+                               ("[FixupM3u8]", "[Merger]",
+                                "ERROR", "WARNING", "Destination")):
+                            print(f"         ↳ {line[:130]}")
+
+                proc.wait()
+                ret_code = proc.returncode
+                elapsed_total = time.time() - start_time
+
+                if ret_code == 0 and os.path.exists(out) and os.path.getsize(out) > MIN_SIZE:
                     size_mb = os.path.getsize(out) / 1048576
-                    print(f"      ✅ yt-dlp {mode}: {size_mb:.1f} MB")
+                    print(f"      ✅ yt-dlp {mode}: {size_mb:.1f} MB "
+                          f"في {elapsed_total:.0f}s")
                     return True
-                print(f"      ⚠️ yt-dlp {mode}: code={r.returncode}")
-            except subprocess.TimeoutExpired:
-                print(f"      ⚠️ yt-dlp {mode}: timeout")
+                print(f"      ⚠️ yt-dlp {mode}: code={ret_code}, "
+                      f"مضى {elapsed_total:.0f}s")
+
             except Exception as e:
-                print(f"      ⚠️ yt-dlp {mode}: {str(e)[:100]}")
+                print(f"      ⚠️ yt-dlp {mode}: {str(e)[:150]}")
 
         return False
     finally:
@@ -989,7 +1051,7 @@ def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
     if browser_cookies:
         print(f"      🍪 {len(browser_cookies)} كوكي")
 
-    # ★★★ 1) yt-dlp مع التحميل المتوازي
+    # ★★★ 1) yt-dlp مع التحميل المتوازي + نسبة تقدم لحظية
     print(f"      🔄 yt-dlp (360p، {YTDLP_CONCURRENT_FRAGMENTS} fragments متوازية)...")
     for m_url in ordered[:3]:
         print(f"      🎯 {m_url[:90]}")
