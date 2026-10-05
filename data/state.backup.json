@@ -473,6 +473,18 @@
           "width": 426,
           "height": 240,
           "duration": 1714
+        },
+        "54": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-54/",
+          "title": "مسلسل ما زلت في 17 الحلقة 54 مدبلجة",
+          "updated_at": "2026-10-05T01:18:25.999794+00:00",
+          "message_id": 1509,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIF5WrC-uFbxsU5ED0kYAVfLZR-KYYuAAKHHwACfV8YUsaynd_yzbCeHgQ",
+          "size": 34573653,
+          "width": 426,
+          "height": 240,
+          "duration": 1672
         }
       }
     },
@@ -673,6 +685,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1508,
+      "title": "مسلسل ما زلت في 17 — الحلقة 53",
+      "series": "مسلسل ما زلت في 17",
+      "episode": 53,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIF5GrC-jeg9aw4J9746d_OUpAVlA2gAAKFHwACfV8YUhISJyylZyUbHgQ",
+      "size": 29927810,
+      "width": 426,
+      "height": 240,
+      "duration": 1714,
+      "date": "2026-10-05T01:15:35"
+    },
     {
       "id": 1507,
       "title": "مسلسل ما زلت في 17 — الحلقة 52",
@@ -1130,5 +1154,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T01:15:35.402381+00:00"
+  "last_run": "2026-10-05T01:18:25.999805+00:00"
 }
