@@ -807,6 +807,18 @@
           "width": 426,
           "height": 240,
           "duration": 2422
+        },
+        "6": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-06-haal/",
+          "title": "مسلسل الخفقان الحلقة 6 مدبلجة",
+          "updated_at": "2026-10-05T11:23:16.072969+00:00",
+          "message_id": 1530,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIF-mrDiKNrkyzpn3yUxyXoU6g37lhwAAIrIAACfV8YUt5eoMNb7TU2HgQ",
+          "size": 48829949,
+          "width": 426,
+          "height": 240,
+          "duration": 2698
         }
       }
     },
@@ -987,6 +999,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1530,
+      "title": "مسلسل الخفقان — الحلقة 6",
+      "series": "مسلسل الخفقان",
+      "episode": 6,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIF-mrDiKNrkyzpn3yUxyXoU6g37lhwAAIrIAACfV8YUt5eoMNb7TU2HgQ",
+      "size": 48829949,
+      "width": 426,
+      "height": 240,
+      "duration": 2698,
+      "date": "2026-10-05T11:23:16"
+    },
     {
       "id": 1529,
       "title": "مسلسل الخفقان — الحلقة 5",
@@ -1708,5 +1732,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T11:18:53.373231+00:00"
+  "last_run": "2026-10-05T11:23:16.075995+00:00"
 }
