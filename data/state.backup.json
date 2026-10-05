@@ -808,11 +808,301 @@
           "type": "series",
           "source": "u3seq",
           "caption": "مسلسل احتمال حب الحلقة 17"
+        },
+        "1": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.473436+00:00"
+        },
+        "2": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.518889+00:00"
+        },
+        "3": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.548493+00:00"
+        },
+        "4": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.577311+00:00"
+        },
+        "5": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.606404+00:00"
+        },
+        "6": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.636055+00:00"
+        },
+        "7": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.665598+00:00"
+        },
+        "8": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.694695+00:00"
+        },
+        "9": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.724307+00:00"
+        },
+        "10": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.753672+00:00"
+        },
+        "11": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.783195+00:00"
+        },
+        "12": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.811791+00:00"
+        },
+        "13": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.840757+00:00"
+        },
+        "14": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.869565+00:00"
+        },
+        "15": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.898421+00:00"
+        },
+        "16": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.927646+00:00"
+        },
+        "19": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.957286+00:00"
+        },
+        "20": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:01.986773+00:00"
+        },
+        "21": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.016601+00:00"
+        },
+        "22": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.045322+00:00"
+        },
+        "23": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.074019+00:00"
+        },
+        "24": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.102525+00:00"
+        },
+        "25": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.132040+00:00"
+        },
+        "26": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.160909+00:00"
+        },
+        "27": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.190510+00:00"
+        },
+        "28": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.219200+00:00"
+        },
+        "29": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.248078+00:00"
+        },
+        "30": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.276686+00:00"
+        },
+        "31": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.305639+00:00"
+        },
+        "32": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.334379+00:00"
+        },
+        "33": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.363172+00:00"
+        },
+        "34": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.392241+00:00"
+        },
+        "35": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.421071+00:00"
+        },
+        "36": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.449828+00:00"
+        },
+        "37": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.478958+00:00"
+        },
+        "38": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.508031+00:00"
+        },
+        "39": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.536866+00:00"
+        },
+        "40": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.565834+00:00"
+        },
+        "41": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.594933+00:00"
+        },
+        "42": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.623868+00:00"
+        },
+        "43": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.653108+00:00"
+        },
+        "44": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.681894+00:00"
+        },
+        "45": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.710661+00:00"
+        },
+        "46": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.739752+00:00"
+        },
+        "47": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.768640+00:00"
+        },
+        "48": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.797439+00:00"
+        },
+        "49": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.826350+00:00"
+        },
+        "50": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.932837+00:00"
+        },
+        "56": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:02.962176+00:00"
+        },
+        "57": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:03.034586+00:00"
+        },
+        "58": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:03.063942+00:00"
+        },
+        "59": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:03.133203+00:00"
+        },
+        "60": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:03.162349+00:00"
+        },
+        "61": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:03.191091+00:00"
+        },
+        "62": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:03.232833+00:00"
+        },
+        "63": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:03.262173+00:00"
+        },
+        "64": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-05T22:38:03.291376+00:00"
         }
       },
-      "status": "failed",
+      "status": "ok",
       "failed_at": "2026-10-05T04:59:23",
-      "reason": "فشلت كل السيرفرات"
+      "reason": "فشلت كل السيرفرات",
+      "type": "series",
+      "source": "u3seq",
+      "season": 0,
+      "total_parts": 75,
+      "last_updated": "2026-10-05T22:14:28"
     },
     "مسلسل هذا البحر سوف يفيض": {
       "url": "https://u.3seq.com/video/modablaj-tasacak-bu-deniz-episode-09-novv/",
@@ -37407,5 +37697,5 @@
       "source": "telegram:@shoofFilm"
     }
   ],
-  "last_run": "2026-10-05T22:14:28.833277+00:00"
+  "last_run": "2026-10-05T22:38:03.291385+00:00"
 }
