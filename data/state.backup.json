@@ -963,6 +963,18 @@
           "width": 426,
           "height": 240,
           "duration": 2789
+        },
+        "19": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-19-dz4k/",
+          "title": "مسلسل الخفقان الحلقة 19 مدبلجة",
+          "updated_at": "2026-10-05T12:35:26.695263+00:00",
+          "message_id": 1543,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIGB2rDmY6s_UvvS_hCjwrJdoMFT_PrAAKVIAACfV8gUm5KZ6uIs4r_HgQ",
+          "size": 44885590,
+          "width": 426,
+          "height": 240,
+          "duration": 2716
         }
       }
     },
@@ -1143,6 +1155,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1542,
+      "title": "مسلسل الخفقان — الحلقة 18",
+      "series": "مسلسل الخفقان",
+      "episode": 18,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIGBmrDl-5uMh5mZqrzDUpd8qaUu95XAAKTIAACfV8gUh5yvWCJj7auHgQ",
+      "size": 52689488,
+      "width": 426,
+      "height": 240,
+      "duration": 2789,
+      "date": "2026-10-05T12:28:30"
+    },
     {
       "id": 1541,
       "title": "مسلسل الخفقان — الحلقة 17",
@@ -2008,5 +2032,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T12:28:30.397745+00:00"
+  "last_run": "2026-10-05T12:35:26.695277+00:00"
 }
