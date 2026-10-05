@@ -722,17 +722,45 @@
           "height": 360,
           "duration": 0
         }
-      }
+      },
+      "last_updated": "2026-10-05T05:34:53",
+      "status": "ok"
     },
     "مسلسل المدينة البعيدة": {
       "url": "https://u.3seq.com/video/modablaj-uzak-sehir-episode-330/",
       "slug": "modablaj-uzak-sehir-episode-330",
-      "last_checked": "2026-10-05T03:54:38"
+      "last_checked": "2026-10-05T03:54:38",
+      "episodes": {
+        "141": {
+          "status": "failed",
+          "url": "https://u.3seq.com/video/modablaj-uzak-sehir-episode-141-rkoy/",
+          "title": "مسلسل المدينة البعيدة الحلقة 141 مدبلجة",
+          "updated_at": "2026-10-05T05:40:00.203650+00:00",
+          "error": "فشلت كل السيرفرات"
+        }
+      },
+      "status": "failed",
+      "failed_at": "2026-10-05T05:40:00",
+      "reason": "فشلت كل السيرفرات"
     },
     "مسلسل الخفقان": {
       "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-42/",
       "slug": "modablaj-acarpinti-episode-42",
-      "last_checked": "2026-10-05T03:54:38"
+      "last_checked": "2026-10-05T03:54:38",
+      "episodes": {
+        "1": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-01-bs15/",
+          "title": "مسلسل الخفقان الحلقة 1 مدبلجة",
+          "updated_at": "2026-10-05T05:43:51.593150+00:00",
+          "message_id": 1525,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIF9WrDORcJp46FO-BM1w02cM5OY2IGAAK7HwACfV8YUt82JWvxdyUOHgQ",
+          "size": 55282867,
+          "width": 426,
+          "height": 240,
+          "duration": 2495
+        }
+      }
     },
     "مسلسل المشردون 2 الموسم الثاني": {
       "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e57-jjip/",
@@ -911,6 +939,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1525,
+      "title": "مسلسل الخفقان — الحلقة 1",
+      "series": "مسلسل الخفقان",
+      "episode": 1,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIF9WrDORcJp46FO-BM1w02cM5OY2IGAAK7HwACfV8YUt82JWvxdyUOHgQ",
+      "size": 55282867,
+      "width": 426,
+      "height": 240,
+      "duration": 2495,
+      "date": "2026-10-05T05:43:51"
+    },
     {
       "id": 1524,
       "title": "مسلسل هذا البحر سوف يفيض — الحلقة 9",
@@ -1572,5 +1612,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T05:34:53.070157+00:00"
+  "last_run": "2026-10-05T05:43:51.596202+00:00"
 }

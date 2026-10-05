@@ -1,5 +1,22 @@
 [
   {
+    "name": "مسلسل الخفقان",
+    "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-42/",
+    "slug": "modablaj-acarpinti-episode-42",
+    "episodes": [
+      {
+        "episode": 1,
+        "message_id": 1525,
+        "file_id": "BAACAgQAAyEGAATS7MsnAAIF9WrDORcJp46FO-BM1w02cM5OY2IGAAK7HwACfV8YUt82JWvxdyUOHgQ",
+        "size": 55282867,
+        "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-01-bs15/",
+        "title": "مسلسل الخفقان الحلقة 1 مدبلجة"
+      }
+    ],
+    "count": 1,
+    "last_updated": null
+  },
+  {
     "name": "مسلسل ما زلت في 17",
     "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-90/",
     "slug": "modablaj-daha-on-yedi-episode-90",
@@ -455,6 +472,6 @@
       }
     ],
     "count": 9,
-    "last_updated": null
+    "last_updated": "2026-10-05T05:34:53"
   }
 ]
