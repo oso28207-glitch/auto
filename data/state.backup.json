@@ -951,6 +951,18 @@
           "width": 426,
           "height": 240,
           "duration": 2583
+        },
+        "18": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-18-xed4/",
+          "title": "مسلسل الخفقان الحلقة 18 مدبلجة",
+          "updated_at": "2026-10-05T12:28:30.397733+00:00",
+          "message_id": 1542,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIGBmrDl-5uMh5mZqrzDUpd8qaUu95XAAKTIAACfV8gUh5yvWCJj7auHgQ",
+          "size": 52689488,
+          "width": 426,
+          "height": 240,
+          "duration": 2789
         }
       }
     },
@@ -1131,6 +1143,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1541,
+      "title": "مسلسل الخفقان — الحلقة 17",
+      "series": "مسلسل الخفقان",
+      "episode": 17,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIGBWrDlunbyOTn9UwYaRittPKZQdVYAAKSIAACfV8gUlMyAseZ3ds6HgQ",
+      "size": 42613672,
+      "width": 426,
+      "height": 240,
+      "duration": 2583,
+      "date": "2026-10-05T12:24:10"
+    },
     {
       "id": 1540,
       "title": "مسلسل الخفقان — الحلقة 16",
@@ -1984,5 +2008,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T12:24:10.025733+00:00"
+  "last_run": "2026-10-05T12:28:30.397745+00:00"
 }
