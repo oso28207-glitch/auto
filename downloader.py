@@ -1,12 +1,13 @@
 """
-downloader.py — تحميل وضغط (حد 45MB) + إصلاح الدمج
+downloader.py — تحميل وضغط (حد 45MB) + إصلاح الدمج + watchdog
 
 ★ الميزات:
-  1. ★ cache للـ segments (لا تكرار بين السيرفرات).
-  2. ★ 4 استراتيجيات دمج + chunked fallback.
-  3. ★ التحقق من الملف المدموج (ffprobe + frames).
-  4. yt-dlp مع headers من u.3seq.
+  1. ★ yt-dlp speed watchdog — يوقف إذا نزلت السرعة تحت 800KB/s.
+  2. ★ cache للـ segments (لا تكرار بين السيرفرات).
+  3. ★ 4 استراتيجيات دمج + chunked fallback.
+  4. ★ التحقق من الملف المدموج قبل الرفع.
   5. ضغط two-pass للوصول إلى 45MB.
+  6. أولوية vidaraa → playmate → firestream → luluvdo → vinovo...
 """
 
 import base64
@@ -26,6 +27,9 @@ from curl_cffi import requests as cffi_requests
 
 from config import config, MEDIA_DIR
 
+# ═══════════════════════════════════════════════════════════════
+# الإعدادات
+# ═══════════════════════════════════════════════════════════════
 IMPERSONATE = os.environ.get("IMPERSONATE_TARGET", "chrome120")
 CURL_WORKERS = int(os.environ.get("CURL_CFFI_WORKERS", "8"))
 JWPLAYER_WAIT = 20
@@ -33,12 +37,15 @@ M3U8_WAIT = 20
 MIN_SIZE = 100 * 1024
 CONCAT_CHUNK = 50
 
-YTDLP_CONCURRENT_FRAGMENTS = int(os.environ.get("YTDLP_CONCURRENT", "8"))
-YTDLP_THROTTLED_RATE = os.environ.get("YTDLP_THROTTLED_RATE", "1M")
+YTDLP_CONCURRENT_FRAGMENTS = int(os.environ.get("YTDLP_CONCURRENT", "16"))
+YTDLP_THROTTLED_RATE = os.environ.get("YTDLP_THROTTLED_RATE", "2M")
+YTDLP_MIN_SPEED_KB = int(os.environ.get("YTDLP_MIN_SPEED_KB", "800"))
+YTDLP_MAX_STALL = int(os.environ.get("YTDLP_MAX_STALL", "30"))
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
+# ★ Cache عالمي للـ segments
 _SEGMENT_CACHE = {}
 
 
@@ -69,6 +76,7 @@ def _get_ffmpeg_exe():
         path = imageio_ffmpeg.get_ffmpeg_exe()
         r = subprocess.run([path, "-version"], capture_output=True, timeout=5)
         if r.returncode == 0:
+            print(f"   ℹ️  imageio-ffmpeg: {path}")
             return path
     except Exception:
         pass
@@ -174,7 +182,7 @@ def _smart_concat(sorted_paths, out):
                 try: os.remove(listfile)
                 except Exception: pass
                 return True
-            print(f"         ❌ {name}: {err[:200]}")
+            print(f"         ❌ {name}: {err[:180]}")
         try: os.remove(listfile)
         except Exception: pass
 
@@ -294,7 +302,7 @@ def _compress_to_target(inp, out, max_size_mb=None):
                 return True
             print(f"   ⚠️ تجاوز {max_size_mb}MB → two-pass...")
         else:
-            print(f"   ⚠️ CRF فشل: {(r.stderr or '')[-300:]}")
+            print(f"   ⚠️ CRF فشل: {(r.stderr or '')[-200:]}")
     except Exception as e:
         print(f"   ⚠️ CRF: {str(e)[:100]}")
 
@@ -348,9 +356,19 @@ def _compress_twopass(inp, out, max_size_mb, duration, ff):
 
 
 # ═══════════════════════════════════════════════════════════════
-# yt-dlp
+# ★★★ yt-dlp مع Speed Watchdog
 # ═══════════════════════════════════════════════════════════════
-def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
+def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None,
+               min_speed_kb=None, max_stall_seconds=None):
+    """
+    ★ Speed watchdog: يوقف yt-dlp إذا نزلت السرعة تحت الحد.
+    يعيد: (نجح, reason)
+    """
+    if min_speed_kb is None:
+        min_speed_kb = YTDLP_MIN_SPEED_KB
+    if max_stall_seconds is None:
+        max_stall_seconds = YTDLP_MAX_STALL
+
     cookies = cookies or {}
     cookie_file = tempfile.mktemp(suffix=".txt")
     try:
@@ -363,6 +381,7 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
 
         origin_url = config.SOURCE_BASE_URL or "https://u.3seq.com"
         ff = _get_ffmpeg_exe()
+        min_speed_bytes = min_speed_kb * 1024
 
         for mode in ["native", "ffmpeg"]:
             cmd = [
@@ -370,15 +389,17 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
                 "--newline", "--progress",
                 "--progress-template",
                 "download:PROGRESS:%(progress._percent_str)s|"
-                "%(progress._speed_str)s|ETA:%(progress._eta_str)s",
+                "%(progress._speed_str)s|ETA:%(progress._eta_str)s|"
+                "speed_bytes:%(progress.speed)s",
                 "--hls-prefer-" + mode,
                 "--user-agent", UA,
                 "--referer", origin_url + "/",
                 "--add-header", f"Origin:{origin_url}",
                 "--cookies", cookie_file,
-                "--retries", "5", "--fragment-retries", "5",
+                "--retries", "3", "--fragment-retries", "3",
                 "--socket-timeout", "30",
                 "--concurrent-fragments", str(YTDLP_CONCURRENT_FRAGMENTS),
+                "--http-chunk-size", "10M",
                 "--throttled-rate", YTDLP_THROTTLED_RATE,
                 "--buffer-size", "1M",
                 "-f", "bv*[height<=360]+ba/b[height<=360]/bv*+ba/b",
@@ -388,37 +409,95 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
             if ff != "ffmpeg":
                 cmd.extend(["--ffmpeg-location", ff])
 
+            print(f"      🎬 yt-dlp {mode} → {m3u8_url[:60]}...")
+            print(f"         ⚠️ watchdog: min={min_speed_kb}KB/s, "
+                  f"stall={max_stall_seconds}s")
+
             try:
                 proc = subprocess.Popen(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, bufsize=1,
                 )
+
                 last_pct = -10
                 t0 = time.time()
+                last_speed_ok_ts = time.time()
+                last_log_ts = time.time()
+                killed = False
+                reason = ""
+
                 for line in iter(proc.stdout.readline, ""):
                     line = line.rstrip()
                     if not line:
                         continue
+
                     if "PROGRESS:" in line:
                         try:
                             after = line.split("PROGRESS:", 1)[1].strip()
                             parts = after.split("|")
                             pct = float(parts[0].replace("%", "").strip())
+
+                            speed_b = 0
+                            for p in parts:
+                                if "speed_bytes:" in p:
+                                    try:
+                                        speed_b = float(p.replace("speed_bytes:", "").strip())
+                                    except (ValueError, TypeError):
+                                        speed_b = 0
+                                    break
+
+                            # اطبع كل 10%
                             if pct >= last_pct + 10 or pct >= 99.5:
                                 last_pct = int(pct // 10) * 10
+                                speed_mb = speed_b / 1048576
+                                elapsed = time.time() - t0
                                 print(f"         📊 {pct:5.1f}% | "
-                                      f"{parts[1].strip()} | ({time.time()-t0:.0f}s)")
+                                      f"{speed_mb:.2f}MB/s | ({elapsed:.0f}s)")
+
+                            # ★ watchdog
+                            now = time.time()
+                            if speed_b >= min_speed_bytes:
+                                last_speed_ok_ts = now
+                            else:
+                                stalled = now - last_speed_ok_ts
+                                if stalled >= max_stall_seconds:
+                                    print(f"         ⚠️ السرعة < {min_speed_kb}KB/s "
+                                          f"لمدة {stalled:.0f}s — إيقاف yt-dlp")
+                                    killed = True
+                                    reason = f"slow_speed ({speed_b/1024:.0f}KB/s)"
+                                    proc.kill()
+                                    break
+
+                            # تحديث كل 20s
+                            if now - last_log_ts > 20 and pct < last_pct + 10:
+                                speed_mb = speed_b / 1048576
+                                elapsed = time.time() - t0
+                                print(f"         ⏳ {pct:5.1f}% | {speed_mb:.2f}MB/s "
+                                      f"| ({elapsed:.0f}s)")
+                                last_log_ts = now
+
                         except (ValueError, IndexError):
                             pass
+
+                if killed:
+                    try: proc.wait(timeout=5)
+                    except Exception: pass
+                    return False, reason
+
                 proc.wait()
-                if (proc.returncode == 0 and os.path.exists(out)
+                ret_code = proc.returncode
+                elapsed = time.time() - t0
+
+                if (ret_code == 0 and os.path.exists(out)
                         and os.path.getsize(out) > MIN_SIZE):
                     print(f"      ✅ yt-dlp {mode}: "
-                          f"{os.path.getsize(out)/1048576:.1f}MB")
-                    return True
+                          f"{os.path.getsize(out)/1048576:.1f}MB في {elapsed:.0f}s")
+                    return True, "ok"
+                print(f"      ⚠️ yt-dlp {mode}: code={ret_code}, {elapsed:.0f}s")
             except Exception as e:
                 print(f"      ⚠️ yt-dlp {mode}: {str(e)[:100]}")
-        return False
+
+        return False, "all_failed"
     finally:
         try: os.remove(cookie_file)
         except Exception: pass
@@ -475,18 +554,17 @@ def _browser_fetch_batch(sb, urls, timeout=40, with_creds=True):
 
 
 def _browser_segments(sb, segments, out, cache_key=None):
+    # cache check
     if cache_key and cache_key in _SEGMENT_CACHE:
         cached_dir, cached_paths = _SEGMENT_CACHE[cache_key]
         if os.path.exists(cached_dir):
-            print(f"      💾 استخدام cache ({len(cached_paths)} segment)")
+            print(f"      💾 cache ({len(cached_paths)} segment)")
             sorted_p = [cached_paths[k] for k in sorted(cached_paths.keys())]
             if _smart_concat(sorted_p, out):
-                # ★ التحقق
                 ok, msg = _verify_merged(str(out))
                 if ok:
-                    size = os.path.getsize(out)
-                    return (size, True)
-                print(f"      ⚠️ الملف المدموج تالف: {msg}")
+                    return (os.path.getsize(out), True)
+                print(f"      ⚠️ الملف تالف: {msg}")
             shutil.rmtree(cached_dir, ignore_errors=True)
             _SEGMENT_CACHE.pop(cache_key, None)
 
@@ -563,7 +641,7 @@ def _browser_segments(sb, segments, out, cache_key=None):
             _SEGMENT_CACHE.pop(cache_key, None)
         return None
 
-    # ★★★ التحقق النهائي
+    # التحقق
     ok, msg = _verify_merged(str(out))
     if not ok:
         print(f"      ⚠️ الملف تالف: {msg}")
@@ -606,7 +684,7 @@ def _cffi_segments(segments, out, iframe_url, cookies, sb=None, cache_key=None):
             continue
 
     if not test_ok:
-        print(f"      ⚠️ cffi فشل → المتصفح")
+        print(f"      ⚠️ cffi فشل اختبار أول segment → المتصفح")
         if sb is not None:
             return _browser_segments(sb, segments, out, cache_key)
         return None
@@ -647,6 +725,7 @@ def _cffi_segments(segments, out, iframe_url, cookies, sb=None, cache_key=None):
     if not paths or failed > len(segments) * 0.15:
         shutil.rmtree(seg_dir, ignore_errors=True)
         if sb is not None:
+            print(f"      ⚠️ cffi فشل → المتصفح")
             return _browser_segments(sb, segments, out, cache_key)
         return None
 
@@ -656,7 +735,6 @@ def _cffi_segments(segments, out, iframe_url, cookies, sb=None, cache_key=None):
         shutil.rmtree(seg_dir, ignore_errors=True)
         return None
 
-    # ★★★ التحقق
     ok, msg = _verify_merged(str(out))
     if not ok:
         print(f"      ⚠️ الملف تالف: {msg}")
@@ -978,8 +1056,11 @@ def _process_with_browser(url, out_path):
 
                     cookies = _get_cookies(sb)
 
+                    # ★★★ yt-dlp مع watchdog
                     for m_url in ordered_m3u8[:2]:
-                        if _ytdlp_hls(m_url, str(out_path), iframe_url, cookies):
+                        yt_ok, yt_reason = _ytdlp_hls(m_url, str(out_path),
+                                                       iframe_url, cookies)
+                        if yt_ok:
                             ok, msg = _verify_merged(str(out_path))
                             if ok:
                                 return (os.path.getsize(out_path), True)
@@ -987,7 +1068,12 @@ def _process_with_browser(url, out_path):
                                 print(f"      ⚠️ yt-dlp أنتج ملفاً تالفاً: {msg}")
                                 try: os.remove(out_path)
                                 except Exception: pass
+                        else:
+                            if yt_reason.startswith("slow_speed"):
+                                print(f"      ⏭️ yt-dlp بطيء → المتصفح فوراً")
+                            break  # ★ لا تجرب URL آخر
 
+                    # cffi → browser
                     for m_url in ordered_m3u8[:2]:
                         content = None
                         for expr in [
@@ -1054,6 +1140,7 @@ def _process_with_browser(url, out_path):
                             if res:
                                 return res
 
+                    # ffmpeg HLS fallback
                     for m_url in ordered_m3u8[:2]:
                         cookies_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
                         headers = (f"Referer: {iframe_url}\r\n"

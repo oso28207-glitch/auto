@@ -7,8 +7,12 @@ on:
         description: 'حد أقصى للحلقات (0 = بلا حد)'
         required: false
         default: '0'
+      max_runtime_minutes:
+        description: 'الحد الزمني (دقائق)'
+        required: false
+        default: '165'
 
-  # ★ كل 4 ساعات
+  # كل 4 ساعات
   schedule:
     - cron: '0 */4 * * *'
 
@@ -30,12 +34,14 @@ jobs:
     timeout-minutes: 220
 
     steps:
-      - uses: actions/checkout@v4
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
           fetch-depth: 1
 
-      - uses: actions/setup-python@v5
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -45,9 +51,11 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
           ffmpeg -version | head -1
+          ffprobe -version | head -1
 
       - name: 🖥️ Install Xvfb + Chrome
         run: |
+          sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb
           wget -q -O /tmp/chrome.deb \
             "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb"
@@ -55,12 +63,14 @@ jobs:
           sudo Xvfb :99 -screen 0 1920x1080x24 &
           echo "DISPLAY=:99" >> $GITHUB_ENV
           sleep 2
+          echo "✅ Xvfb و Chrome جاهزان"
 
-      - name: 📦 Install deps
+      - name: 📦 Install Python deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip check || true
+          yt-dlp --version
 
       - name: 🔑 Create .env
         env:
@@ -72,7 +82,10 @@ jobs:
           SOURCE_CATEGORY: ${{ secrets.SOURCE_CATEGORY }}
           API_BASE: ${{ secrets.API_BASE }}
           CHECK_CHANNELS: ${{ secrets.CHECK_CHANNELS }}
+          MAX_EPISODES: ${{ github.event.inputs.max_episodes || '0' }}
+          MAX_RUNTIME_MIN: ${{ github.event.inputs.max_runtime_minutes || '165' }}
         run: |
+          MAX_SEC=$(( ${MAX_RUNTIME_MIN} * 60 ))
           {
             echo "API_ID=${API_ID}"
             echo "API_HASH=${API_HASH}"
@@ -83,8 +96,9 @@ jobs:
             echo "SOURCE_MAX_PAGES=20"
             echo "API_BASE=${API_BASE}"
             echo "ENABLED_SOURCES=u3seq"
-            echo "MAX_EPISODES_PER_RUN=0"
-            echo "MAX_RUNTIME_SECONDS=9900"
+            echo "MAX_EPISODES_PER_RUN=${MAX_EPISODES}"
+            echo "MAX_RUNTIME_SECONDS=${MAX_SEC}"
+            echo "IMPERSONATE_TARGET=chrome120"
             echo "AUTO_BUILD=true"
             echo "SKIP_COMPRESS=false"
             echo "KEEP_MEDIA=false"
@@ -98,14 +112,21 @@ jobs:
             # ★ فحص القنوات
             echo "CHECK_CHANNELS=${CHECK_CHANNELS:-shoofcima,shoofFilm}"
             echo "CHECK_CHANNEL_LIMIT=3000"
+            echo "CHECK_CACHE_TTL=1800"
             # ★ التحديث الفوري
             echo "REALTIME_PUSH=true"
             echo "REALTIME_PUSH_INTERVAL=60"
-            # ★ yt-dlp
-            echo "YTDLP_CONCURRENT=8"
-            echo "YTDLP_THROTTLED_RATE=1M"
+            # ★ yt-dlp مع watchdog
+            echo "YTDLP_CONCURRENT=16"
+            echo "YTDLP_THROTTLED_RATE=2M"
+            echo "YTDLP_MIN_SPEED_KB=800"
+            echo "YTDLP_MAX_STALL=30"
+            # ★ cffi workers
+            echo "CURL_CFFI_WORKERS=8"
           } > .env
-          grep -v -E "API_HASH|SESSION_STRING|API_ID" .env
+
+          echo "── .env (القيم الحساسة محجوبة) ──"
+          grep -v -E "API_HASH|SESSION_STRING|BOT_TOKEN|API_ID" .env
 
       - name: 🚀 Run all
         run: python run_all.py
@@ -122,6 +143,7 @@ jobs:
             git commit -m "🤖 تحديث نهائي: $(date -u +'%Y-%m-%d %H:%M')"
             for i in 1 2 3; do
               git push && break || {
+                echo "محاولة $i فشلت، pull --rebase..."
                 git pull --rebase --autostash || true
                 sleep 5
               }
@@ -132,4 +154,5 @@ jobs:
         if: always()
         run: |
           rm -rf data/media/* 2>/dev/null || true
+          rm -f /tmp/tmp*.txt /tmp/tmp*.log 2>/dev/null || true
           df -h | head -3
