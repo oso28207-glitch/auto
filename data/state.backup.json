@@ -855,6 +855,18 @@
           "width": 426,
           "height": 240,
           "duration": 2507
+        },
+        "10": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-10-czwp/",
+          "title": "مسلسل الخفقان الحلقة 10 مدبلجة",
+          "updated_at": "2026-10-05T11:43:42.519401+00:00",
+          "message_id": 1534,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIF_mrDjW5ILI8igU_TIMsS-e1B8uCSAAI7IAACfV8YUp-oZudwC1RJHgQ",
+          "size": 54012725,
+          "width": 426,
+          "height": 240,
+          "duration": 2592
         }
       }
     },
@@ -1035,6 +1047,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1533,
+      "title": "مسلسل الخفقان — الحلقة 9",
+      "series": "مسلسل الخفقان",
+      "episode": 9,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIF_WrDi4Kzx6ikjqsX3iGkPLTyT35pAAI3IAACfV8YUkqS1kcbr3yRHgQ",
+      "size": 45692502,
+      "width": 426,
+      "height": 240,
+      "duration": 2507,
+      "date": "2026-10-05T11:35:31"
+    },
     {
       "id": 1532,
       "title": "مسلسل الخفقان — الحلقة 8",
@@ -1792,5 +1816,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T11:35:30.999801+00:00"
+  "last_run": "2026-10-05T11:43:42.519413+00:00"
 }
