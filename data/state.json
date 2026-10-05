@@ -161,6 +161,18 @@
           "width": 426,
           "height": 240,
           "duration": 1697
+        },
+        "28": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-28/",
+          "title": "مسلسل ما زلت في 17 الحلقة 28 مدبلجة",
+          "updated_at": "2026-10-05T00:02:20.097766+00:00",
+          "message_id": 1483,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIFy2rC6QtizPaEbQMj_xhXdG9tpL_2AAJnHwACfV8YUshII_68aUvBHgQ",
+          "size": 32912415,
+          "width": 426,
+          "height": 240,
+          "duration": 1829
         }
       }
     },
@@ -362,6 +374,18 @@
   },
   "videos": [
     {
+      "id": 1483,
+      "title": "مسلسل ما زلت في 17 — الحلقة 28",
+      "series": "مسلسل ما زلت في 17",
+      "episode": 28,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIFy2rC6QtizPaEbQMj_xhXdG9tpL_2AAJnHwACfV8YUshII_68aUvBHgQ",
+      "size": 32912415,
+      "width": 426,
+      "height": 240,
+      "duration": 1829,
+      "date": "2026-10-05T00:02:20"
+    },
+    {
       "id": 1482,
       "title": "مسلسل ما زلت في 17 — الحلقة 27",
       "series": "مسلسل ما زلت في 17",
@@ -518,5 +542,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-04T23:59:03.662781+00:00"
+  "last_run": "2026-10-05T00:02:20.099443+00:00"
 }
