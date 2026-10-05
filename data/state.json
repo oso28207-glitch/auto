@@ -685,6 +685,18 @@
           "width": 640,
           "height": 360,
           "duration": 0
+        },
+        "7": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-tasacak-bu-deniz-episode-07-mnpb/",
+          "title": "مسلسل هذا البحر سوف يفيض الحلقة 7 مدبلجة",
+          "updated_at": "2026-10-05T05:27:08.376590+00:00",
+          "message_id": 1522,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIF8mrDNSzj9rPxwhpyG7-xdmK9iE62AAKyHwACfV8YUpOUnwWYeO8UHgQ",
+          "size": 147108496,
+          "width": 640,
+          "height": 360,
+          "duration": 0
         }
       }
     },
@@ -875,6 +887,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1522,
+      "title": "مسلسل هذا البحر سوف يفيض — الحلقة 7",
+      "series": "مسلسل هذا البحر سوف يفيض",
+      "episode": 7,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIF8mrDNSzj9rPxwhpyG7-xdmK9iE62AAKyHwACfV8YUpOUnwWYeO8UHgQ",
+      "size": 147108496,
+      "width": 640,
+      "height": 360,
+      "duration": 0,
+      "date": "2026-10-05T05:27:08"
+    },
     {
       "id": 1521,
       "title": "مسلسل هذا البحر سوف يفيض — الحلقة 6",
@@ -1500,5 +1524,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T05:22:59.065284+00:00"
+  "last_run": "2026-10-05T05:27:08.391578+00:00"
 }
