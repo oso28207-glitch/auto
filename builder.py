@@ -1,12 +1,14 @@
-"""builder.py — بناء تدريجي: يحدّث فقط ما تغيّر."""
+"""builder.py — يبني docs/ مع الصور."""
 
 import json
 import shutil
 from pathlib import Path
 
-from config import config, DOCS_DIR, ASSETS_DIR
+from config import config, DOCS_DIR, ASSETS_DIR, DATA_DIR
 from database import db
 from errors import BuildError
+
+POSTERS_FILE = DATA_DIR / "posters.json"
 
 
 def _ensure_structure():
@@ -29,6 +31,21 @@ def _write_config():
     (DOCS_DIR / "config.js").write_text(cfg, encoding="utf-8")
 
 
+def _load_poster_map():
+    """يحمّل map: series_name → poster_url."""
+    if not POSTERS_FILE.exists():
+        return {}
+    try:
+        posters = json.loads(POSTERS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    result = {}
+    for k, v in posters.items():
+        if k.startswith("__series__"):
+            result[k.replace("__series__", "", 1)] = v
+    return result
+
+
 def _write_videos_json():
     videos = db.all_videos()
     (DOCS_DIR / "videos.json").write_text(
@@ -38,8 +55,7 @@ def _write_videos_json():
     return len(videos)
 
 
-def _series_to_dict(name):
-    """يحوّل بيانات مسلسل إلى قاموس JSON مع file_id و size."""
+def _series_to_dict(name, poster_map):
     s = db.get_series(name)
     eps = s.get("episodes", {})
     uploaded = []
@@ -49,20 +65,24 @@ def _series_to_dict(name):
             continue
         if not v.get("message_id") or not v.get("file_id"):
             continue
-
         uploaded.append({
             "episode": int(k),
             "message_id": v["message_id"],
             "file_id": v.get("file_id", ""),
             "size": v.get("size", 0),
+            "duration": v.get("duration", 0),
             "url": v.get("url", ""),
             "title": v.get("title", f"الحلقة {k}"),
         })
+
+    # ★★★★★ poster من map
+    poster = poster_map.get(name, "")
 
     return {
         "name": name,
         "url": s.get("url", ""),
         "slug": s.get("slug", name.replace(" ", "_")),
+        "poster": poster,  # ★ جديد
         "episodes": uploaded,
         "count": len(uploaded),
         "last_updated": s.get("last_updated"),
@@ -70,9 +90,10 @@ def _series_to_dict(name):
 
 
 def _write_series_index():
+    poster_map = _load_poster_map()
     all_series = db.all_series()
-    index = [_series_to_dict(n) for n in all_series]
-    index = [s for s in index if s["count"] > 0]  # تجاهل المسلسلات الفارغة
+    index = [_series_to_dict(n, poster_map) for n in all_series]
+    index = [s for s in index if s["count"] > 0]
     index.sort(key=lambda s: s["name"])
     (DOCS_DIR / "series.json").write_text(
         json.dumps(index, ensure_ascii=False, indent=2),
@@ -82,20 +103,12 @@ def _write_series_index():
 
 
 def build_incremental(changed_series=None):
-    """
-    بناء تدريجي:
-      - ينسخ الأصول مرة واحدة.
-      - يحدّث series.json و videos.json دائماً.
-    """
     try:
         _ensure_structure()
-
-        # الأصول — مرة واحدة فقط
         first_time = not (DOCS_DIR / "index.html").exists()
         _copy_assets(force=first_time)
         _write_config()
 
-        # البيانات
         n_videos = _write_videos_json()
         n_series = _write_series_index()
 
@@ -106,6 +119,9 @@ def build_incremental(changed_series=None):
                 preview += "..."
             msg += f" (محدّث: {preview})"
         print(msg)
-
     except Exception as e:
         raise BuildError(f"فشل البناء: {e}", e)
+
+
+if __name__ == "__main__":
+    build_incremental()

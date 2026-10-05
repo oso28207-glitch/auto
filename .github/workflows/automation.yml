@@ -1,38 +1,25 @@
-name: Shoof Automation
+name: Shoof Full Automation
 
 on:
   workflow_dispatch:
     inputs:
       max_episodes:
-        description: 'حد أقصى للحلقات في الدورة (0 = بلا حد)'
+        description: 'حد أقصى للحلقات'
         required: false
         default: '0'
-      max_runtime_minutes:
-        description: 'الحد الزمني بالدقائق (افتراضي 165)'
-        required: false
-        default: '165'
 
-  # تشغيل تلقائي كل 4 ساعات
   schedule:
     - cron: '0 */4 * * *'
 
   push:
     branches: [main]
     paths:
-      - 'checker.py'
-      - 'downloader.py'
-      - 'uploader.py'
-      - 'telegram_checker.py'
-      - 'orchestrator.py'
-      - 'builder.py'
-      - 'database.py'
-      - 'config.py'
-      - 'run.py'
+      - '*.py'
       - 'requirements.txt'
       - '.github/workflows/automation.yml'
 
 concurrency:
-  group: shoof-automation
+  group: shoof-full
   cancel-in-progress: false
 
 jobs:
@@ -41,29 +28,24 @@ jobs:
     timeout-minutes: 220
 
     steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
           fetch-depth: 1
 
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: 📦 Install ffmpeg (from Ubuntu repo)
+      - name: 📦 Install ffmpeg
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
-          echo "── التحقق ──"
           ffmpeg -version | head -1
-          ffprobe -version | head -1
 
       - name: 🖥️ Install Xvfb + Chrome
         run: |
-          sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb
           wget -q -O /tmp/chrome.deb \
             "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb"
@@ -71,14 +53,12 @@ jobs:
           sudo Xvfb :99 -screen 0 1920x1080x24 &
           echo "DISPLAY=:99" >> $GITHUB_ENV
           sleep 2
-          echo "✅ Xvfb و Chrome جاهزان"
 
-      - name: 📦 Install Python deps
+      - name: 📦 Install deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip check || true
-          yt-dlp --version
 
       - name: 🔑 Create .env
         env:
@@ -89,12 +69,9 @@ jobs:
           SOURCE_BASE_URL: ${{ secrets.SOURCE_BASE_URL }}
           SOURCE_CATEGORY: ${{ secrets.SOURCE_CATEGORY }}
           API_BASE: ${{ secrets.API_BASE }}
-          IMPERSONATE_TARGET: ${{ secrets.IMPERSONATE_TARGET }}
           CHECK_CHANNELS: ${{ secrets.CHECK_CHANNELS }}
           MAX_EPISODES: ${{ github.event.inputs.max_episodes || '0' }}
-          MAX_RUNTIME_MIN: ${{ github.event.inputs.max_runtime_minutes || '165' }}
         run: |
-          MAX_SEC=$(( ${MAX_RUNTIME_MIN} * 60 ))
           {
             echo "API_ID=${API_ID}"
             echo "API_HASH=${API_HASH}"
@@ -105,8 +82,8 @@ jobs:
             echo "SOURCE_MAX_PAGES=20"
             echo "API_BASE=${API_BASE}"
             echo "MAX_EPISODES_PER_RUN=${MAX_EPISODES}"
-            echo "MAX_RUNTIME_SECONDS=${MAX_SEC}"
-            echo "IMPERSONATE_TARGET=${IMPERSONATE_TARGET:-chrome120}"
+            echo "MAX_RUNTIME_SECONDS=9900"
+            echo "IMPERSONATE_TARGET=chrome120"
             echo "AUTO_BUILD=true"
             echo "SKIP_COMPRESS=false"
             echo "KEEP_MEDIA=false"
@@ -114,40 +91,36 @@ jobs:
             echo "COMPRESS_CRF=28"
             echo "CHECK_CHANNELS=${CHECK_CHANNELS:-shoofcima,shoofFilm}"
             echo "CHECK_CHANNEL_LIMIT=3000"
-            echo "CHECK_CACHE_TTL=1800"
             echo "REALTIME_PUSH=true"
             echo "REALTIME_PUSH_INTERVAL=60"
             echo "YTDLP_CONCURRENT=8"
-            echo "YTDLP_LIMIT_RATE=5M"
+            echo "YTDLP_THROTTLED_RATE=1M"
           } > .env
+          grep -v -E "API_HASH|SESSION_STRING|API_ID" .env
 
-          echo "── .env (القيم الحساسة محجوبة) ──"
-          grep -v -E "API_HASH|SESSION_STRING|BOT_TOKEN|API_ID" .env
+      - name: 🚀 Run all scripts
+        run: python run_all.py
 
-      - name: 🚀 Run automation
-        run: python run.py
-
-      - name: 💾 Final commit (state + docs)
+      - name: 💾 Final commit
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          mkdir -p data docs
-          git add data/state.json data/state.backup.json docs/ 2>/dev/null || true
+          git add -f data/ docs/ 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "لا تغييرات"
           else
             git commit -m "🤖 تحديث نهائي: $(date -u +'%Y-%m-%d %H:%M')"
-            git push || {
-              sleep 5
-              git pull --rebase --autostash || true
-              git push || echo "❌ فشل الدفع النهائي"
-            }
+            for i in 1 2 3; do
+              git push && break || {
+                git pull --rebase --autostash || true
+                sleep 5
+              }
+            done
           fi
 
       - name: 🧹 Cleanup
         if: always()
         run: |
           rm -rf data/media/* 2>/dev/null || true
-          rm -f /tmp/tmp*.txt 2>/dev/null || true
           df -h | head -3
