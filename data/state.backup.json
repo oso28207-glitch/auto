@@ -759,6 +759,18 @@
           "width": 426,
           "height": 240,
           "duration": 2495
+        },
+        "2": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-02-temf/",
+          "title": "مسلسل الخفقان الحلقة 2 مدبلجة",
+          "updated_at": "2026-10-05T06:00:01.749142+00:00",
+          "message_id": 1526,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIF9mrDPOGxHAe4BEwMuMh2wwh6SsUTAALMHwACfV8YUq7IWRVtsczsHgQ",
+          "size": 21472656,
+          "width": 426,
+          "height": 240,
+          "duration": 1184
         }
       }
     },
@@ -939,6 +951,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1525,
+      "title": "مسلسل الخفقان — الحلقة 1",
+      "series": "مسلسل الخفقان",
+      "episode": 1,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIF9WrDORcJp46FO-BM1w02cM5OY2IGAAK7HwACfV8YUt82JWvxdyUOHgQ",
+      "size": 55282867,
+      "width": 426,
+      "height": 240,
+      "duration": 2495,
+      "date": "2026-10-05T05:43:51"
+    },
     {
       "id": 1524,
       "title": "مسلسل هذا البحر سوف يفيض — الحلقة 9",
@@ -1600,5 +1624,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T05:43:51.593160+00:00"
+  "last_run": "2026-10-05T06:00:01.749155+00:00"
 }
