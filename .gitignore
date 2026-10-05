@@ -1,22 +1,16 @@
-# Python
 __pycache__/
 *.pyc
-*.pyo
 .env
 .venv/
 venv/
 *.session
 *.session-journal
 
-# نظام التشغيل
-.DS_Store
-Thumbs.db
-
-# لا نتجاهل data/ لأنه يُدفع لحفظ التقدم
-# ولا docs/ لأنها ينشرها GitHub Pages
-
-# تجاهل الوسائط المؤقتة
+# لا نتجاهل data/state.json (يُدفع)
+# لكن نتجاهل:
 data/media/
-*.mp4
-*.ts
 data/.run.lock
+data/.last_import
+data/posters.json
+
+# docs/ يُدفع بالكامل
