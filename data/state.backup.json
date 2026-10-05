@@ -1119,6 +1119,18 @@
           "width": 426,
           "height": 240,
           "duration": 2672
+        },
+        "32": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-32-yiv4/",
+          "title": "مسلسل الخفقان الحلقة 32 مدبلجة",
+          "updated_at": "2026-10-05T13:35:46.370721+00:00",
+          "message_id": 1556,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIGFGrDp7IrLXXZ0iPujJiTEejGYXd5AAK-IAACfV8gUv_YZNDerG7qHgQ",
+          "size": 41873066,
+          "width": 426,
+          "height": 240,
+          "duration": 2556
         }
       }
     },
@@ -1299,6 +1311,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1555,
+      "title": "مسلسل الخفقان — الحلقة 31",
+      "series": "مسلسل الخفقان",
+      "episode": 31,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIGE2rDpsnL22rwDCwceDlyYzpAKrG3AAK7IAACfV8gUqy_9hBt_FROHgQ",
+      "size": 44595083,
+      "width": 426,
+      "height": 240,
+      "duration": 2672,
+      "date": "2026-10-05T13:31:53"
+    },
     {
       "id": 1554,
       "title": "مسلسل الخفقان — الحلقة 30",
@@ -2320,5 +2344,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T13:31:53.568036+00:00"
+  "last_run": "2026-10-05T13:35:46.370732+00:00"
 }
