@@ -987,6 +987,18 @@
           "width": 426,
           "height": 240,
           "duration": 2796
+        },
+        "21": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-21-8qgz/",
+          "title": "مسلسل الخفقان الحلقة 21 مدبلجة",
+          "updated_at": "2026-10-05T12:43:47.113932+00:00",
+          "message_id": 1545,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIGCWrDm4KV2FaBHXDtH4sM5XEdyIYpAAKbIAACfV8gUijVIkvHTin4HgQ",
+          "size": 42392497,
+          "width": 426,
+          "height": 240,
+          "duration": 2592
         }
       }
     },
@@ -1167,6 +1179,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1544,
+      "title": "مسلسل الخفقان — الحلقة 20",
+      "series": "مسلسل الخفقان",
+      "episode": 20,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIGCGrDmpNlY7Ku401hsnoEtRT1HU55AAKZIAACfV8gUtsvGYcb3049HgQ",
+      "size": 55099507,
+      "width": 426,
+      "height": 240,
+      "duration": 2796,
+      "date": "2026-10-05T12:39:48"
+    },
     {
       "id": 1543,
       "title": "مسلسل الخفقان — الحلقة 19",
@@ -2056,5 +2080,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T12:39:48.144527+00:00"
+  "last_run": "2026-10-05T12:43:47.113944+00:00"
 }
