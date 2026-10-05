@@ -533,6 +533,18 @@
           "width": 426,
           "height": 240,
           "duration": 1710
+        },
+        "59": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-59/",
+          "title": "مسلسل ما زلت في 17 الحلقة 59 مدبلجة",
+          "updated_at": "2026-10-05T01:32:44.156813+00:00",
+          "message_id": 1514,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIF6mrC_jukZEnpvWmshSuNgg-kpuX6AAKQHwACfV8YUkkJc0xJue9LHgQ",
+          "size": 24072091,
+          "width": 426,
+          "height": 240,
+          "duration": 1517
         }
       }
     },
@@ -733,6 +745,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1513,
+      "title": "مسلسل ما زلت في 17 — الحلقة 58",
+      "series": "مسلسل ما زلت في 17",
+      "episode": 58,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIF6WrC_aoDlZgBQnojPh0iUV6D1V0XAAKNHwACfV8YUj-gujlWGhiIHgQ",
+      "size": 30154209,
+      "width": 426,
+      "height": 240,
+      "duration": 1710,
+      "date": "2026-10-05T01:30:18"
+    },
     {
       "id": 1512,
       "title": "مسلسل ما زلت في 17 — الحلقة 57",
@@ -1250,5 +1274,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T01:30:18.246964+00:00"
+  "last_run": "2026-10-05T01:32:44.156823+00:00"
 }
