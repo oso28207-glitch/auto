@@ -185,6 +185,18 @@
           "width": 426,
           "height": 240,
           "duration": 1971
+        },
+        "30": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-30/",
+          "title": "مسلسل ما زلت في 17 الحلقة 30 مدبلجة",
+          "updated_at": "2026-10-05T00:08:30.926605+00:00",
+          "message_id": 1485,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIFzWrC6n4UMJR5F2wssvuEVODjpHs5AAJpHwACfV8YUnEZ5eHpdlQyHgQ",
+          "size": 37412587,
+          "width": 426,
+          "height": 240,
+          "duration": 1762
         }
       }
     },
@@ -386,6 +398,18 @@
   },
   "videos": [
     {
+      "id": 1485,
+      "title": "مسلسل ما زلت في 17 — الحلقة 30",
+      "series": "مسلسل ما زلت في 17",
+      "episode": 30,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIFzWrC6n4UMJR5F2wssvuEVODjpHs5AAJpHwACfV8YUnEZ5eHpdlQyHgQ",
+      "size": 37412587,
+      "width": 426,
+      "height": 240,
+      "duration": 1762,
+      "date": "2026-10-05T00:08:30"
+    },
+    {
       "id": 1484,
       "title": "مسلسل ما زلت في 17 — الحلقة 29",
       "series": "مسلسل ما زلت في 17",
@@ -566,5 +590,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T00:05:53.237318+00:00"
+  "last_run": "2026-10-05T00:08:30.928394+00:00"
 }
