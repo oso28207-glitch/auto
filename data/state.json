@@ -557,8 +557,31 @@
           "width": 426,
           "height": 240,
           "duration": 1684
+        },
+        "61": {
+          "status": "failed",
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-61/",
+          "title": "مسلسل ما زلت في 17 الحلقة 61 مدبلجة",
+          "updated_at": "2026-10-05T01:41:57.275367+00:00",
+          "error": "فشلت كل السيرفرات"
+        },
+        "62": {
+          "status": "failed",
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-62/",
+          "title": "مسلسل ما زلت في 17 الحلقة 62 مدبلجة",
+          "updated_at": "2026-10-05T01:48:38.340335+00:00",
+          "error": "فشلت كل السيرفرات"
+        },
+        "63": {
+          "status": "failed",
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-63/",
+          "title": "مسلسل ما زلت في 17 الحلقة 63 مدبلجة",
+          "updated_at": "2026-10-05T01:55:19.230927+00:00",
+          "error": "فشلت كل السيرفرات"
         }
-      }
+      },
+      "last_updated": "2026-10-05T01:55:19",
+      "status": "ok"
     },
     "مسلسل احتمال حب": {
       "url": "https://u.3seq.com/video/modablaj-muhtemel-ask-episode-75/",
@@ -1310,5 +1333,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T01:35:25.824802+00:00"
+  "last_run": "2026-10-05T01:55:19.239115+00:00"
 }
