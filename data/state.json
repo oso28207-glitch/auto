@@ -709,6 +709,18 @@
           "width": 2810,
           "height": 360,
           "duration": 0
+        },
+        "9": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-tasacak-bu-deniz-episode-09-novv/",
+          "title": "مسلسل هذا البحر سوف يفيض الحلقة 9 مدبلجة",
+          "updated_at": "2026-10-05T05:34:53.067227+00:00",
+          "message_id": 1524,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIF9GrDNvz15x8DatW0TSttJeLRlMywAAK2HwACfV8YUjBlK2avi8u_HgQ",
+          "size": 16521363,
+          "width": 2623,
+          "height": 360,
+          "duration": 0
         }
       }
     },
@@ -899,6 +911,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1524,
+      "title": "مسلسل هذا البحر سوف يفيض — الحلقة 9",
+      "series": "مسلسل هذا البحر سوف يفيض",
+      "episode": 9,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIF9GrDNvz15x8DatW0TSttJeLRlMywAAK2HwACfV8YUjBlK2avi8u_HgQ",
+      "size": 16521363,
+      "width": 2623,
+      "height": 360,
+      "duration": 0,
+      "date": "2026-10-05T05:34:53"
+    },
     {
       "id": 1523,
       "title": "مسلسل هذا البحر سوف يفيض — الحلقة 8",
@@ -1548,5 +1572,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T05:31:15.226927+00:00"
+  "last_run": "2026-10-05T05:34:53.070157+00:00"
 }
