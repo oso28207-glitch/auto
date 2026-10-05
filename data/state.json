@@ -999,6 +999,18 @@
           "width": 426,
           "height": 240,
           "duration": 2592
+        },
+        "22": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-22-rziv/",
+          "title": "مسلسل الخفقان الحلقة 22 مدبلجة",
+          "updated_at": "2026-10-05T12:48:01.015781+00:00",
+          "message_id": 1546,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIGCmrDnIAAAVtSXAUjRxURFd9dj2IQ6AACnCAAAn1fIFKZSFgQwmzfXh4E",
+          "size": 49484982,
+          "width": 426,
+          "height": 240,
+          "duration": 2767
         }
       }
     },
@@ -1179,6 +1191,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1546,
+      "title": "مسلسل الخفقان — الحلقة 22",
+      "series": "مسلسل الخفقان",
+      "episode": 22,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIGCmrDnIAAAVtSXAUjRxURFd9dj2IQ6AACnCAAAn1fIFKZSFgQwmzfXh4E",
+      "size": 49484982,
+      "width": 426,
+      "height": 240,
+      "duration": 2767,
+      "date": "2026-10-05T12:48:01"
+    },
     {
       "id": 1545,
       "title": "مسلسل الخفقان — الحلقة 21",
@@ -2092,5 +2116,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T12:43:47.117353+00:00"
+  "last_run": "2026-10-05T12:48:01.019128+00:00"
 }
