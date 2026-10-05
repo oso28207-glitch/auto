@@ -1,13 +1,14 @@
-name: Shoof Full Automation
+name: Shoof Multi-Source Automation
 
 on:
   workflow_dispatch:
     inputs:
       max_episodes:
-        description: 'حد أقصى للحلقات'
+        description: 'حد أقصى للحلقات (0 = بلا حد)'
         required: false
         default: '0'
 
+  # ★ كل 4 ساعات
   schedule:
     - cron: '0 */4 * * *'
 
@@ -15,6 +16,7 @@ on:
     branches: [main]
     paths:
       - '*.py'
+      - 'sources/**'
       - 'requirements.txt'
       - '.github/workflows/automation.yml'
 
@@ -70,7 +72,6 @@ jobs:
           SOURCE_CATEGORY: ${{ secrets.SOURCE_CATEGORY }}
           API_BASE: ${{ secrets.API_BASE }}
           CHECK_CHANNELS: ${{ secrets.CHECK_CHANNELS }}
-          MAX_EPISODES: ${{ github.event.inputs.max_episodes || '0' }}
         run: |
           {
             echo "API_ID=${API_ID}"
@@ -81,24 +82,32 @@ jobs:
             echo "SOURCE_CATEGORY=${SOURCE_CATEGORY:-712}"
             echo "SOURCE_MAX_PAGES=20"
             echo "API_BASE=${API_BASE}"
-            echo "MAX_EPISODES_PER_RUN=${MAX_EPISODES}"
+            echo "ENABLED_SOURCES=u3seq"
+            echo "MAX_EPISODES_PER_RUN=0"
             echo "MAX_RUNTIME_SECONDS=9900"
-            echo "IMPERSONATE_TARGET=chrome120"
             echo "AUTO_BUILD=true"
             echo "SKIP_COMPRESS=false"
             echo "KEEP_MEDIA=false"
+            # ★ الضغط — 45 ميجا
             echo "COMPRESS_SCALE=240"
-            echo "COMPRESS_CRF=28"
+            echo "COMPRESS_CRF=32"
+            echo "COMPRESS_PRESET=slow"
+            echo "COMPRESS_AUDIO_BITRATE=32k"
+            echo "COMPRESS_MAX_SIZE_MB=45"
+            echo "COMPRESS_USE_TWOPASS=true"
+            # ★ فحص القنوات
             echo "CHECK_CHANNELS=${CHECK_CHANNELS:-shoofcima,shoofFilm}"
             echo "CHECK_CHANNEL_LIMIT=3000"
+            # ★ التحديث الفوري
             echo "REALTIME_PUSH=true"
             echo "REALTIME_PUSH_INTERVAL=60"
+            # ★ yt-dlp
             echo "YTDLP_CONCURRENT=8"
             echo "YTDLP_THROTTLED_RATE=1M"
           } > .env
           grep -v -E "API_HASH|SESSION_STRING|API_ID" .env
 
-      - name: 🚀 Run all scripts
+      - name: 🚀 Run all
         run: python run_all.py
 
       - name: 💾 Final commit

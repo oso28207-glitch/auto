@@ -1,14 +1,12 @@
 """
-downloader.py — تحميل من u.3seq.com (نسخة نهائية مستقرة)
+downloader.py — تحميل وضغط (حد أقصى 45 ميجا)
 
 ★ الميزات:
-  1. ★ نسبة تقدم لحظية كل 10% مع السرعة والوقت المتبقي.
-  2. ★ --throttled-rate للتعامل مع CDN البطيء تلقائياً.
-  3. yt-dlp مع --concurrent-fragments (تحميل 8x أسرع).
-  4. ffmpeg من Ubuntu repo (بدون SIGSEGV) + imageio-ffmpeg بديل.
-  5. دمج ذكي على دفعات (chunked concat).
-  6. أولوية vidaraa → vinovo → luluvdo → vids → vidsonic.
-  7. luluvdo CF bypass + vinovo m3u8 builder.
+  1. ★ ضغط ذكي: CRF + two-pass للوصول إلى 45MB.
+  2. yt-dlp مع 8 fragments متوازية.
+  3. cffi → المتصفح fallback فوري.
+  4. ffmpeg من Ubuntu + imageio بديل.
+  5. دمج chunked للـ HLS.
 """
 
 import base64
@@ -23,28 +21,22 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
-import requests
 from curl_cffi import requests as cffi_requests
 
 from config import config, MEDIA_DIR
 
-# ═══════════════════════════════════════════════════════════════
-# الإعدادات
-# ═══════════════════════════════════════════════════════════════
 IMPERSONATE = os.environ.get("IMPERSONATE_TARGET", "chrome120")
 CURL_WORKERS = int(os.environ.get("CURL_CFFI_WORKERS", "8"))
 JWPLAYER_WAIT = 20
 M3U8_WAIT = 20
 M3U8_LIMIT = 8
 MIN_SIZE = 100 * 1024
-COMPRESS_SCALE = 240
 CONCAT_CHUNK = 50
 
-# ★ إعدادات yt-dlp
 YTDLP_CONCURRENT_FRAGMENTS = int(os.environ.get("YTDLP_CONCURRENT", "8"))
-YTDLP_LIMIT_RATE = os.environ.get("YTDLP_LIMIT_RATE", "").strip()  # فارغ = بلا حد
-YTDLP_THROTTLED_RATE = os.environ.get("YTDLP_THROTTLED_RATE", "1M")  # إعادة محاولة عند البطء
-YTDLP_PROGRESS_STEP = int(os.environ.get("YTDLP_PROGRESS_STEP", "10"))  # كل 10%
+YTDLP_LIMIT_RATE = os.environ.get("YTDLP_LIMIT_RATE", "").strip()
+YTDLP_THROTTLED_RATE = os.environ.get("YTDLP_THROTTLED_RATE", "1M")
+YTDLP_PROGRESS_STEP = int(os.environ.get("YTDLP_PROGRESS_STEP", "10"))
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -65,82 +57,163 @@ def _origin(url):
         return ""
 
 
-def _parse_m3u8(text, base):
-    segs, variants = [], []
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if ".m3u8" in line:
-            variants.append(line if line.startswith("http") else urljoin(base + "/", line))
-        elif line.endswith(".ts") or ".ts?" in line or "seg" in line.lower() or ".m4s" in line:
-            segs.append(line if line.startswith("http") else urljoin(base + "/", line))
-    return segs, variants
-
-
-def _extract_m3u8_from_html(html):
-    if not html:
-        return []
-    found, seen = [], set()
-    for pat in [
-        r'(https?:[^\s"\'<>\\]+\.m3u8[^\s"\'<>\\]*)',
-        r'(https?:[^\s"\'<>\\]+\.mpd[^\s"\'<>\\]*)',
-    ]:
-        for m in re.finditer(pat, html):
-            u = m.group(1).replace("\\/", "/")
-            if u not in seen:
-                seen.add(u)
-                found.append(u)
-    return found
-
-
-# ═══════════════════════════════════════════════════════════════
-# ★ ffmpeg — نظامي أو imageio
-# ═══════════════════════════════════════════════════════════════
-_FFMPEG_CACHE = {"path": None, "source": None}
-
-
 def _get_ffmpeg_exe():
-    if _FFMPEG_CACHE["path"]:
-        return _FFMPEG_CACHE["path"]
-
-    # 1) النظامي
     try:
         r = subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=5)
         if r.returncode == 0:
-            _FFMPEG_CACHE["path"] = "ffmpeg"
-            _FFMPEG_CACHE["source"] = "system"
             return "ffmpeg"
     except Exception:
         pass
-
-    # 2) imageio-ffmpeg
     try:
         import imageio_ffmpeg
         path = imageio_ffmpeg.get_ffmpeg_exe()
         r = subprocess.run([path, "-version"], capture_output=True, timeout=5)
         if r.returncode == 0:
-            print(f"   ℹ️  استخدام imageio-ffmpeg: {path}")
-            _FFMPEG_CACHE["path"] = path
-            _FFMPEG_CACHE["source"] = "imageio"
+            print(f"   ℹ️  imageio-ffmpeg: {path}")
             return path
-    except Exception as e:
-        print(f"   ⚠️ imageio-ffmpeg غير متاح: {str(e)[:80]}")
-
-    # 3) fallback
-    _FFMPEG_CACHE["path"] = "ffmpeg"
-    _FFMPEG_CACHE["source"] = "system-fallback"
+    except Exception:
+        pass
     return "ffmpeg"
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ 1) yt-dlp HLS — مع نسبة تقدم لحظية كل 10%
+# ★★★ الضغط الذكي — الوصول إلى 45 ميجا
+# ═══════════════════════════════════════════════════════════════
+def _get_duration(path):
+    """يعيد مدة الفيديو بالثواني."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return float(r.stdout.strip())
+    except Exception:
+        pass
+    return 0
+
+
+def _compress_to_target(inp, out, max_size_mb=None):
+    """
+    ★★★ ضغط ذكي:
+      1. جرّب CRF أولاً.
+      2. إذا تجاوز الحجم الحد، استخدم two-pass bitrate.
+    """
+    if max_size_mb is None:
+        max_size_mb = config.COMPRESS_MAX_SIZE_MB
+
+    im = Path(inp).stat().st_size / 1048576
+    print(f"   🗜️  {im:.2f}MB → {config.COMPRESS_SCALE}p (حد {max_size_mb}MB)...")
+
+    ffmpeg_exe = _get_ffmpeg_exe()
+    duration = _get_duration(inp)
+
+    # ★ محاولة CRF أولاً
+    cmd_crf = [
+        ffmpeg_exe, "-nostdin", "-hide_banner", "-loglevel", "error",
+        "-i", str(inp),
+        "-vf", f"scale=-2:{config.COMPRESS_SCALE}",
+        "-c:v", "libx264",
+        "-preset", config.COMPRESS_PRESET,
+        "-crf", str(config.COMPRESS_CRF),
+        "-profile:v", "main",
+        "-level", "3.1",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-b:a", config.COMPRESS_AUDIO_BITRATE,
+        "-ac", "2",
+        "-ar", "44100",
+        "-movflags", "+faststart",
+        "-threads", "2",
+        "-y", str(out),
+    ]
+
+    try:
+        t0 = time.time()
+        r = subprocess.run(cmd_crf, capture_output=True, text=True, timeout=1800)
+        if r.returncode == 0 and Path(out).exists():
+            om = Path(out).stat().st_size / 1048576
+            print(f"   ✅ CRF: {im:.2f}→{om:.2f}MB في {time.time()-t0:.1f}s")
+
+            # ★ إذا تجاوز الحد → two-pass
+            if om > max_size_mb and duration > 0:
+                print(f"   ⚠️ تجاوز {max_size_mb}MB → two-pass...")
+                return _compress_twopass(inp, out, max_size_mb, duration, ffmpeg_exe)
+            return True
+    except Exception as e:
+        print(f"   ⚠️ CRF فشل: {str(e)[:100]}")
+
+    # ★ fallback: two-pass
+    if duration > 0:
+        return _compress_twopass(inp, out, max_size_mb, duration, ffmpeg_exe)
+
+    return False
+
+
+def _compress_twopass(inp, out, max_size_mb, duration, ffmpeg_exe):
+    """
+    ★ ضغط two-pass لضمان حجم أقصى.
+    bitrate = (الحجم المستهدف بالبت - حجم الصوت) / المدة
+    """
+    audio_bitrate = 32 * 1024  # 32k
+    target_bits = max_size_mb * 1024 * 1024 * 8
+    audio_bits = audio_bitrate * duration
+    video_bits = max(0, target_bits - audio_bits)
+    video_bitrate = int(video_bits / duration / 1000)  # kbps
+
+    print(f"   🔄 two-pass: {video_bitrate}k video + 32k audio")
+
+    pass_log = tempfile.mktemp(suffix=".log")
+    base_cmd = [
+        ffmpeg_exe, "-nostdin", "-hide_banner", "-loglevel", "error",
+        "-i", str(inp),
+        "-vf", f"scale=-2:{config.COMPRESS_SCALE}",
+        "-c:v", "libx264",
+        "-preset", config.COMPRESS_PRESET,
+        "-b:v", f"{video_bitrate}k",
+        "-profile:v", "main",
+        "-level", "3.1",
+        "-pix_fmt", "yuv420p",
+        "-passlogfile", pass_log,
+    ]
+
+    try:
+        # pass 1
+        pass1 = base_cmd + ["-pass", "1", "-an", "-f", "null", "/dev/null"]
+        subprocess.run(pass1, capture_output=True, timeout=1800)
+
+        # pass 2
+        pass2 = base_cmd + [
+            "-pass", "2",
+            "-c:a", "aac",
+            "-b:a", config.COMPRESS_AUDIO_BITRATE,
+            "-ac", "2",
+            "-ar", "44100",
+            "-movflags", "+faststart",
+            "-threads", "2",
+            "-y", str(out),
+        ]
+        r = subprocess.run(pass2, capture_output=True, timeout=1800)
+
+        if r.returncode == 0 and Path(out).exists():
+            om = Path(out).stat().st_size / 1048576
+            print(f"   ✅ two-pass: {om:.2f}MB")
+            return True
+    except Exception as e:
+        print(f"   ❌ two-pass فشل: {str(e)[:100]}")
+    finally:
+        for f in [pass_log, pass_log + "-0.log", pass_log + "-0.log.mbtree"]:
+            try: os.remove(f)
+            except Exception: pass
+
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════
+# yt-dlp
 # ═══════════════════════════════════════════════════════════════
 def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
-    """
-    yt-dlp بأولوية 360p + تحميل 8 fragments بالتوازي + نسبة تقدم لحظية.
-    ★ --throttled-rate يعيد المحاولة إذا نزلت السرعة تحت الحد.
-    """
     cookies = cookies or {}
     cookie_file = tempfile.mktemp(suffix=".txt")
     try:
@@ -148,126 +221,74 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
         with open(cookie_file, "w") as f:
             f.write("# Netscape HTTP Cookie File\n\n")
             for k, v in cookies.items():
-                if not k or not v:
-                    continue
-                f.write(f".{domain}\tTRUE\t/\tFALSE\t0\t{k}\t{v}\n")
+                if k and v:
+                    f.write(f".{domain}\tTRUE\t/\tFALSE\t0\t{k}\t{v}\n")
 
         print(f"      🎬 yt-dlp → {m3u8_url[:70]}...")
-        print(f"      ⚡ concurrent={YTDLP_CONCURRENT_FRAGMENTS}, "
-              f"limit-rate={YTDLP_LIMIT_RATE or 'بلا حد'}, "
-              f"throttled-rate={YTDLP_THROTTLED_RATE}")
-
         ffmpeg_path = _get_ffmpeg_exe()
+
         for mode in ["native", "ffmpeg"]:
             cmd = [
-                "yt-dlp",
-                "--no-warnings",
-                "--no-playlist",
-                "--no-part",
-                "--newline",
-                "--progress",
-                # ★★ إخراج النسبة بصيغة موحدة
+                "yt-dlp", "--no-warnings", "--no-playlist", "--no-part",
+                "--newline", "--progress",
                 "--progress-template",
                 "download:PROGRESS:%(progress._percent_str)s|"
-                "%(progress._speed_str)s|ETA:%(progress._eta_str)s|"
-                "size:%(progress._total_bytes_str)s",
+                "%(progress._speed_str)s|ETA:%(progress._eta_str)s",
                 "--hls-prefer-" + mode,
                 "--user-agent", UA,
                 "--referer", iframe_url,
                 "--add-header", f"Origin:{_origin(iframe_url)}",
                 "--cookies", cookie_file,
-                "--retries", "10",
-                "--fragment-retries", "10",
+                "--retries", "10", "--fragment-retries", "10",
                 "--socket-timeout", "30",
-                # التحميل المتوازي
                 "--concurrent-fragments", str(YTDLP_CONCURRENT_FRAGMENTS),
-                # ★ throttled-rate: إعادة المحاولة إذا نزلت السرعة تحت الحد
                 "--throttled-rate", YTDLP_THROTTLED_RATE,
-            ]
-
-            # limit-rate فقط إذا كان محدداً
-            if YTDLP_LIMIT_RATE:
-                cmd.extend(["--limit-rate", YTDLP_LIMIT_RATE])
-
-            cmd.extend([
                 "--buffer-size", "1M",
                 "-f", "bv*[height<=360]+ba/b[height<=360]/bv*+ba/b",
                 "--merge-output-format", "mp4",
                 "-o", out,
-            ])
+            ]
+            if YTDLP_LIMIT_RATE:
+                cmd.extend(["--limit-rate", YTDLP_LIMIT_RATE])
             if ffmpeg_path != "ffmpeg":
                 cmd.extend(["--ffmpeg-location", ffmpeg_path])
             cmd.append(m3u8_url)
 
             try:
-                # ★★★ Popen + قراءة لحظية
                 proc = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1,
-                    universal_newlines=True,
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, bufsize=1,
                 )
-
-                last_printed_pct = -YTDLP_PROGRESS_STEP
-                start_time = time.time()
-                last_update_ts = 0.0
+                last_pct = -YTDLP_PROGRESS_STEP
+                t0 = time.time()
 
                 for line in iter(proc.stdout.readline, ""):
                     line = line.rstrip()
                     if not line:
                         continue
-
-                    # ★ استخرج النسبة من PROGRESS:...
                     if "PROGRESS:" in line:
                         try:
                             after = line.split("PROGRESS:", 1)[1].strip()
                             parts = after.split("|")
-                            pct_str = parts[0].replace("%", "").strip()
-                            pct = float(pct_str)
-                            speed = parts[1].strip() if len(parts) > 1 else "?"
-                            eta = parts[2].replace("ETA:", "").strip() if len(parts) > 2 else "?"
-                            size = parts[3].replace("size:", "").strip() if len(parts) > 3 else "?"
-
-                            # اطبع عند كل 10% أو 100%
-                            if (pct >= last_printed_pct + YTDLP_PROGRESS_STEP
-                                    or pct >= 99.5):
-                                last_printed_pct = int(pct // YTDLP_PROGRESS_STEP) * YTDLP_PROGRESS_STEP
-                                elapsed = time.time() - start_time
-                                print(f"         📊 {pct:5.1f}%  |  "
-                                      f"سرعة: {speed}  |  ETA: {eta}  |  "
-                                      f"حجم: {size}  |  مضى: {elapsed:.0f}s")
-                                last_update_ts = time.time()
-                            # تحديث إضافي كل 30s حتى لو لم يتغير 10%
-                            elif time.time() - last_update_ts > 30:
-                                elapsed = time.time() - start_time
-                                print(f"         ⏳ {pct:5.1f}% (مضى: {elapsed:.0f}s)")
-                                last_update_ts = time.time()
+                            pct = float(parts[0].replace("%", "").strip())
+                            if pct >= last_pct + YTDLP_PROGRESS_STEP or pct >= 99.5:
+                                last_pct = int(pct // YTDLP_PROGRESS_STEP) * YTDLP_PROGRESS_STEP
+                                print(f"         📊 {pct:5.1f}% | {parts[1].strip()} | "
+                                      f"ETA: {parts[2].replace('ETA:', '').strip()} | "
+                                      f"({time.time()-t0:.0f}s)")
                         except (ValueError, IndexError):
                             pass
-                    else:
-                        # اطبع سطور yt-dlp المهمة
-                        if any(k in line for k in
-                               ("[FixupM3u8]", "[Merger]",
-                                "ERROR", "WARNING", "Destination")):
-                            print(f"         ↳ {line[:130]}")
+                    elif any(k in line for k in ("[FixupM3u8]", "ERROR")):
+                        print(f"         ↳ {line[:120]}")
 
                 proc.wait()
-                ret_code = proc.returncode
-                elapsed_total = time.time() - start_time
-
-                if ret_code == 0 and os.path.exists(out) and os.path.getsize(out) > MIN_SIZE:
-                    size_mb = os.path.getsize(out) / 1048576
-                    print(f"      ✅ yt-dlp {mode}: {size_mb:.1f} MB "
-                          f"في {elapsed_total:.0f}s")
+                if (proc.returncode == 0 and os.path.exists(out)
+                        and os.path.getsize(out) > MIN_SIZE):
+                    print(f"      ✅ yt-dlp {mode}: "
+                          f"{os.path.getsize(out)/1048576:.1f}MB")
                     return True
-                print(f"      ⚠️ yt-dlp {mode}: code={ret_code}, "
-                      f"مضى {elapsed_total:.0f}s")
-
             except Exception as e:
-                print(f"      ⚠️ yt-dlp {mode}: {str(e)[:150]}")
-
+                print(f"      ⚠️ yt-dlp {mode}: {str(e)[:100]}")
         return False
     finally:
         try: os.remove(cookie_file)
@@ -275,163 +296,162 @@ def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 2) ffmpeg HLS مباشرة
+# Browser fetch
 # ═══════════════════════════════════════════════════════════════
-def _ffmpeg_hls(m3u8_url, out, iframe_url, cookies=None):
-    cookies = cookies or {}
-    cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
-
-    headers_parts = [
-        f"Referer: {iframe_url}",
-        f"Origin: {_origin(iframe_url)}",
-        f"User-Agent: {UA}",
-    ]
-    if cookie_str:
-        headers_parts.append(f"Cookie: {cookie_str}")
-    headers = "\r\n".join(headers_parts) + "\r\n"
-
-    ffmpeg_exe = _get_ffmpeg_exe()
-    print(f"      🎬 ffmpeg HLS → {m3u8_url[:70]}...")
-
-    cmd = [
-        ffmpeg_exe, "-nostdin", "-hide_banner", "-loglevel", "warning",
-        "-headers", headers,
-        "-user_agent", UA,
-        "-reconnect", "1",
-        "-reconnect_streamed", "1",
-        "-reconnect_delay_max", "5",
-        "-i", m3u8_url,
-        "-c", "copy", "-bsf:a", "aac_adtstoasc",
-        "-movflags", "+faststart",
-        "-y", out,
-    ]
+def _browser_fetch_batch(sb, urls, timeout=40, with_creds=True):
+    if not urls:
+        return {}
+    creds = "credentials:'include'," if with_creds else ""
+    js = """
+    (function(){
+        window.__br = {}; window.__bd = false;
+        var urls = %s; var results = {}; var pending = urls.length;
+        if (pending === 0) { window.__br = results; window.__bd = true; return; }
+        urls.forEach(function(u, idx){
+            var done = function(v){
+                results[String(idx)] = v; pending--;
+                if (pending === 0) { window.__br = results; window.__bd = true; }
+            };
+            try {
+                fetch(u, {mode:'cors', %s}).then(function(r){
+                    if (!r.ok) throw new Error('HTTP '+r.status);
+                    return r.arrayBuffer();
+                }).then(function(buf){
+                    var b = new Uint8Array(buf), s = '', c = 16384;
+                    for (var j=0;j<b.length;j+=c) {
+                        s += String.fromCharCode.apply(null,
+                            b.subarray(j, Math.min(j+c, b.length)));
+                    }
+                    try { done(btoa(s)); } catch(e){ done(null); }
+                }).catch(function(){ done(null); });
+            } catch(e) { done(null); }
+        });
+    })();
+    """ % (json.dumps(urls), creds)
 
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
-        if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > MIN_SIZE:
-            size_mb = os.path.getsize(out) / 1048576
-            print(f"      ✅ ffmpeg HLS: {size_mb:.1f} MB")
-            return True
-        err_lines = [l.strip() for l in (r.stderr or "").split("\n") if l.strip()]
-        err = " | ".join(err_lines[-2:])[:200] if err_lines else f"code={r.returncode}"
-        print(f"      ⚠️ ffmpeg HLS: {err}")
-    except subprocess.TimeoutExpired:
-        print("      ⚠️ ffmpeg HLS: timeout")
-    except Exception as e:
-        print(f"      ⚠️ ffmpeg HLS: {str(e)[:100]}")
+        sb.cdp.execute_script(js)
+    except Exception:
+        return {}
 
-    return False
-
-
-# ═══════════════════════════════════════════════════════════════
-# 3) الدمج الذكي على دفعات
-# ═══════════════════════════════════════════════════════════════
-def _concat_group(paths, out, loglevel="error"):
-    listfile = tempfile.mktemp(suffix=".txt")
-    with open(listfile, "w") as f:
-        for p in paths:
-            escaped = p.replace("'", "'\\''")
-            f.write(f"file '{escaped}'\n")
-
-    ffmpeg_exe = _get_ffmpeg_exe()
-    cmd = [
-        ffmpeg_exe, "-nostdin", "-hide_banner", "-loglevel", loglevel,
-        "-f", "concat", "-safe", "0", "-i", listfile,
-        "-c", "copy", "-f", "mpegts", "-y", out,
-    ]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
-        if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 5000:
-            os.remove(listfile)
-            return True
-        err = (r.stderr or "").strip().split("\n")[-1] if r.stderr else f"code={r.returncode}"
-        print(f"      ⚠️ دمج مجموعة: {err[:120]}")
-    except Exception as e:
-        print(f"      ⚠️ دمج مجموعة: {str(e)[:100]}")
-    try: os.remove(listfile)
-    except Exception: pass
-    return False
+    start = time.time()
+    while time.time() - start < timeout:
+        sb.cdp.sleep(0.15)
+        try:
+            if sb.cdp.execute_script("return window.__bd===true"):
+                return sb.cdp.execute_script("return window.__br") or {}
+        except Exception:
+            pass
+    return {}
 
 
-def _smart_concat(sorted_paths, out):
-    total = len(sorted_paths)
-    print(f"      🔗 دمج {total} segment على دفعات...")
+def _browser_segments(sb, segments, out):
+    batch = 16
+    total = len(segments)
+    print(f"      🌐 المتصفح: {total} segment...")
+    seg_dir = tempfile.mkdtemp(prefix="hls_br_")
+    paths, failed, total_bytes = {}, 0, 0
 
-    if total <= CONCAT_CHUNK:
-        if _concat_group(sorted_paths, out):
-            return True
-        print("      ⚠️ الدمج المباشر فشل — تقسيم لمجموعات")
+    for i in range(0, total, batch):
+        chunk = segments[i:i + batch]
+        result = _browser_fetch_batch(sb, chunk, with_creds=True)
+        if not result or all(v is None for v in result.values()):
+            result = _browser_fetch_batch(sb, chunk, with_creds=False)
 
-    groups = []
-    for i in range(0, total, CONCAT_CHUNK):
-        groups.append(sorted_paths[i:i + CONCAT_CHUNK])
+        retry = []
+        for k, b64 in result.items():
+            try:
+                li = int(k)
+            except Exception:
+                continue
+            si = i + li
+            if b64:
+                try:
+                    data = base64.b64decode(b64)
+                    p = os.path.join(seg_dir, f"s_{si:06d}.ts")
+                    with open(p, "wb") as f:
+                        f.write(data)
+                    paths[si] = p
+                    total_bytes += len(data)
+                except Exception:
+                    retry.append((si, chunk[li]))
+            else:
+                retry.append((si, chunk[li]))
 
-    print(f"      📦 تقسيم إلى {len(groups)} مجموعة (كل مجموعة {CONCAT_CHUNK})")
+        if retry:
+            rr = _browser_fetch_batch(sb, [u for _, u in retry], with_creds=False)
+            for k, b64 in rr.items():
+                try:
+                    li = int(k)
+                except Exception:
+                    continue
+                si, _ = retry[li]
+                if b64:
+                    try:
+                        data = base64.b64decode(b64)
+                        p = os.path.join(seg_dir, f"s_{si:06d}.ts")
+                        with open(p, "wb") as f:
+                            f.write(data)
+                        paths[si] = p
+                        total_bytes += len(data)
+                    except Exception:
+                        failed += 1
+                else:
+                    failed += 1
 
-    group_files = []
-    for gi, grp in enumerate(groups):
-        gpath = out + f".part{gi:04d}.ts"
-        if os.path.exists(gpath):
-            try: os.remove(gpath)
-            except Exception: pass
-        if _concat_group(grp, gpath):
-            group_files.append(gpath)
-            print(f"      ✅ مجموعة {gi+1}/{len(groups)} ({len(grp)} segment)")
-        else:
-            print(f"      ❌ فشل مجموعة {gi+1}")
-            for gf in group_files:
-                try: os.remove(gf)
-                except Exception: pass
-            return False
+        done = min(i + batch, total)
+        if done % (batch * 2) == 0 or done == total:
+            print(f"         📦 {done}/{total} | {total_bytes/1048576:.1f}MB | فشل: {failed}")
 
-    print(f"      🔗 دمج نهائي {len(group_files)} مجموعة...")
-    if _concat_group(group_files, out):
-        for gf in group_files:
-            try: os.remove(gf)
-            except Exception: pass
-        return True
-
-    for gf in group_files:
-        try: os.remove(gf)
-        except Exception: pass
-    return False
-
-
-# ═══════════════════════════════════════════════════════════════
-# 4) cffi segments
-# ═══════════════════════════════════════════════════════════════
-def _cffi_segments(segments, out, iframe_url, cookies=None):
-    if not segments:
+    if not paths:
+        shutil.rmtree(seg_dir, ignore_errors=True)
         return None
 
+    sorted_p = [paths[k] for k in sorted(paths)]
+    if not _smart_concat(sorted_p, out):
+        shutil.rmtree(seg_dir, ignore_errors=True)
+        return None
+
+    final_size = os.path.getsize(out)
+    print(f"      ✅ المتصفح: {final_size/1048576:.1f} MB")
+    shutil.rmtree(seg_dir, ignore_errors=True)
+    return (final_size, True)
+
+
+# ═══════════════════════════════════════════════════════════════
+# cffi
+# ═══════════════════════════════════════════════════════════════
+def _cffi_segments(segments, out, iframe_url, cookies, sb=None):
     headers = {
         "Referer": iframe_url,
         "Origin": _origin(iframe_url),
         "User-Agent": UA,
         "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.9",
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "cross-site",
     }
     cookies = cookies or {}
 
-    test_data = None
+    # اختبار
+    test_ok = False
     for imp in ["chrome124", "chrome120", "chrome110"]:
         try:
             r = cffi_requests.get(segments[0], headers=headers,
-                                  cookies=cookies,
-                                  impersonate=imp,
+                                  cookies=cookies, impersonate=imp,
                                   timeout=15, verify=False)
             if r.status_code == 200 and len(r.content) > 100:
-                test_data = r.content
-                print(f"      ⚡ cffi[{imp}] test OK ({len(test_data)}b)")
+                print(f"      ⚡ cffi[{imp}] OK")
+                test_ok = True
                 break
         except Exception:
             continue
 
-    if test_data is None:
-        print("      ⚠️ cffi: فشل اختبار أول segment")
+    # ★ إذا فشل cffi → المتصفح فوراً (بنفس segments)
+    if not test_ok:
+        print(f"      ⚠️ cffi فشل → المتصفح")
+        if sb is not None:
+            return _browser_segments(sb, segments, out)
         return None
 
     seg_dir = tempfile.mkdtemp(prefix="hls_cffi_")
@@ -444,7 +464,7 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
                 r = cffi_requests.get(u, headers=headers, cookies=cookies,
                                       impersonate=imp, timeout=30, verify=False)
                 if r.status_code == 200 and len(r.content) > 100:
-                    p = os.path.join(seg_dir, f"seg_{i:06d}.ts")
+                    p = os.path.join(seg_dir, f"s_{i:06d}.ts")
                     with open(p, "wb") as f:
                         f.write(r.content)
                     return (i, p, len(r.content))
@@ -452,7 +472,7 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
                 continue
         return (i, None, 0)
 
-    print(f"   ⚡ {len(segments)} segment عبر cffi parallel...")
+    print(f"      ⚡ {len(segments)} segment cffi...")
     with ThreadPoolExecutor(max_workers=CURL_WORKERS) as ex:
         futs = [ex.submit(_dl, (i, s)) for i, s in enumerate(segments)]
         done = 0
@@ -465,694 +485,142 @@ def _cffi_segments(segments, out, iframe_url, cookies=None):
             else:
                 failed += 1
             if done % 40 == 0 or done == len(segments):
-                print(f"      📦 {done}/{len(segments)} | {total/1048576:.1f}MB | فشل: {failed}")
+                print(f"         📦 {done}/{len(segments)} | {total/1048576:.1f}MB | فشل: {failed}")
 
     if not paths or failed > len(segments) * 0.15:
         shutil.rmtree(seg_dir, ignore_errors=True)
-        print(f"      ❌ cffi: نسبة فشل عالية ({failed}/{len(segments)})")
+        # ★ fallback للمتصفح
+        if sb is not None:
+            print(f"      ⚠️ cffi فشل جزئي → المتصفح")
+            return _browser_segments(sb, segments, out)
         return None
 
     sorted_p = [paths[k] for k in sorted(paths)]
-
     if not _smart_concat(sorted_p, out):
-        print(f"         ❌ فشل الدمج")
         shutil.rmtree(seg_dir, ignore_errors=True)
         return None
 
     final_size = os.path.getsize(out)
-    print(f"   ✅ نجح: {final_size/1048576:.1f} MB")
+    print(f"      ✅ cffi: {final_size/1048576:.1f} MB")
     shutil.rmtree(seg_dir, ignore_errors=True)
     return (final_size, True)
 
 
 # ═══════════════════════════════════════════════════════════════
-# 5) المتصفح fallback
+# الدمج
 # ═══════════════════════════════════════════════════════════════
-def _browser_fetch_batch_b64(sb, urls, timeout=30):
-    if not urls:
-        return {}
-    urls_json = json.dumps(urls)
-    js = """
-    (function(){
-        window.__br = {}; window.__bd = false;
-        var urls = %s;
-        var results = {}; var pending = urls.length;
-        if (pending === 0) { window.__br = results; window.__bd = true; return; }
-        urls.forEach(function(u, idx){
-            var done = function(val){
-                results[String(idx)] = val;
-                pending--;
-                if (pending === 0) { window.__br = results; window.__bd = true; }
-            };
-            try {
-                fetch(u, {mode:'cors'})
-                    .then(function(r){
-                        if (!r.ok) throw new Error('HTTP '+r.status);
-                        return r.arrayBuffer();
-                    })
-                    .then(function(buf){
-                        var bytes = new Uint8Array(buf);
-                        var bin = ''; var chunk = 16384;
-                        for (var j=0; j<bytes.length; j+=chunk) {
-                            bin += String.fromCharCode.apply(null,
-                                bytes.subarray(j, Math.min(j+chunk, bytes.length)));
-                        }
-                        try { done(btoa(bin)); } catch(e) { done(null); }
-                    })
-                    .catch(function(){ done(null); });
-            } catch(e) { done(null); }
-        });
-    })();
-    """ % urls_json
-
+def _concat_group(paths, out):
+    listfile = tempfile.mktemp(suffix=".txt")
+    with open(listfile, "w") as f:
+        for p in paths:
+            f.write(f"file '{p.replace(chr(39), chr(39)+chr(92)+chr(39)+chr(39))}'\n")
+    ffmpeg_exe = _get_ffmpeg_exe()
+    cmd = [
+        ffmpeg_exe, "-nostdin", "-hide_banner", "-loglevel", "error",
+        "-f", "concat", "-safe", "0", "-i", listfile,
+        "-c", "copy", "-f", "mpegts", "-y", out,
+    ]
     try:
-        sb.cdp.execute_script(js)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
+        if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 5000:
+            os.remove(listfile)
+            return True
     except Exception:
-        return {}
-
-    start = time.time()
-    while time.time() - start < timeout:
-        sb.cdp.sleep(0.15)
-        try:
-            if sb.cdp.execute_script("return window.__bd===true"):
-                r = sb.cdp.execute_script("return window.__br")
-                if isinstance(r, dict):
-                    return r
-                break
-        except Exception:
-            pass
-    return {}
-
-
-def _browser_segments(sb, segments, out):
-    batch = 16
-    total = len(segments)
-    print(f"   🌐 المتصفح: {total} segment (batch={batch})...")
-    seg_dir = tempfile.mkdtemp(prefix="hls_br_")
-    paths, failed, total_bytes = {}, 0, 0
-
-    for i in range(0, total, batch):
-        chunk = segments[i:i + batch]
-        result = _browser_fetch_batch_b64(sb, chunk, timeout=30)
-
-        retry = []
-        for idx_str, b64 in result.items():
-            try:
-                li = int(idx_str)
-            except Exception:
-                continue
-            si = i + li
-            if b64:
-                try:
-                    data = base64.b64decode(b64)
-                    p = os.path.join(seg_dir, f"seg_{si:06d}.ts")
-                    with open(p, "wb") as f:
-                        f.write(data)
-                    paths[si] = p
-                    total_bytes += len(data)
-                except Exception:
-                    retry.append((si, chunk[li]))
-            else:
-                retry.append((si, chunk[li]))
-
-        if retry:
-            retry_urls = [u for _, u in retry]
-            rr = _browser_fetch_batch_b64(sb, retry_urls, timeout=30)
-            for idx_str, b64 in rr.items():
-                try:
-                    li = int(idx_str)
-                except Exception:
-                    continue
-                si, _ = retry[li]
-                if b64:
-                    try:
-                        data = base64.b64decode(b64)
-                        p = os.path.join(seg_dir, f"seg_{si:06d}.ts")
-                        with open(p, "wb") as f:
-                            f.write(data)
-                        paths[si] = p
-                        total_bytes += len(data)
-                    except Exception:
-                        failed += 1
-                else:
-                    failed += 1
-
-        done = min(i + batch, total)
-        if done % (batch * 2) == 0 or done == total:
-            print(f"      📦 {done}/{total} | {total_bytes/1048576:.1f}MB | فشل: {failed}")
-
-    if not paths:
-        shutil.rmtree(seg_dir, ignore_errors=True)
-        return None
-
-    sorted_p = [paths[k] for k in sorted(paths)]
-
-    if not _smart_concat(sorted_p, out):
-        shutil.rmtree(seg_dir, ignore_errors=True)
-        return None
-
-    final_size = os.path.getsize(out)
-    print(f"   ✅ المتصفح: {final_size/1048576:.1f} MB")
-    shutil.rmtree(seg_dir, ignore_errors=True)
-    return (final_size, True)
-
-
-# ═══════════════════════════════════════════════════════════════
-# Cloudflare bypass
-# ═══════════════════════════════════════════════════════════════
-def _bypass_cloudflare(sb, iframe_url):
-    print("      🔄 محاولة تجاوز Cloudflare...")
-    sb.activate_cdp_mode(iframe_url)
-    sb.sleep(3)
-
-    for attempt in range(3):
-        try:
-            sb.uc_gui_click_captcha()
-            sb.sleep(3)
-            title = sb.get_page_title()
-            html = sb.cdp.get_page_source() or ""
-            if "Just a moment" not in title and "Attention Required" not in title:
-                if len(html) > 5000:
-                    print(f"      ✅ تم تجاوز Cloudflare (محاولة {attempt+1})")
-                    return True
-        except Exception as e:
-            print(f"      ⚠️ محاولة {attempt+1}: {str(e)[:80]}")
-
-    print("      ❌ فشل تجاوز Cloudflare")
+        pass
+    try: os.remove(listfile)
+    except Exception: pass
     return False
 
 
-def _extract_vinovo_m3u8(sb, iframe_url):
-    print("      🔄 محاولة استخراج m3u8 من vinovo.to...")
-    html = sb.cdp.get_page_source() or ""
+def _smart_concat(sorted_paths, out):
+    total = len(sorted_paths)
+    if total <= CONCAT_CHUNK:
+        if _concat_group(sorted_paths, out):
+            return True
+    groups = [sorted_paths[i:i + CONCAT_CHUNK]
+              for i in range(0, total, CONCAT_CHUNK)]
+    group_files = []
+    for gi, grp in enumerate(groups):
+        gpath = out + f".part{gi:04d}.ts"
+        if os.path.exists(gpath):
+            try: os.remove(gpath)
+            except Exception: pass
+        if _concat_group(grp, gpath):
+            group_files.append(gpath)
+        else:
+            for gf in group_files:
+                try: os.remove(gf)
+                except Exception: pass
+            return False
+    if _concat_group(group_files, out):
+        for gf in group_files:
+            try: os.remove(gf)
+            except Exception: pass
+        return True
+    return False
 
-    base_match = re.search(r'data-base=["\']([^"\']+)["\']', html)
-    base_url = base_match.group(1) if base_match else None
 
-    code_match = re.search(r'file[_-]?code["\']?\s*[:=]\s*["\']([^"\']+)["\']', html, re.IGNORECASE)
-    file_code = code_match.group(1) if code_match else None
+# ═══════════════════════════════════════════════════════════════
+# الدالة الرئيسية
+# ═══════════════════════════════════════════════════════════════
+def _dismiss_ads(sb):
+    try:
+        sb.cdp.execute_script("""
+            (function(){
+                try {
+                    ['iframe[id*="ad"]', 'div[class*="popup"]',
+                     '[class*="overlay"]', '.ads'].forEach(function(sel){
+                        document.querySelectorAll(sel).forEach(function(el){
+                            el.style.display = 'none';
+                        });
+                    });
+                    var v = document.querySelector('video');
+                    if (v) v.muted = true;
+                    document.body.style.overflow = 'auto';
+                } catch(e){}
+            })();
+        """)
+    except Exception:
+        pass
 
-    m3u8_urls = _extract_m3u8_from_html(html)
 
-    if base_url and file_code:
-        candidates = [
-            f"{base_url}/hls/{file_code}/master.m3u8",
-            f"{base_url}/{file_code}/playlist.m3u8",
-            f"{base_url}/hls/{file_code}/index.m3u8",
-        ]
-        for cand in candidates:
+def _aggressive_play(sb):
+    _dismiss_ads(sb)
+    for sel in [".jw-icon-playback", ".jw-display-icon-container",
+                ".vjs-big-play-button", "[class*='play']", "video"]:
+        for _ in range(2):
             try:
-                r = cffi_requests.get(cand, headers={
-                    "Referer": iframe_url,
-                    "Origin": _origin(iframe_url),
-                }, impersonate="chrome120", timeout=10, verify=False)
-                if r.status_code == 200 and ("#EXTM3U" in r.text or ".ts" in r.text):
-                    m3u8_urls.insert(0, cand)
-                    break
+                sb.cdp.click_if_visible(sel)
             except Exception:
-                continue
-
-    if m3u8_urls:
-        return m3u8_urls
-
-    for sel in ["video", ".vjs-big-play-button", "[class*='play']"]:
-        try:
-            sb.cdp.click_if_visible(sel)
-        except Exception:
-            pass
+                pass
     try:
         sb.cdp.execute_script("""
             (function(){try{
-                var v = document.querySelector('video');
-                if (v) { v.muted = true; v.play && v.play().catch(function(){}); }
+                if(typeof jwplayer!=='undefined'){
+                    var p=jwplayer(); if(p&&p.play){p.play(true);}
+                    if(p&&p.setMute){p.setMute(true);}
+                }
+                var v=document.querySelector('video');
+                if(v){v.muted=true;v.play&&v.play().catch(function(){});}
             }catch(e){}})();
         """)
     except Exception:
         pass
 
-    sb.sleep(10)
-    return _extract_m3u8_from_html(sb.cdp.get_page_source() or "")
 
-
-# ═══════════════════════════════════════════════════════════════
-# استخراج السيرفرات
-# ═══════════════════════════════════════════════════════════════
-def _extract_servers(sb):
-    try:
-        servers = sb.cdp.execute_script("""
-            (function(){
-                try {
-                    var list = document.querySelector('.serversList');
-                    if (!list) return [];
-                    var items = list.querySelectorAll('li');
-                    var out = [];
-                    for (var i = 0; i < items.length; i++) {
-                        var li = items[i];
-                        out.push({
-                            id: li.id || '',
-                            name: (li.textContent || '').trim(),
-                            active: li.classList.contains('active')
-                        });
-                    }
-                    return out;
-                } catch(e) { return []; }
-            })();
-        """)
-        return servers or []
-    except Exception:
-        return []
-
-
-def _get_current_iframe(sb):
-    try:
-        return sb.cdp.execute_script("""
-            (function(){
-                try {
-                    var sels = ['.watch iframe', '#watch iframe',
-                                'iframe[src*="embed"]', 'iframe[src*="vidsp"]',
-                                'iframe[src*="luluvdo"]', 'iframe[src*="vinovo"]',
-                                'iframe[src*="vids"]', 'iframe[src*="vidaraa"]',
-                                'iframe[src*="vidsonic"]',
-                                'iframe:not([src*="google"])'];
-                    for (var i=0; i<sels.length; i++) {
-                        var ifr = document.querySelector(sels[i]);
-                        if (ifr && ifr.src && ifr.src.startsWith('http')
-                            && ifr.src.indexOf('google') === -1) {
-                            return ifr.src;
-                        }
-                    }
-                } catch(e) {}
-                return null;
-            })();
-        """)
-    except Exception:
-        return None
-
-
-def _get_watch_html(sb):
-    try:
-        return sb.cdp.execute_script("""
-            (function(){
-                try {
-                    var w = document.querySelector('.watch');
-                    return w ? w.outerHTML : null;
-                } catch(e) { return null; }
-            })();
-        """)
-    except Exception:
-        return None
-
-
-def _get_cookies_full(sb):
+def _get_cookies(sb):
     try:
         r = sb.driver.execute_cdp_cmd("Network.getAllCookies", {})
         if r and r.get("cookies"):
-            cookies = {}
-            for c in r["cookies"]:
-                n = c.get("name")
-                v = c.get("value")
-                if n and v:
-                    cookies[n] = v
-            return cookies
-    except Exception as e:
-        print(f"      ⚠️ getAllCookies: {str(e)[:80]}")
-
-    try:
-        raw = sb.driver.get_cookies()
-        cookies = {}
-        for c in raw:
-            if c.get("name") and c.get("value"):
-                cookies[c["name"]] = c["value"]
-        return cookies
-    except Exception:
-        return {}
-
-
-def _collect_iframe_urls(sb, servers):
-    results = {}
-    seen_urls = set()
-
-    print("   ⏳ انتظار getServer2...")
-    for i in range(20):
-        sb.cdp.sleep(0.5)
-        if sb.cdp.execute_script("return typeof getServer2 === 'function'"):
-            print(f"   ✅ getServer2 جاهز")
-            break
-
-    for server in servers:
-        sid = server.get("id")
-        sname = server.get("name", "unknown")
-        if not sid:
-            continue
-
-        print(f"      · {sname} ({sid})")
-
-        before_iframe = _get_current_iframe(sb)
-        before_watch = _get_watch_html(sb)
-
-        try:
-            rect = sb.cdp.execute_script(f"""
-                (function(){{
-                    var el = document.getElementById('{sid}');
-                    if (!el) return null;
-                    var r = el.getBoundingClientRect();
-                    if (r.width < 5 || r.height < 5) return null;
-                    return {{x: Math.round(r.left + r.width/2),
-                            y: Math.round(r.top + r.height/2)}};
-                }})();
-            """)
-            if rect and rect.get("x", 0) > 0:
-                sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
-                    "type": "mousePressed", "x": rect['x'], "y": rect['y'],
-                    "button": "left", "clickCount": 1,
-                })
-                sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
-                    "type": "mouseReleased", "x": rect['x'], "y": rect['y'],
-                    "button": "left", "clickCount": 1,
-                })
-                print(f"         ↳ نقر حقيقي")
-            else:
-                sb.cdp.execute_script(f"document.getElementById('{sid}').click();")
-                print(f"         ↳ el.click()")
-        except Exception as e:
-            print(f"         ⚠️ فشل النقر: {str(e)[:80]}")
-            continue
-
-        after_iframe = before_iframe
-        changed = False
-        deadline = time.time() + 5
-
-        while time.time() < deadline:
-            sb.cdp.sleep(0.3)
-            cur_iframe = _get_current_iframe(sb)
-            cur_watch = _get_watch_html(sb)
-
-            if cur_iframe and cur_iframe != before_iframe:
-                after_iframe = cur_iframe
-                changed = True
-                break
-            if cur_watch and cur_watch != before_watch:
-                new_iframe = _get_current_iframe(sb)
-                if new_iframe and new_iframe != before_iframe:
-                    after_iframe = new_iframe
-                    changed = True
-                    break
-
-        if changed and after_iframe:
-            url = after_iframe.replace("&amp;", "&")
-            if url not in seen_urls:
-                seen_urls.add(url)
-                results[f"{sname}_{sid}"] = {"iframe_url": url, "server_id": sid}
-                print(f"         ✅ {url[:90]}")
-            else:
-                print(f"         ⚠️ مكرر")
-        elif after_iframe:
-            if after_iframe not in seen_urls:
-                seen_urls.add(after_iframe)
-                results[f"{sname}_{sid}"] = {"iframe_url": after_iframe, "server_id": sid}
-                print(f"         ⚠️ لم يتغير")
-
-    return results
-
-
-# ═══════════════════════════════════════════════════════════════
-# محاولة التحميل
-# ═══════════════════════════════════════════════════════════════
-def _try_iframe_download(sb, iframe_url, watch_url, netlog_read, out_path):
-    print(f"\n      🌐 الانتقال إلى: {iframe_url[:90]}")
-
-    server_name = ""
-    for name in ["vidaraa", "vinovo", "luluvdo", "vids", "vidsp", "vidsonic"]:
-        if name in iframe_url.lower():
-            server_name = name
-            break
-
-    if server_name == "luluvdo":
-        if not _bypass_cloudflare(sb, iframe_url):
-            print("      ⏭️ فشل تجاوز Cloudflare")
-            return None, iframe_url
-
-    try:
-        sb.driver.execute_cdp_cmd("Page.navigate", {
-            "url": iframe_url, "referrer": watch_url or "",
-        })
-    except Exception as e:
-        print(f"      ⚠️ {e}")
-        return None, None
-
-    sb.cdp.sleep(3)
-
-    for _ in range(3):
-        try:
-            nested = sb.cdp.execute_script("""
-                (function(){
-                    try {
-                        var ifr = document.querySelector('iframe');
-                        if (ifr && ifr.src && ifr.src.startsWith('http')
-                            && ifr.src.indexOf('google') === -1) {
-                            return ifr.src;
-                        }
-                    } catch(e) {}
-                    return null;
-                })();
-            """)
-            if nested and nested != iframe_url:
-                print(f"      🔄 متداخل: {nested[:80]}")
-                iframe_url = nested
-                sb.driver.execute_cdp_cmd("Page.navigate", {
-                    "url": iframe_url, "referrer": watch_url or "",
-                })
-                sb.cdp.sleep(3)
-            else:
-                break
-        except Exception:
-            break
-
-    for _ in range(JWPLAYER_WAIT):
-        sb.cdp.sleep(1)
-        try:
-            p = sb.cdp.execute_script(
-                "return typeof jwplayer!=='undefined'?'jw':"
-                "(document.querySelector('video')?'h5':'none')"
-            )
-            if p in ("jw", "h5"):
-                print(f"      ✅ {p}")
-                break
-        except Exception:
-            pass
-
-    m3u8_urls = []
-    if server_name == "vinovo":
-        m3u8_urls = _extract_vinovo_m3u8(sb, iframe_url)
-
-    for cycle in range(12):
-        for sel in ["video", ".jw-icon-playback", ".jw-icon-display",
-                    ".vjs-big-play-button", "[class*='play']",
-                    "button[aria-label*='play']", ".play-btn", "#play"]:
-            try:
-                sb.cdp.click_if_visible(sel)
-            except Exception:
-                pass
-
-        try:
-            rect = sb.cdp.execute_script("""
-                (function(){
-                    var v = document.querySelector('video');
-                    if (!v) return null;
-                    var r = v.getBoundingClientRect();
-                    if (r.width < 50 || r.height < 50) return null;
-                    return {x: Math.round(r.left + r.width/2),
-                            y: Math.round(r.top + r.height/2)};
-                })();
-            """)
-            if rect and rect.get("x", 0) > 0:
-                for _ in range(2):
-                    sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
-                        "type": "mousePressed", "x": rect['x'], "y": rect['y'],
-                        "button": "left", "clickCount": 1,
-                    })
-                    sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
-                        "type": "mouseReleased", "x": rect['x'], "y": rect['y'],
-                        "button": "left", "clickCount": 1,
-                    })
-                    sb.cdp.sleep(0.4)
-        except Exception:
-            pass
-
-        try:
-            sb.cdp.execute_script("""
-                (function(){try{
-                    if(typeof jwplayer!=='undefined'){
-                        var p=jwplayer(); if(p&&p.play){p.play(true);return;}
-                    }
-                    var v=document.querySelector('video');
-                    if(v){v.muted=true;v.play&&v.play().catch(function(){});}
-                }catch(e){}})();
-            """)
-        except Exception:
-            pass
-
-        sb.cdp.sleep(1)
-        if any(x in u for u in netlog_read() for x in [".m3u8", ".mpd"]):
-            print(f"      ✨ m3u8 بعد دورة {cycle+1}")
-            break
-
-    if not any(x in u for u in netlog_read() for x in [".m3u8", ".mpd"]):
-        for i in range(M3U8_WAIT):
-            sb.cdp.sleep(1)
-            if any(x in u for u in netlog_read() for x in [".m3u8", ".mpd"]):
-                print(f"      ✨ m3u8 بعد {(i+1)+12}s")
-                break
-
-    urls = netlog_read()
-    m3u8_net = [u for u in urls if ".m3u8" in u or ".mpd" in u]
-    for u in m3u8_net:
-        if u not in m3u8_urls:
-            m3u8_urls.append(u)
-
-    try:
-        perf = sb.cdp.execute_script("""
-            (function(){try{
-                return performance.getEntriesByType('resource').map(e=>e.name);
-            }catch(e){return [];}})();
-        """)
-        if isinstance(perf, list):
-            for u in perf:
-                if (".m3u8" in u or ".mpd" in u) and u not in m3u8_urls:
-                    m3u8_urls.append(u)
+            return {c["name"]: c["value"] for c in r["cookies"]
+                    if c.get("name") and c.get("value")}
     except Exception:
         pass
-
-    try:
-        html = sb.cdp.get_page_source() or ""
-        for u in _extract_m3u8_from_html(html):
-            if u not in m3u8_urls:
-                m3u8_urls.append(u)
-    except Exception:
-        pass
-
-    m3u8_urls = [u for u in m3u8_urls if ".m3u8" in u or ".mpd" in u]
-    m3u8_urls = [u for u in m3u8_urls
-                 if "ping.gif" not in u and "jwpltx" not in u]
-
-    if not m3u8_urls:
-        print("      ❌ لا m3u8")
-        return None, iframe_url
-
-    idx = [u for u in m3u8_urls if "index" in u.lower()]
-    mst = [u for u in m3u8_urls if "master" in u.lower()]
-    mpd = [u for u in m3u8_urls if ".mpd" in u.lower()]
-    oth = [u for u in m3u8_urls if u not in idx and u not in mst and u not in mpd]
-    ordered = idx + mst + mpd + oth
-
-    print(f"      🎯 {len(ordered)} مرشح صالح")
-
-    browser_cookies = _get_cookies_full(sb)
-    if browser_cookies:
-        print(f"      🍪 {len(browser_cookies)} كوكي")
-
-    # ★★★ 1) yt-dlp مع التحميل المتوازي + نسبة تقدم لحظية
-    print(f"      🔄 yt-dlp (360p، {YTDLP_CONCURRENT_FRAGMENTS} fragments متوازية)...")
-    for m_url in ordered[:3]:
-        print(f"      🎯 {m_url[:90]}")
-        if _ytdlp_hls(m_url, str(out_path), iframe_url, browser_cookies):
-            size = os.path.getsize(out_path)
-            return (size, True), iframe_url
-
-    # ★★★ 2) cffi + دمج ذكي
-    print("      🔄 cffi segments...")
-    for m_url in ordered[:M3U8_LIMIT]:
-        content = None
-        for expr in [
-            f"fetch({json.dumps(m_url)},{{mode:'cors'}})",
-            f"fetch({json.dumps(m_url)},{{mode:'cors',credentials:'include'}})",
-        ]:
-            js = f"""
-            (function(){{
-                window.__dv=false; window.__rv=null;
-                try{{ {expr}.then(r=>r.text().then(t=>{{
-                    window.__rv={{ok:true,s:r.status,t:t}};
-                    window.__dv=true;
-                }})).catch(e=>{{window.__rv={{ok:false}};window.__dv=true;}});
-                }}catch(e){{window.__rv={{ok:false}};window.__dv=true;}}
-            }})();
-            """
-            try:
-                sb.cdp.execute_script(js)
-            except Exception:
-                continue
-            start = time.time()
-            while time.time() - start < 12:
-                sb.cdp.sleep(0.2)
-                try:
-                    if sb.cdp.execute_script("return window.__dv===true"):
-                        r = sb.cdp.execute_script("return window.__rv")
-                        if r and r.get("ok") and r.get("s") == 200:
-                            content = r.get("t")
-                        break
-                except Exception:
-                    pass
-            if content:
-                break
-
-        if not content:
-            continue
-
-        segs, variants = _parse_m3u8(content, m_url.rsplit("/", 1)[0])
-
-        if not segs and variants:
-            for v in variants[:2]:
-                js = f"""
-                (function(){{
-                    window.__dv2=false;window.__rv2=null;
-                    fetch({json.dumps(v)},{{mode:'cors'}}).then(r=>r.text().then(t=>{{
-                        window.__rv2={{ok:true,t:t}};window.__dv2=true;
-                    }})).catch(e=>{{window.__dv2=true;}});
-                }})();
-                """
-                try:
-                    sb.cdp.execute_script(js)
-                except Exception:
-                    continue
-                start = time.time()
-                while time.time() - start < 12:
-                    sb.cdp.sleep(0.2)
-                    try:
-                        if sb.cdp.execute_script("return window.__dv2===true"):
-                            r = sb.cdp.execute_script("return window.__rv2")
-                            if r and r.get("ok"):
-                                s2, _ = _parse_m3u8(r["t"], v.rsplit("/", 1)[0])
-                                if s2:
-                                    segs = s2
-                                    break
-                            break
-                    except Exception:
-                        pass
-                if segs:
-                    break
-
-        if segs:
-            print(f"         ✅ {len(segs)} segment")
-            res = _cffi_segments(segs, str(out_path), iframe_url,
-                                  cookies=browser_cookies)
-            if res:
-                return res, iframe_url
-
-    # ★★★ 3) ffmpeg HLS
-    print("      🔄 ffmpeg HLS...")
-    for m_url in ordered[:3]:
-        if _ffmpeg_hls(m_url, str(out_path), iframe_url, browser_cookies):
-            size = os.path.getsize(out_path)
-            return (size, True), iframe_url
-
-    print("      ❌ فشلت كل الطرق")
-    return None, iframe_url
+    return {}
 
 
-# ═══════════════════════════════════════════════════════════════
-# العملية الكاملة
-# ═══════════════════════════════════════════════════════════════
 def _process_with_browser(url, out_path):
+    """يفتح صفحة الحلقة ويحمّلها."""
     from seleniumbase import SB
 
     netlog = tempfile.mktemp(suffix=".txt")
@@ -1162,9 +630,7 @@ def _process_with_browser(url, out_path):
         try:
             with open(netlog, "a", encoding="utf-8") as fh:
                 fh.write(u + "\n")
-                fh.flush()
-        except Exception:
-            pass
+        except Exception: pass
 
     def _read():
         try:
@@ -1174,100 +640,379 @@ def _process_with_browser(url, out_path):
             return []
 
     result = None
-
     try:
         with SB(uc=True, xvfb=True, headless=False, incognito=True,
                 ad_block_on=False, disable_csp=True,
                 page_load_strategy="eager", locale_code="en") as sb:
             try:
                 sb.activate_cdp_mode()
-
                 try:
                     import mycdp
-
                     async def on_req(e):
                         try: _log(e.request.url)
                         except Exception: pass
-
                     sb.cdp.add_handler(mycdp.network.RequestWillBeSent, on_req)
                 except Exception:
                     pass
 
-                print(f"🖥️  فتح: {url}")
+                print(f"🖥️  فتح: {url[:90]}")
                 sb.cdp.open(url)
                 sb.cdp.sleep(2)
 
-                watch_url = None
-                try:
-                    cur = sb.cdp.get_current_url() or url
-                    if "?" in cur:
-                        cur = cur.split("?")[0]
-                    if not cur.endswith("/"):
-                        cur += "/"
-                    watch_url = cur + "?do=watch"
-                    print(f"   🎬 watch: {watch_url[:100]}")
-                    sb.cdp.open(watch_url)
-                    sb.cdp.sleep(3)
-                except Exception as e:
-                    print(f"   ⚠️ {e}")
+                cur = sb.cdp.get_current_url() or url
+                if "?" in cur:
+                    cur = cur.split("?")[0]
+                if not cur.endswith("/"):
+                    cur += "/"
+                watch_url = cur + "?do=watch"
+                print(f"   🎬 watch: {watch_url[:100]}")
+                sb.cdp.open(watch_url)
+                sb.cdp.sleep(3)
 
+                # السيرفرات
                 servers = []
                 for i in range(20):
                     sb.cdp.sleep(1)
-                    servers = _extract_servers(sb)
-                    if servers:
-                        print(f"   ✅ {len(servers)} سيرفر ({i+1}s)")
-                        break
+                    try:
+                        servers = sb.cdp.execute_script("""
+                            (function(){
+                                var l = document.querySelector('.serversList');
+                                if (!l) return [];
+                                return Array.from(l.querySelectorAll('li')).map(li => ({
+                                    id: li.id || '',
+                                    name: (li.textContent || '').trim()
+                                }));
+                            })();
+                        """) or []
+                        if servers:
+                            print(f"   ✅ {len(servers)} سيرفر")
+                            break
+                    except Exception:
+                        pass
 
                 if not servers:
                     print("   ❌ لا سيرفرات")
                     return None
 
                 for s in servers:
-                    print(f"      · {s.get('name', '?')} ({s.get('id', '?')})"
-                          + (" [active]" if s.get('active') else ""))
+                    print(f"      · {s.get('name', '?')}")
 
-                print(f"\n   📋 جمع روابط iframe...")
-                iframe_map = _collect_iframe_urls(sb, servers)
+                # جمع روابط iframe
+                print(f"\n   📋 جمع iframes...")
+                iframe_map = {}
+                seen = set()
+
+                for i in range(20):
+                    sb.cdp.sleep(0.5)
+                    if sb.cdp.execute_script("return typeof getServer2 === 'function'"):
+                        print(f"   ✅ getServer2 جاهز")
+                        break
+
+                for server in servers:
+                    sid = server.get("id")
+                    if not sid:
+                        continue
+                    before = sb.cdp.execute_script("""
+                        (function(){
+                            var ifr = document.querySelector('.watch iframe');
+                            return ifr ? ifr.src : null;
+                        })();
+                    """)
+                    try:
+                        rect = sb.cdp.execute_script(f"""
+                            (function(){{
+                                var el = document.getElementById('{sid}');
+                                if (!el) return null;
+                                var r = el.getBoundingClientRect();
+                                if (r.width < 5 || r.height < 5) return null;
+                                return {{x: Math.round(r.left + r.width/2),
+                                        y: Math.round(r.top + r.height/2)}};
+                            }})();
+                        """)
+                        if rect and rect.get("x", 0) > 0:
+                            sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+                                "type": "mousePressed", "x": rect['x'], "y": rect['y'],
+                                "button": "left", "clickCount": 1,
+                            })
+                            sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+                                "type": "mouseReleased", "x": rect['x'], "y": rect['y'],
+                                "button": "left", "clickCount": 1,
+                            })
+                    except Exception:
+                        continue
+
+                    after = before
+                    deadline = time.time() + 5
+                    while time.time() < deadline:
+                        sb.cdp.sleep(0.3)
+                        cur = sb.cdp.execute_script("""
+                            (function(){
+                                var ifr = document.querySelector('.watch iframe');
+                                return ifr ? ifr.src : null;
+                            })();
+                        """)
+                        if cur and cur != before:
+                            after = cur
+                            break
+                    if after and after != before:
+                        url_clean = after.replace("&amp;", "&")
+                        if url_clean not in seen:
+                            seen.add(url_clean)
+                            iframe_map[f"{server.get('name')}_{sid}"] = url_clean
+                            print(f"         ✅ {url_clean[:80]}")
 
                 if not iframe_map:
-                    print("   ❌ لم يُعثر على أي iframe")
+                    print("   ❌ لا iframes")
                     return None
 
-                print(f"\n   ✅ {len(iframe_map)} رابط iframe فريد")
+                print(f"\n   ✅ {len(iframe_map)} iframe فريد")
 
-                def _priority(item):
-                    key = item[0].lower()
-                    if "vidaraa" in key: return 0
-                    if "vinovo" in key: return 1
-                    if "luluvdo" in key: return 2
-                    if "vids" in key: return 3
-                    return 4
+                # ترتيب حسب الأولوية
+                def _prio(item):
+                    k = item[0].lower()
+                    for i, s in enumerate([
+                        "vidaraa", "playmate", "firestream", "luluvdo",
+                        "vinovo", "bysejikuar", "vidsonic", "vids", "vidsp"
+                    ]):
+                        if s in k: return i
+                    return 99
 
-                ordered = sorted(iframe_map.items(), key=_priority)
+                ordered = sorted(iframe_map.items(), key=_prio)
 
-                for sname, info in ordered:
-                    iframe_url = info["iframe_url"]
+                for sname, iframe_url in ordered:
                     print(f"\n   ═══ {sname} ═══")
+                    print(f"      🌐 {iframe_url[:80]}")
 
-                    res, _ = _try_iframe_download(
-                        sb, iframe_url, watch_url, _read, out_path
-                    )
-                    if res:
-                        result = res
-                        print(f"\n   ✅ نجح: {sname}")
-                        break
+                    if "luluvdo" in sname.lower():
+                        try:
+                            sb.activate_cdp_mode(iframe_url)
+                            sb.sleep(3)
+                            sb.uc_gui_click_captcha()
+                            sb.sleep(3)
+                        except Exception:
+                            pass
+
+                    try:
+                        sb.driver.execute_cdp_cmd("Page.navigate", {
+                            "url": iframe_url, "referrer": watch_url,
+                        })
+                    except Exception:
+                        continue
+                    sb.cdp.sleep(3)
+
+                    # iframe متداخل
+                    for _ in range(3):
+                        try:
+                            nested = sb.cdp.execute_script("""
+                                (function(){
+                                    var ifr = document.querySelector('iframe');
+                                    if (ifr && ifr.src && ifr.src.startsWith('http')
+                                        && ifr.src.indexOf('google') === -1) {
+                                        return ifr.src;
+                                    }
+                                    return null;
+                                })();
+                            """)
+                            if nested and nested != iframe_url:
+                                iframe_url = nested
+                                sb.driver.execute_cdp_cmd("Page.navigate", {
+                                    "url": iframe_url, "referrer": watch_url,
+                                })
+                                sb.cdp.sleep(3)
+                            else:
+                                break
+                        except Exception:
+                            break
+
+                    # انتظار المشغل
+                    for _ in range(JWPLAYER_WAIT):
+                        sb.cdp.sleep(1)
+                        try:
+                            p = sb.cdp.execute_script(
+                                "return typeof jwplayer!=='undefined'?'jw':"
+                                "(document.querySelector('video')?'h5':'none')"
+                            )
+                            if p in ("jw", "h5"):
+                                print(f"      ✅ {p}")
+                                break
+                        except Exception:
+                            pass
+
+                    # تشغيل
+                    for cycle in range(15):
+                        _aggressive_play(sb)
+                        sb.cdp.sleep(1)
+                        if any(x in u for u in _read() for x in [".m3u8", ".mpd"]):
+                            print(f"      ✨ m3u8 بعد دورة {cycle+1}")
+                            break
+
+                    if not any(x in u for u in _read() for x in [".m3u8", ".mpd"]):
+                        for i in range(M3U8_WAIT):
+                            sb.cdp.sleep(1)
+                            _dismiss_ads(sb)
+                            if any(x in u for u in _read() for x in [".m3u8", ".mpd"]):
+                                break
+
+                    m3u8_urls = [u for u in _read()
+                                 if ".m3u8" in u or ".mpd" in u]
+                    try:
+                        perf = sb.cdp.execute_script("""
+                            (function(){try{
+                                return performance.getEntriesByType('resource')
+                                    .map(e=>e.name);
+                            }catch(e){return [];}})();
+                        """)
+                        if isinstance(perf, list):
+                            for u in perf:
+                                if (".m3u8" in u or ".mpd" in u) and u not in m3u8_urls:
+                                    m3u8_urls.append(u)
+                    except Exception:
+                        pass
+
+                    m3u8_urls = [u for u in m3u8_urls if ".m3u8" in u or ".mpd" in u]
+                    m3u8_urls = [u for u in m3u8_urls
+                                 if "ping.gif" not in u and "jwpltx" not in u]
+
+                    if not m3u8_urls:
+                        print(f"      ❌ لا m3u8")
+                        continue
+
+                    idx = [u for u in m3u8_urls if "index" in u.lower()]
+                    mst = [u for u in m3u8_urls if "master" in u.lower()]
+                    oth = [u for u in m3u8_urls
+                           if u not in idx and u not in mst]
+                    ordered_m3u8 = idx + mst + oth
+
+                    print(f"      🎯 {len(ordered_m3u8)} مرشح")
+                    cookies = _get_cookies(sb)
+                    if cookies:
+                        print(f"      🍪 {len(cookies)} كوكي")
+
+                    # yt-dlp
+                    for m_url in ordered_m3u8[:3]:
+                        print(f"      🎯 {m_url[:80]}")
+                        if _ytdlp_hls(m_url, str(out_path), iframe_url, cookies):
+                            return (os.path.getsize(out_path), True)
+
+                    # cffi → المتصفح
+                    for m_url in ordered_m3u8[:3]:
+                        content = None
+                        for expr in [
+                            f"fetch({json.dumps(m_url)},{{mode:'cors',credentials:'include'}})",
+                            f"fetch({json.dumps(m_url)},{{mode:'cors'}})",
+                        ]:
+                            js = f"""
+                            (function(){{
+                                window.__dv=false; window.__rv=null;
+                                try{{ {expr}.then(r=>r.text().then(t=>{{
+                                    window.__rv={{ok:true,s:r.status,t:t}};
+                                    window.__dv=true;
+                                }})).catch(e=>{{window.__dv=true;}});
+                                }}catch(e){{window.__dv=true;}}
+                            }})();
+                            """
+                            try:
+                                sb.cdp.execute_script(js)
+                            except Exception:
+                                continue
+                            start = time.time()
+                            while time.time() - start < 12:
+                                sb.cdp.sleep(0.2)
+                                try:
+                                    if sb.cdp.execute_script("return window.__dv===true"):
+                                        r = sb.cdp.execute_script("return window.__rv")
+                                        if r and r.get("ok") and r.get("s") == 200:
+                                            content = r.get("t")
+                                        break
+                                except Exception:
+                                    pass
+                            if content:
+                                break
+
+                        if not content:
+                            continue
+
+                        # parse segments
+                        segs, variants = [], []
+                        base = m_url.rsplit("/", 1)[0]
+                        for line in content.splitlines():
+                            line = line.strip()
+                            if not line or line.startswith("#"):
+                                continue
+                            if ".m3u8" in line:
+                                variants.append(line if line.startswith("http")
+                                                else urljoin(base + "/", line))
+                            elif line.endswith(".ts") or ".ts?" in line or ".m4s" in line:
+                                segs.append(line if line.startswith("http")
+                                            else urljoin(base + "/", line))
+
+                        if not segs and variants:
+                            for v in variants[:2]:
+                                try:
+                                    r = cffi_requests.get(v, headers={
+                                        "Referer": iframe_url,
+                                        "Origin": _origin(iframe_url),
+                                        "User-Agent": UA,
+                                    }, cookies=cookies, impersonate="chrome120",
+                                        timeout=15, verify=False)
+                                    if r.status_code == 200:
+                                        vbase = v.rsplit("/", 1)[0]
+                                        for line in r.text.splitlines():
+                                            line = line.strip()
+                                            if not line or line.startswith("#"):
+                                                continue
+                                            if line.endswith(".ts") or ".ts?" in line:
+                                                segs.append(line if line.startswith("http")
+                                                            else urljoin(vbase + "/", line))
+                                        if segs:
+                                            m_url = v
+                                            break
+                                except Exception:
+                                    continue
+
+                        if segs:
+                            print(f"         ✅ {len(segs)} segment")
+                            res = _cffi_segments(segs, str(out_path),
+                                                  iframe_url, cookies, sb)
+                            if res:
+                                return res
+
+                    # ffmpeg HLS
+                    for m_url in ordered_m3u8[:3]:
+                        cookies_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+                        headers = (f"Referer: {iframe_url}\r\n"
+                                   f"Origin: {_origin(iframe_url)}\r\n"
+                                   f"User-Agent: {UA}\r\n"
+                                   f"Cookie: {cookies_str}\r\n")
+                        ff = _get_ffmpeg_exe()
+                        cmd = [
+                            ff, "-nostdin", "-hide_banner", "-loglevel", "warning",
+                            "-headers", headers,
+                            "-user_agent", UA,
+                            "-reconnect", "1", "-reconnect_streamed", "1",
+                            "-i", m_url,
+                            "-c", "copy", "-bsf:a", "aac_adtstoasc",
+                            "-movflags", "+faststart",
+                            "-y", str(out_path),
+                        ]
+                        try:
+                            r = subprocess.run(cmd, capture_output=True,
+                                               text=True, timeout=3600)
+                            if (r.returncode == 0 and os.path.exists(out_path)
+                                    and os.path.getsize(out_path) > MIN_SIZE):
+                                print(f"      ✅ ffmpeg HLS")
+                                return (os.path.getsize(out_path), True)
+                        except Exception:
+                            pass
+
                     print(f"   ⏭️ فشل: {sname}")
 
-                if not result:
-                    print("\n   ❌ فشلت كل السيرفرات")
-                    return None
+                return None
 
             except Exception as e:
                 import traceback
                 print(f"   ❌ {str(e)[:200]}")
                 traceback.print_exc()
-
     except Exception as e:
         import traceback
         print(f"   ❌ {str(e)[:200]}")
@@ -1280,64 +1025,32 @@ def _process_with_browser(url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# الضغط
+# الدالة العامة
 # ═══════════════════════════════════════════════════════════════
-def _compress(inp, out):
-    if not Path(inp).exists():
-        return False
+def download_episode(series_name, episode_num, url,
+                     media_type="series", item_name=None):
+    """
+    يحمّل حلقة/فيلم ويضغطها إلى 45 ميجا.
+    ★ media_type: series | movie
+    ★ item_name: الاسم الكامل للعنصر (للاسم الملف)
+    """
+    # اسم الملف
+    safe_name = _safe(item_name or series_name)
+    if media_type == "movie":
+        file_prefix = f"movie_{episode_num:02d}"
+    else:
+        file_prefix = f"ep{episode_num:03d}"
 
-    im = Path(inp).stat().st_size / 1048576
-    print(f"   🗜️  {im:.2f}MB → {COMPRESS_SCALE}p...")
-
-    ffmpeg_exe = _get_ffmpeg_exe()
-    cmd = [
-        ffmpeg_exe, "-nostdin", "-hide_banner", "-loglevel", "error",
-        "-i", str(inp),
-        "-vf", f"scale=-2:{COMPRESS_SCALE}",
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-crf", str(config.COMPRESS_CRF),
-        "-threads", "2",
-        "-c:a", "aac", "-b:a", "48k",
-        "-movflags", "+faststart",
-        "-y", str(out),
-    ]
-
-    try:
-        t0 = time.time()
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
-        if r.returncode != 0 or not Path(out).exists():
-            print(f"   ❌ ffmpeg code={r.returncode}")
-            if r.stderr:
-                print(f"   {r.stderr[-400:]}")
-            return False
-        om = Path(out).stat().st_size / 1048576
-        print(f"   ✅ {im:.2f}→{om:.2f}MB في {time.time()-t0:.1f}s")
-        return True
-    except subprocess.TimeoutExpired:
-        print("   ❌ ffmpeg timeout")
-        return False
-    except Exception as e:
-        print(f"   ❌ {e}")
-        return False
-
-
-# ═══════════════════════════════════════════════════════════════
-# الدالة الرئيسية
-# ═══════════════════════════════════════════════════════════════
-def download_episode(series_name, episode, url):
-    safe = _safe(series_name)
-    out_dir = MEDIA_DIR / safe
+    out_dir = MEDIA_DIR / safe_name
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    raw = out_dir / f"ep{episode:03d}_raw.mp4"
-    final = out_dir / f"ep{episode:03d}.mp4"
+    raw = out_dir / f"{file_prefix}_raw.mp4"
+    final = out_dir / f"{file_prefix}.mp4"
 
     if final.exists() and final.stat().st_size > MIN_SIZE:
         print(f"    ↳ موجودة: {final.name}")
         return final
 
-    print(f"    ↳ تحميل الحلقة {episode}...")
+    print(f"    ↳ تحميل {file_prefix}...")
     try:
         res = _process_with_browser(url, raw)
     except Exception as e:
@@ -1345,7 +1058,7 @@ def download_episode(series_name, episode, url):
         res = None
 
     if not res or not raw.exists():
-        print(f"    ⚠️ فشل تحميل {series_name} — حلقة {episode}")
+        print(f"    ⚠️ فشل تحميل {series_name} — {file_prefix}")
         try:
             if raw.exists(): raw.unlink()
         except Exception: pass
@@ -1357,17 +1070,15 @@ def download_episode(series_name, episode, url):
     if config.SKIP_COMPRESS:
         shutil.move(str(raw), str(final))
     else:
-        if not _compress(raw, final):
+        if not _compress_to_target(raw, final):
             print("    ⚠️ فشل الضغط — استخدام الأصلي")
             shutil.move(str(raw), str(final))
 
     if raw.exists(): raw.unlink()
+    if not final.exists(): return None
 
-    if not final.exists():
-        print(f"    ⚠️ لا ملف نهائي")
-        return None
-
-    print(f"    ✅ {final.name} ({final.stat().st_size/1048576:.1f}MB)")
+    final_size = final.stat().st_size / 1048576
+    print(f"    ✅ {final.name} ({final_size:.1f}MB)")
     return final
 
 
@@ -1376,6 +1087,5 @@ if __name__ == "__main__":
     test_url = sys.argv[1] if len(sys.argv) > 1 else (
         "https://u.3seq.cam/video/modablaj-muhtemel-ask-episode-01/"
     )
-    print("🧪 اختبار downloader.py")
     result = download_episode("test", 1, test_url)
     print(f"\n{'✅ نجح: ' + str(result) if result else '⚠️ فشل'}")
