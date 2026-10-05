@@ -771,6 +771,18 @@
           "width": 426,
           "height": 240,
           "duration": 1184
+        },
+        "3": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-03-c3lj/",
+          "title": "مسلسل الخفقان الحلقة 3 مدبلجة",
+          "updated_at": "2026-10-05T06:04:08.948095+00:00",
+          "message_id": 1527,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIF92rDPdhvsTpQQbrJMkF7KRJic50qAALOHwACfV8YUngCrUESXDWiHgQ",
+          "size": 53598299,
+          "width": 426,
+          "height": 240,
+          "duration": 2685
         }
       }
     },
@@ -951,6 +963,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1527,
+      "title": "مسلسل الخفقان — الحلقة 3",
+      "series": "مسلسل الخفقان",
+      "episode": 3,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIF92rDPdhvsTpQQbrJMkF7KRJic50qAALOHwACfV8YUngCrUESXDWiHgQ",
+      "size": 53598299,
+      "width": 426,
+      "height": 240,
+      "duration": 2685,
+      "date": "2026-10-05T06:04:08"
+    },
     {
       "id": 1526,
       "title": "مسلسل الخفقان — الحلقة 2",
@@ -1636,5 +1660,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T06:00:01.752105+00:00"
+  "last_run": "2026-10-05T06:04:08.951116+00:00"
 }
