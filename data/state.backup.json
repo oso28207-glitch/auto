@@ -942,7 +942,7 @@
     "مسلسل الخفقان": {
       "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-42/",
       "slug": "modablaj-acarpinti-episode-42",
-      "last_checked": "2026-10-05T11:10:10",
+      "last_checked": "2026-10-05T16:56:43",
       "episodes": {
         "1": {
           "status": "uploaded",
@@ -1353,185 +1353,230 @@
           "title": "مسلسل الخفقان الحلقة 35 مدبلجة",
           "updated_at": "2026-10-05T14:05:25.986431+00:00",
           "error": "فشلت كل السيرفرات"
+        },
+        "36": {
+          "status": "failed",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-36/",
+          "title": "مسلسل الخفقان الحلقة 36 مدبلجة",
+          "updated_at": "2026-10-05T17:04:14.886700+00:00",
+          "error": "فشلت كل السيرفرات"
         }
       },
       "last_updated": "2026-10-05T14:05:25",
-      "status": "ok"
+      "status": "failed",
+      "failed_at": "2026-10-05T17:04:14",
+      "reason": "فشلت كل السيرفرات"
     },
     "مسلسل المشردون 2 الموسم الثاني": {
       "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e57-jjip/",
       "slug": "modablaj-sahipsizler-episode-s02e57-jjip",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "1": {
+          "status": "failed",
+          "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e01-444x/",
+          "title": "مسلسل المشردون 2 الموسم الثاني الحلقة 1 مدبلجة",
+          "updated_at": "2026-10-05T17:10:11.695331+00:00",
+          "error": "فشلت كل السيرفرات"
+        }
+      },
+      "status": "failed",
+      "failed_at": "2026-10-05T17:10:11",
+      "reason": "فشلت كل السيرفرات"
     },
     "مسلسل حلم اشرف": {
       "url": "https://u.3seq.com/video/modablaj-esref-ruya-episode-152/",
       "slug": "modablaj-esref-ruya-episode-152",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "10": {
+          "status": "failed",
+          "url": "https://u.3seq.com/video/modablaj-esref-ruya-episode-10-2joa/",
+          "title": "مسلسل حلم اشرف الحلقة 10 مدبلجة",
+          "updated_at": "2026-10-05T17:14:49.617493+00:00",
+          "error": "فشلت كل السيرفرات"
+        }
+      },
+      "status": "failed",
+      "failed_at": "2026-10-05T17:14:49",
+      "reason": "فشلت كل السيرفرات"
     },
     "مسلسل نساء حائرات الموسم الخامس": {
       "url": "https://u.3seq.com/video/modablaj-umutsuz-ev-kadinlari-episode-s05e64/",
       "slug": "modablaj-umutsuz-ev-kadinlari-episode-s05e64",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "64": {
+          "status": "failed",
+          "url": "https://u.3seq.com/video/modablaj-umutsuz-ev-kadinlari-episode-s05e64/",
+          "title": "مسلسل نساء حائرات الموسم الخامس الحلقة 64 مدبلجة والاخيرة",
+          "updated_at": "2026-10-05T17:15:40.345967+00:00",
+          "error": "فشلت كل السيرفرات"
+        }
+      },
+      "status": "failed",
+      "failed_at": "2026-10-05T17:15:40",
+      "reason": "فشلت كل السيرفرات"
     },
     "مسلسل الجيلاني": {
       "url": "https://u.3seq.com/video/modablaj-hay-sultan-episode-20/",
       "slug": "modablaj-hay-sultan-episode-20",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل في الظل": {
       "url": "https://u.3seq.com/video/modablaj-yeralti-episode-80/",
       "slug": "modablaj-yeralti-episode-80",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل الوريث &#8211; ولي العهد": {
       "url": "https://u.3seq.com/video/modablaj-veliaht-episode-26/",
       "slug": "modablaj-veliaht-episode-26",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل ورود وذنوب": {
       "url": "https://u.3seq.com/video/modablaj-guller-ve-gunahlar-episode-96-ammj/",
       "slug": "modablaj-guller-ve-gunahlar-episode-96-ammj",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل المشردون": {
       "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-96-pz4o/",
       "slug": "modablaj-sahipsizler-episode-96-pz4o",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل جبل القلب (جبل جونول)": {
       "url": "https://u.3seq.com/video/modablaj-gonul-dagi-episode-25-qoom/",
       "slug": "modablaj-gonul-dagi-episode-25-qoom",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل شراب التوت 3 الموسم الثالث": {
       "url": "https://u.3seq.com/video/modablaj-kizilcik-serbeti-episode-s03e127-7pxp/",
       "slug": "modablaj-kizilcik-serbeti-episode-s03e127-7pxp",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل شراب التوت 2 الموسم الثاني": {
       "url": "https://u.3seq.com/video/modablaj-kizilcik-serbeti-episode-s02e119-1dmq/",
       "slug": "modablaj-kizilcik-serbeti-episode-s02e119-1dmq",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل التحقيق": {
       "url": "https://u.3seq.com/video/modablaj-sorgu-episode-02-nza0/",
       "slug": "modablaj-sorgu-episode-02-nza0",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل ابواب القدر 2 الموسم الثاني": {
       "url": "https://u.3seq.com/video/modablaj-zamanin-kapilari-episode-s02e10-dntn/",
       "slug": "modablaj-zamanin-kapilari-episode-s02e10-dntn",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل القلعة (المنظمة)": {
-      "url": "https://u.3seq.com/video/modablaj-teskilat-episode-05-qm6r/",
-      "slug": "modablaj-teskilat-episode-05-qm6r",
-      "last_checked": "2026-10-05T11:10:10"
+      "url": "https://u.3seq.com/video/modablaj-teskilat-episode-01-2-49w2/",
+      "slug": "modablaj-teskilat-episode-01-2-49w2",
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل فاطمة الموسم الاول": {
       "url": "https://u.3seq.com/video/modablaj-fatmagulun-episode-s01e90-seod/",
       "slug": "modablaj-fatmagulun-episode-s01e90-seod",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل ورود حمراء 2 الموسم الثاني": {
       "url": "https://u.3seq.com/video/modablaj-kizil-goncalar-episode-s02e12-siy6/",
       "slug": "modablaj-kizil-goncalar-episode-s02e12-siy6",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل صلاح الدين الايوبي": {
       "url": "https://u.3seq.com/video/modablaj-selahaddin-eyyubi-episode-01-y3zy/",
       "slug": "modablaj-selahaddin-eyyubi-episode-01-y3zy",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل عندما يعشق الرجل": {
-      "url": "https://u.3seq.com/video/erkek-severse-episode-17-mixk/",
-      "slug": "erkek-severse-episode-17-mixk",
-      "last_checked": "2026-10-05T11:10:10"
+      "url": "https://u.3seq.com/video/erkek-severse-episode-03-trfv/",
+      "slug": "erkek-severse-episode-03-trfv",
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل العشق المر": {
-      "url": "https://u.3seq.com/video/modablaj-aci-ask-episode-08-vxy5/",
-      "slug": "modablaj-aci-ask-episode-08-vxy5",
-      "last_checked": "2026-10-05T11:10:10"
+      "url": "https://u.3seq.com/video/modablaj-aci-ask-episode-10-rg72/",
+      "slug": "modablaj-aci-ask-episode-10-rg72",
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل شراب التوت": {
       "url": "https://u.3seq.com/video/modablaj-kizilcik-serbeti-episode-05-em51/",
       "slug": "modablaj-kizilcik-serbeti-episode-05-em51",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:44"
     },
     "مسلسل ثلاث اخوات": {
       "url": "https://u.3seq.com/video/modablaj-uc-kiz-kardes-episode-122-qxzg/",
       "slug": "modablaj-uc-kiz-kardes-episode-122-qxzg",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل حكاية زواج": {
       "url": "https://u.3seq.com/video/modablaj-kendi-dusen-aglamaz-episode-03-p3vh/",
       "slug": "modablaj-kendi-dusen-aglamaz-episode-03-p3vh",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل الحقيقة والخيال": {
       "url": "https://u.3seq.com/video/modablaj-hayaller-ve-hayatlar-episode-01-tdns/",
       "slug": "modablaj-hayaller-ve-hayatlar-episode-01-tdns",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:43"
     },
     "مسلسل باهار": {
       "url": "https://u.3seq.com/video/modablaj-bahar-episode-04-s7pk/",
       "slug": "modablaj-bahar-episode-04-s7pk",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:44"
     },
     "مسلسل انت من احببت": {
       "url": "https://u.3seq.com/video/modablaj-sevdigim-sensin-episode-75/",
       "slug": "modablaj-sevdigim-sensin-episode-75",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:44"
     },
     "مسلسل لعبة الحياة": {
       "url": "https://u.3seq.com/video/modablaj-hayat-bugun-episode-40/",
       "slug": "modablaj-hayat-bugun-episode-40",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:44"
     },
     "مسلسل اخي": {
       "url": "https://u.3seq.com/video/modablaj-a-b-i-episode-90/",
       "slug": "modablaj-a-b-i-episode-90",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:44"
     },
     "مسلسل يوم اخر": {
       "url": "https://u.3seq.com/video/modablaj-baska-bir-gun-episode-31/",
       "slug": "modablaj-baska-bir-gun-episode-31",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:44"
     },
     "مسلسل نيران الحسد": {
       "url": "https://u.3seq.com/video/modablaj-kiskanmak-episode-165/",
       "slug": "modablaj-kiskanmak-episode-165",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:44"
     },
     "مسلسل المحتالون": {
       "url": "https://u.3seq.com/video/modablaj-sahtekarlar-episode-110/",
       "slug": "modablaj-sahtekarlar-episode-110",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:44"
     },
     "مسلسل ورود حمراء": {
       "url": "https://u.3seq.com/video/modablaj-kizil-goncalar-episode-63-nsqn/",
       "slug": "modablaj-kizil-goncalar-episode-63-nsqn",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:44"
     },
     "مسلسل عيناك كالبحر الاسود": {
       "url": "https://u.3seq.com/video/modablaj-gozleri-karadeniz-episode-80-iose/",
       "slug": "modablaj-gozleri-karadeniz-episode-80-iose",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:44"
     },
     "مسلسل ميرا وسليم": {
       "url": "https://u.3seq.com/video/modablaj-ask-ve-gozyasi-episode-35-n6sr/",
       "slug": "modablaj-ask-ve-gozyasi-episode-35-n6sr",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:44"
     },
     "مسلسل ليلى": {
       "url": "https://u.3seq.com/video/modablaj-leyla-episode-200-k4k1/",
       "slug": "modablaj-leyla-episode-200-k4k1",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:44"
     },
     "مسلسل فندق الاحلام": {
       "url": "https://u.3seq.com/video/modablaj-cift-kisilik-oda-episode-40-ecig/",
       "slug": "modablaj-cift-kisilik-oda-episode-40-ecig",
-      "last_checked": "2026-10-05T11:10:10"
+      "last_checked": "2026-10-05T16:56:44"
     },
     "حياتي الرائعة": {
       "url": "https://t.me/shoofcima",
@@ -37330,7 +37375,20 @@
       "duration": 2261,
       "date": "2024-05-26T16:16:07",
       "source": "telegram:@shoofFilm"
+    },
+    {
+      "id": 524,
+      "title": "البيت بيتك 2 — الحلقة 1",
+      "series": "البيت بيتك 2",
+      "episode": 1,
+      "file_id": "BAACAgQAAx0Cf0Q07AACAgxqw9EPNioCE1j3YBv09Po9iIcgOQACNhEAAutJmVLLzktMQNEwaB4E",
+      "size": 131314961,
+      "width": 640,
+      "height": 360,
+      "duration": 2500,
+      "date": "2024-05-26T16:14:05",
+      "source": "telegram:@shoofFilm"
     }
   ],
-  "last_run": "2026-10-05T16:32:21.347036+00:00"
+  "last_run": "2026-10-05T17:15:40.386156+00:00"
 }
