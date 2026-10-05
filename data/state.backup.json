@@ -637,6 +637,18 @@
           "width": 426,
           "height": 240,
           "duration": 2860
+        },
+        "3": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-tasacak-bu-deniz-episode-03-14vv/",
+          "title": "مسلسل هذا البحر سوف يفيض الحلقة 3 مدبلجة",
+          "updated_at": "2026-10-05T05:10:57.604607+00:00",
+          "message_id": 1518,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIF7mrDMWGcEuOeOLlhlmjBSdZwAAHNMQACqR8AAn1fGFLT5bRhzAqXpB4E",
+          "size": 54355312,
+          "width": 426,
+          "height": 240,
+          "duration": 2640
         }
       }
     },
@@ -827,6 +839,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1517,
+      "title": "مسلسل هذا البحر سوف يفيض — الحلقة 2",
+      "series": "مسلسل هذا البحر سوف يفيض",
+      "episode": 2,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIF7WrDMGb_SSCYQEV2YGPtRSkyJdDMAAKmHwACfV8YUs-11B_YzuQaHgQ",
+      "size": 54039498,
+      "width": 426,
+      "height": 240,
+      "duration": 2860,
+      "date": "2026-10-05T05:06:46"
+    },
     {
       "id": 1516,
       "title": "مسلسل هذا البحر سوف يفيض — الحلقة 1",
@@ -1392,5 +1416,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T05:06:46.630870+00:00"
+  "last_run": "2026-10-05T05:10:57.604620+00:00"
 }
