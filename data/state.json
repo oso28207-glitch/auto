@@ -819,6 +819,18 @@
           "width": 426,
           "height": 240,
           "duration": 2698
+        },
+        "7": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-07-cvk5/",
+          "title": "مسلسل الخفقان الحلقة 7 مدبلجة",
+          "updated_at": "2026-10-05T11:27:28.268970+00:00",
+          "message_id": 1531,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIF-2rDiaDhWDHX3HX5S_z4JH4V_N1dAAIvIAACfV8YUkDV68Pwg1JmHgQ",
+          "size": 53011062,
+          "width": 426,
+          "height": 240,
+          "duration": 2673
         }
       }
     },
@@ -999,6 +1011,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1531,
+      "title": "مسلسل الخفقان — الحلقة 7",
+      "series": "مسلسل الخفقان",
+      "episode": 7,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIF-2rDiaDhWDHX3HX5S_z4JH4V_N1dAAIvIAACfV8YUkDV68Pwg1JmHgQ",
+      "size": 53011062,
+      "width": 426,
+      "height": 240,
+      "duration": 2673,
+      "date": "2026-10-05T11:27:28"
+    },
     {
       "id": 1530,
       "title": "مسلسل الخفقان — الحلقة 6",
@@ -1732,5 +1756,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T11:23:16.075995+00:00"
+  "last_run": "2026-10-05T11:27:28.271960+00:00"
 }
