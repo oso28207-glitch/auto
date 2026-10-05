@@ -1143,6 +1143,20 @@
           "width": 426,
           "height": 240,
           "duration": 2514
+        },
+        "34": {
+          "status": "failed",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-34/",
+          "title": "مسلسل الخفقان الحلقة 34 مدبلجة",
+          "updated_at": "2026-10-05T13:52:03.978200+00:00",
+          "error": "فشلت كل السيرفرات"
+        },
+        "35": {
+          "status": "failed",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-35/",
+          "title": "مسلسل الخفقان الحلقة 35 مدبلجة",
+          "updated_at": "2026-10-05T14:05:25.986431+00:00",
+          "error": "فشلت كل السيرفرات"
         }
       }
     },
@@ -1323,6 +1337,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1557,
+      "title": "مسلسل الخفقان — الحلقة 33",
+      "series": "مسلسل الخفقان",
+      "episode": 33,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIGFWrDqKSFjPhye8Iga9LZldRRJi8fAALBIAACfV8gUtMeu-WjaVnjHgQ",
+      "size": 52776181,
+      "width": 426,
+      "height": 240,
+      "duration": 2514,
+      "date": "2026-10-05T13:39:49"
+    },
     {
       "id": 1556,
       "title": "مسلسل الخفقان — الحلقة 32",
@@ -2368,5 +2394,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T13:39:49.149981+00:00"
+  "last_run": "2026-10-05T14:05:25.986449+00:00"
 }
