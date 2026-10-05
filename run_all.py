@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """
-run_all.py — المنسق الموحد مع دعم مصادر متعددة
+run_all.py — المنسق الموحد مع الفحص الثلاثي
 
-★ الميزات:
-  1. ★ قفل ذكي: يُتجاهل في GitHub Actions، ويكتشف العمليات الميتة محلياً.
-  2. مصادر متعددة (u3seq, arabseed, ...).
-  3. فحص قنوات Telegram قبل التحميل.
-  4. رفع مع عنوان منسق تلقائياً.
-  5. بناء + push فوري بعد كل حلقة.
-  6. إيقاف تلقائي بعد MAX_RUNTIME_SECONDS.
+★ الفحص الثلاثي قبل التحميل:
+  1. state.json (ما رُفع سابقاً).
+  2. قنوات Telegram (shoofcima, shoofFilm).
+  3. الموقع الخارجي (u.3seq).
 """
 
 import asyncio
@@ -22,10 +19,10 @@ from config import config, DATA_DIR, MEDIA_DIR
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★ القفل الذكي
+# القفل الذكي
 # ═══════════════════════════════════════════════════════════════
 LOCK_FILE = DATA_DIR / ".run.lock"
-LOCK_TTL = 3600 * 3  # 3 ساعات
+LOCK_TTL = 3600 * 3
 
 
 def _is_github_actions():
@@ -33,23 +30,16 @@ def _is_github_actions():
 
 
 def _is_process_alive(pid):
-    """يتحقق إن كان الـ process لا يزال يعمل."""
     if pid <= 0:
         return False
     try:
-        os.kill(pid, 0)  # signal 0 = فحص فقط
+        os.kill(pid, 0)
         return True
     except (OSError, ProcessLookupError):
         return False
 
 
 def acquire_lock():
-    """
-    ★ قفل ذكي:
-      1. في GitHub Actions: تجاهل تماماً (كل run معزول).
-      2. محلياً: تحقق من PID، احذف القفل الميت.
-    """
-    # ★ في GitHub Actions — لا حاجة للقفل
     if _is_github_actions():
         print("ℹ️  GitHub Actions — تخطي القفل")
         return True
@@ -62,26 +52,18 @@ def acquire_lock():
             old_ts = float(parts[1]) if len(parts) > 1 else 0
             age = time.time() - old_ts
 
-            # قفل قديم
             if age > LOCK_TTL:
-                print(f"⚠️ قفل قديم ({age/60:.1f}د) — حذفه")
+                print(f"⚠️ قفل قديم — حذفه")
                 LOCK_FILE.unlink()
             else:
-                # فحص PID
                 if _is_process_alive(old_pid) and old_pid != os.getpid():
-                    print(f"⚠️ سكربت آخر يعمل (PID {old_pid}, منذ {age/60:.1f}د)")
+                    print(f"⚠️ سكربت آخر يعمل (PID {old_pid})")
                     return False
-                else:
-                    print(f"⚠️ قفل ميت (PID {old_pid}) — حذفه")
-                    LOCK_FILE.unlink()
-        except Exception as e:
-            print(f"⚠️ قفل تالف: {e} — حذفه")
-            try:
                 LOCK_FILE.unlink()
-            except Exception:
-                pass
+        except Exception:
+            try: LOCK_FILE.unlink()
+            except Exception: pass
 
-    # اكتب قفل جديد
     try:
         LOCK_FILE.write_text(f"{os.getpid()}|{time.time()}")
     except Exception:
@@ -98,64 +80,46 @@ def release_lock():
 
 
 # ═══════════════════════════════════════════════════════════════
-# Git sync
+# Git
 # ═══════════════════════════════════════════════════════════════
 def git_sync():
-    """git pull --rebase قبل أي عملية."""
     if not _is_github_actions():
         return
     try:
-        subprocess.run(
-            ["git", "pull", "--rebase", "--autostash"],
-            capture_output=True, timeout=60,
-        )
+        subprocess.run(["git", "pull", "--rebase", "--autostash"],
+                       capture_output=True, timeout=60)
     except Exception:
         pass
 
 
 def git_push_docs(force=False):
-    """يدفع docs/ و data/ إلى GitHub."""
     if not _is_github_actions():
         return False
     try:
-        subprocess.run(
-            ["git", "config", "user.name", "github-actions[bot]"],
-            capture_output=True, timeout=10,
-        )
-        subprocess.run(
-            ["git", "config", "user.email",
-             "github-actions[bot]@users.noreply.github.com"],
-            capture_output=True, timeout=10,
-        )
+        subprocess.run(["git", "config", "user.name", "github-actions[bot]"],
+                       capture_output=True, timeout=10)
+        subprocess.run(["git", "config", "user.email",
+                        "github-actions[bot]@users.noreply.github.com"],
+                       capture_output=True, timeout=10)
+        subprocess.run(["git", "add", "-f", "docs/", "data/"],
+                       capture_output=True, timeout=30)
 
-        subprocess.run(
-            ["git", "add", "-f", "docs/", "data/"],
-            capture_output=True, timeout=30,
-        )
-
-        r = subprocess.run(
-            ["git", "diff", "--staged", "--quiet"],
-            capture_output=True, timeout=10,
-        )
+        r = subprocess.run(["git", "diff", "--staged", "--quiet"],
+                           capture_output=True, timeout=10)
         if r.returncode == 0:
             return False
 
         ts = time.strftime("%Y-%m-%d %H:%M")
-        subprocess.run(
-            ["git", "commit", "-m", f"🎬 تحديث تلقائي: {ts}"],
-            capture_output=True, timeout=30,
-        )
+        subprocess.run(["git", "commit", "-m", f"🎬 تحديث تلقائي: {ts}"],
+                       capture_output=True, timeout=30)
 
         r = subprocess.run(["git", "push"], capture_output=True, timeout=90)
         if r.returncode == 0:
             print(f"   🚀 تم الدفع")
             return True
 
-        # محاولة بعد rebase
-        subprocess.run(
-            ["git", "pull", "--rebase", "--autostash"],
-            capture_output=True, timeout=90,
-        )
+        subprocess.run(["git", "pull", "--rebase", "--autostash"],
+                       capture_output=True, timeout=90)
         r2 = subprocess.run(["git", "push"], capture_output=True, timeout=90)
         return r2.returncode == 0
     except Exception as e:
@@ -169,7 +133,7 @@ def git_push_docs(force=False):
 async def main():
     if not acquire_lock():
         print("⏭️ الخروج بسبب القفل")
-        return 0  # نُعيد 0 لتفادي فشل الـ workflow
+        return 0
 
     try:
         git_sync()
@@ -178,14 +142,13 @@ async def main():
         print("""
 ╔══════════════════════════════════════════════════════╗
 ║           شوف — Shoof Automation                     ║
-║   مصادر متعددة • تصنيفات • ضغط ذكي • 45MB           ║
+║   فحص ثلاثي • تصنيفات • ضغط ذكي • 45MB             ║
 ╚══════════════════════════════════════════════════════╝
 """)
 
         config.validate()
         print("✅ الإعدادات صحيحة")
 
-        # ═══ إحصائيات ═══
         from database import db
         s = db.stats()
         print(f"\n📊 الحالة الحالية:")
@@ -196,24 +159,30 @@ async def main():
 
         print(f"\n⏱️  الحد الزمني: {config.MAX_RUNTIME_SECONDS/60:.1f} دقيقة")
         print(f"📦 حجم أقصى: {config.COMPRESS_MAX_SIZE_MB}MB @ {config.COMPRESS_SCALE}p")
-        print(f"🔄 تحديث فوري: {'مفعّل' if config.REALTIME_PUSH else 'معطّل'}")
         print(f"📡 فحص القنوات: {config.CHECK_CHANNELS or 'معطّل'}")
 
-        # ═══ 1) تحميل المصادر ═══
-        from sources.u3seq import U3SeqSource
+        # ★★★ فحص Telegram
+        existing_eps = {}
+        try:
+            from telegram_checker import (
+                fetch_existing_episodes, is_episode_uploaded, get_stats
+            )
+            existing_eps = await fetch_existing_episodes()
+            ch_stats = get_stats(existing_eps)
+            print(f"\n📡 Telegram: {ch_stats['episodes']} حلقة "
+                  f"({ch_stats['series']} عمل)")
+        except Exception as e:
+            print(f"\n⚠️ فشل فحص Telegram: {str(e)[:150]}")
 
+        # ★★★ فحص الموقع
+        from sources.u3seq import U3SeqSource
         sources = []
         enabled = [s.strip() for s in config.ENABLED_SOURCES.split(",") if s.strip()]
         if "u3seq" in enabled:
             sources.append(U3SeqSource())
-        # ★ أضف مصادر أخرى هنا
-        # if "arabseed" in enabled:
-        #     from sources.arabseed import ArabSeedSource
-        #     sources.append(ArabSeedSource())
 
         print(f"\n📡 المصادر: {', '.join(s.name for s in sources)}")
 
-        # ═══ 2) جلب العناصر ═══
         all_items = []
         for src in sources:
             try:
@@ -222,39 +191,17 @@ async def main():
             except Exception as e:
                 print(f"⚠️ فشل {src.name}: {str(e)[:150]}")
             finally:
-                try:
-                    src.cleanup()
-                except Exception:
-                    pass
+                try: src.cleanup()
+                except Exception: pass
 
         print(f"\n📊 إجمالي: {len(all_items)} عنصر")
-        series_count = sum(1 for x in all_items if x.type == "series")
-        movie_count = sum(1 for x in all_items if x.type == "movie")
-        print(f"   • مسلسلات: {series_count}")
-        print(f"   • أفلام: {movie_count}")
 
         if not all_items:
-            print("\n✅ لا عناصر — الخروج")
             return 0
 
-        # ═══ 3) فحص القنوات ═══
-        existing_eps = {}
-        try:
-            from telegram_checker import (
-                fetch_existing_episodes, is_episode_uploaded, get_stats
-            )
-            existing_eps = await fetch_existing_episodes()
-            ch_stats = get_stats(existing_eps)
-            print(f"\n📡 حلقات في القنوات: {ch_stats['episodes']} "
-                  f"({ch_stats['series']} عمل)")
-        except Exception as e:
-            print(f"\n⚠️ فشل فحص القنوات: {str(e)[:150]}")
-            existing_eps = {}
-
-        # ═══ 4) تحميل ورفع ═══
+        # ★★★ التحميل والرفع
         from downloader import download_episode
         from uploader import uploader
-        from telegram_checker import is_episode_uploaded
         from builder import build_incremental
 
         await uploader.start()
@@ -271,20 +218,35 @@ async def main():
 
                 if (config.MAX_EPISODES_PER_RUN > 0
                         and uploaded_count >= config.MAX_EPISODES_PER_RUN):
-                    print(f"\n⏸️  وصلنا للحد ({config.MAX_EPISODES_PER_RUN})")
                     break
 
-                # فلترة الأجزاء الجديدة
+                # ★★★ الفحص الثلاثي
                 new_parts = []
                 for part in item.parts:
                     pnum = part.get("number", 0)
-                    if db.episode_status(item.name, pnum) == "uploaded":
+                    purl = part.get("url", "")
+
+                    # فحص 1: state.json
+                    status = db.episode_status(item.name, pnum)
+                    if status == "uploaded":
+                        print(f"   ⏭️ [state] {item.name} #{pnum}")
                         skipped_count += 1
                         continue
-                    if (existing_eps
-                            and is_episode_uploaded(existing_eps, item.name, pnum)):
+
+                    # فحص 2: Telegram
+                    if existing_eps and is_episode_uploaded(existing_eps, item.name, pnum):
+                        print(f"   ⏭️ [telegram] {item.name} #{pnum}")
+                        db.set_episode(item.name, pnum,
+                                       status="uploaded",
+                                       source="telegram_existing")
                         skipped_count += 1
                         continue
+
+                    # فحص 3: الرابط
+                    if not purl or not purl.startswith("http"):
+                        print(f"   ⚠️ [url] {item.name} #{pnum} — رابط غير صالح")
+                        continue
+
                     new_parts.append(part)
 
                 if not new_parts:
@@ -301,18 +263,13 @@ async def main():
 
                 for part in new_parts:
                     if time.time() - start >= config.MAX_RUNTIME_SECONDS:
-                        print(f"\n   ⏰ انتهى الوقت")
                         break
 
                     pnum = part.get("number", 0)
                     purl = part.get("url", "")
-                    if not purl:
-                        continue
-
                     part_label = "الجزء" if item.type == "movie" else "الحلقة"
                     print(f"\n   ── {part_label} {pnum} ──")
 
-                    # تحميل
                     try:
                         file_path = await asyncio.to_thread(
                             download_episode,
@@ -326,10 +283,8 @@ async def main():
                     if not file_path:
                         db.mark_failed(item.name, pnum, "فشل التحميل")
                         failed_count += 1
-
-                        # إذا فشلت أول حلقة، نتخطى العمل كاملاً
                         if pnum == first_part:
-                            print(f"   🚫 تخطي: {item.name} (فشلت أول حلقة)")
+                            print(f"   🚫 تخطي: {item.name}")
                             db.set_series(item.name, {
                                 "status": "failed",
                                 "reason": "فشلت أول حلقة",
@@ -337,14 +292,14 @@ async def main():
                             break
                         continue
 
-                    # رفع
                     try:
                         info = await uploader.upload(
                             file_path=file_path,
-                            item_name=item.name_ar or item.name,
+                            item_name=item.name,
                             media_type=item.type,
                             part_number=pnum,
                             season=item.season,
+                            item_name_ar=item.name_ar or item.name,
                         )
                     except Exception as e:
                         print(f"   ❌ فشل رفع: {str(e)[:150]}")
@@ -354,7 +309,6 @@ async def main():
                         except Exception: pass
                         continue
 
-                    # حفظ
                     db.set_episode(
                         item.name, pnum,
                         status="uploaded",
@@ -391,19 +345,16 @@ async def main():
                         "status": "ok",
                     })
                     uploaded_count += 1
+                    print(f"   ✅ «{info['caption']}» ({uploaded_count})")
 
-                    print(f"   ✅ {info['caption']} (المجموع: {uploaded_count})")
-
-                    # بناء + push فوري
                     if config.AUTO_BUILD:
                         try:
                             build_incremental(changed_series=[item.name])
                             if config.REALTIME_PUSH:
                                 git_push_docs()
                         except Exception as e:
-                            print(f"   ⚠️ فشل البناء/الدفع: {str(e)[:100]}")
+                            print(f"   ⚠️ {str(e)[:100]}")
 
-                    # حذف الملف
                     if not config.KEEP_MEDIA:
                         try: file_path.unlink()
                         except Exception: pass
@@ -411,7 +362,6 @@ async def main():
         finally:
             await uploader.stop()
 
-        # ═══ 5) بناء نهائي + push ═══
         elapsed = time.time() - start
         print(f"\n{'═' * 60}")
         print(f"⏱️  المدة: {elapsed/60:.1f} دقيقة")
@@ -424,24 +374,20 @@ async def main():
             try:
                 build_incremental()
                 git_push_docs(force=True)
-            except Exception as e:
-                print(f"⚠️ فشل البناء النهائي: {str(e)[:150]}")
+            except Exception:
+                pass
 
         return 0
-
     except Exception as e:
         import traceback
-        print(f"\n💥 خطأ غير متوقع: {e}")
+        print(f"\n💥 خطأ: {e}")
         traceback.print_exc()
-
-        # محاولة حفظ ما تم
         try:
             from builder import build_incremental
             build_incremental()
             git_push_docs(force=True)
         except Exception:
             pass
-
         return 1
     finally:
         release_lock()
