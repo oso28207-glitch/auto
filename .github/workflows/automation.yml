@@ -8,11 +8,11 @@ on:
         required: false
         default: '0'
       max_runtime_minutes:
-        description: 'الحد الزمني (دقائق)'
+        description: 'الحد الزمني للدورة (دقائق)'
         required: false
         default: '165'
 
-  # كل 4 ساعات
+  # تشغيل تلقائي كل 4 ساعات
   schedule:
     - cron: '0 */4 * * *'
 
@@ -34,25 +34,38 @@ jobs:
     timeout-minutes: 220
 
     steps:
+      # ═══════════════════════════════════════════════════════════
+      # 1) Checkout
+      # ═══════════════════════════════════════════════════════════
       - name: 📥 Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
           fetch-depth: 1
 
+      # ═══════════════════════════════════════════════════════════
+      # 2) Python
+      # ═══════════════════════════════════════════════════════════
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
+      # ═══════════════════════════════════════════════════════════
+      # 3) ffmpeg — من Ubuntu (سريع + مستقر)
+      # ═══════════════════════════════════════════════════════════
       - name: 📦 Install ffmpeg
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
+          echo "── التحقق ──"
           ffmpeg -version | head -1
           ffprobe -version | head -1
 
+      # ═══════════════════════════════════════════════════════════
+      # 4) Xvfb + Chrome
+      # ═══════════════════════════════════════════════════════════
       - name: 🖥️ Install Xvfb + Chrome
         run: |
           sudo apt-get update -qq
@@ -65,13 +78,22 @@ jobs:
           sleep 2
           echo "✅ Xvfb و Chrome جاهزان"
 
+      # ═══════════════════════════════════════════════════════════
+      # 5) Python deps
+      # ═══════════════════════════════════════════════════════════
       - name: 📦 Install Python deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          echo "── pip check ──"
           pip check || true
+          echo "── التحقق ──"
           yt-dlp --version
+          python -c "import imageio_ffmpeg; print('imageio-ffmpeg:', imageio_ffmpeg.get_ffmpeg_exe())" || true
 
+      # ═══════════════════════════════════════════════════════════
+      # 6) إنشاء .env
+      # ═══════════════════════════════════════════════════════════
       - name: 🔑 Create .env
         env:
           API_ID: ${{ secrets.API_ID }}
@@ -102,41 +124,53 @@ jobs:
             echo "AUTO_BUILD=true"
             echo "SKIP_COMPRESS=false"
             echo "KEEP_MEDIA=false"
-            # ★ الضغط — 45 ميجا
+            # ═══ الضغط — 45 ميجا ═══
             echo "COMPRESS_SCALE=240"
             echo "COMPRESS_CRF=32"
             echo "COMPRESS_PRESET=slow"
             echo "COMPRESS_AUDIO_BITRATE=32k"
             echo "COMPRESS_MAX_SIZE_MB=45"
             echo "COMPRESS_USE_TWOPASS=true"
-            # ★ فحص القنوات
+            # ═══ فحص القنوات ═══
             echo "CHECK_CHANNELS=${CHECK_CHANNELS:-shoofcima,shoofFilm}"
             echo "CHECK_CHANNEL_LIMIT=3000"
             echo "CHECK_CACHE_TTL=1800"
-            # ★ التحديث الفوري
+            # ═══ التحديث الفوري ═══
             echo "REALTIME_PUSH=true"
             echo "REALTIME_PUSH_INTERVAL=60"
-            # ★ yt-dlp مع watchdog
+            # ═══ yt-dlp ═══
             echo "YTDLP_CONCURRENT=16"
             echo "YTDLP_THROTTLED_RATE=2M"
             echo "YTDLP_MIN_SPEED_KB=800"
-            echo "YTDLP_MAX_STALL=30"
-            # ★ cffi workers
+            echo "YTDLP_MAX_STALL=20"
+            # ═══ Timeouts صارمة ═══
+            echo "YTDLP_TIMEOUT=120"
+            echo "CF_TIMEOUT=30"
+            echo "BROWSER_TIMEOUT=180"
+            echo "SERVER_TIMEOUT=180"
+            # ═══ cffi ═══
             echo "CURL_CFFI_WORKERS=8"
           } > .env
 
           echo "── .env (القيم الحساسة محجوبة) ──"
           grep -v -E "API_HASH|SESSION_STRING|BOT_TOKEN|API_ID" .env
 
+      # ═══════════════════════════════════════════════════════════
+      # 7) تشغيل النظام
+      # ═══════════════════════════════════════════════════════════
       - name: 🚀 Run all
         run: python run_all.py
 
+      # ═══════════════════════════════════════════════════════════
+      # 8) حفظ الحالة (حتى عند الفشل)
+      # ═══════════════════════════════════════════════════════════
       - name: 💾 Final commit
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f data/ docs/ 2>/dev/null || true
+
           if git diff --staged --quiet; then
             echo "لا تغييرات"
           else
@@ -150,9 +184,19 @@ jobs:
             done
           fi
 
+      # ═══════════════════════════════════════════════════════════
+      # 9) تنظيف
+      # ═══════════════════════════════════════════════════════════
       - name: 🧹 Cleanup
         if: always()
         run: |
+          # ★ اقتل أي عمليات متبقية
+          pkill -9 -f "yt-dlp" 2>/dev/null || true
+          pkill -9 -f "chrome" 2>/dev/null || true
+          pkill -9 -f "ffmpeg" 2>/dev/null || true
+
           rm -rf data/media/* 2>/dev/null || true
-          rm -f /tmp/tmp*.txt /tmp/tmp*.log 2>/dev/null || true
+          rm -f /tmp/tmp*.txt /tmp/tmp*.log /tmp/tmp*.mp4 /tmp/tmp*.ts 2>/dev/null || true
+
+          echo "── استخدام القرص ──"
           df -h | head -3
