@@ -245,6 +245,18 @@
           "width": 426,
           "height": 240,
           "duration": 1810
+        },
+        "35": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-35/",
+          "title": "مسلسل ما زلت في 17 الحلقة 35 مدبلجة",
+          "updated_at": "2026-10-05T00:24:07.813730+00:00",
+          "message_id": 1490,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIF0mrC7iegytTLkBe6yN1gqnnNjs6AAAJuHwACfV8YUtfGQjVOhym-HgQ",
+          "size": 35135225,
+          "width": 426,
+          "height": 240,
+          "duration": 1798
         }
       }
     },
@@ -445,6 +457,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1489,
+      "title": "مسلسل ما زلت في 17 — الحلقة 34",
+      "series": "مسلسل ما زلت في 17",
+      "episode": 34,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIF0WrC7WEuP2uCWilAnuUVsIYcZ9YMAAJtHwACfV8YUgIWCY-Qke24HgQ",
+      "size": 36612420,
+      "width": 426,
+      "height": 240,
+      "duration": 1810,
+      "date": "2026-10-05T00:20:49"
+    },
     {
       "id": 1488,
       "title": "مسلسل ما زلت في 17 — الحلقة 33",
@@ -674,5 +698,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T00:20:49.795715+00:00"
+  "last_run": "2026-10-05T00:24:07.813739+00:00"
 }
