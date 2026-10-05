@@ -148,46 +148,65 @@ def _verify_merged(path):
 
 
 def _smart_concat(sorted_paths, out):
+    """
+    ★ إصلاح: 5 استراتيجيات + chunked + طباعة كل محاولة.
+    """
     total = len(sorted_paths)
     if total == 0:
+        print(f"      ❌ قائمة فارغة")
         return False
 
     print(f"      🔗 دمج {total} segment...")
 
+    # ═══ الاستراتيجيات (مرتبة من الأفضل للأسوأ) ═══
     strategies = [
         (["-c", "copy", "-bsf:a", "aac_adtstoasc",
-          "-movflags", "+faststart", "-f", "mp4"], "mp4-copy-aac"),
-        (["-c", "copy", "-movflags", "+faststart", "-f", "mp4"], "mp4-copy"),
-        (["-c", "copy", "-f", "mpegts"], "ts-copy"),
+          "-movflags", "+faststart",
+          "-max_muxing_queue_size", "4096",
+          "-fflags", "+genpts+igndts",
+          "-f", "mp4"], "mp4-copy-aac"),
+        (["-c", "copy", "-movflags", "+faststart",
+          "-max_muxing_queue_size", "4096",
+          "-fflags", "+genpts",
+          "-f", "mp4"], "mp4-copy"),
+        (["-c", "copy", "-max_muxing_queue_size", "4096",
+          "-fflags", "+genpts",
+          "-f", "mpegts"], "ts-copy"),
+        (["-c:v", "copy", "-c:a", "aac", "-b:a", "64k",
+          "-movflags", "+faststart",
+          "-max_muxing_queue_size", "4096",
+          "-f", "mp4"], "mp4-copy-aac-re"),
         (["-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-          "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", "-f", "mp4"],
-         "reencode"),
+          "-c:a", "aac", "-b:a", "64k",
+          "-movflags", "+faststart",
+          "-f", "mp4"], "reencode"),
     ]
 
-    # للعدد الصغير — مباشرة
-    if total <= 100:
-        listfile = tempfile.mktemp(suffix=".txt")
-        with open(listfile, "w", encoding="utf-8") as f:
-            for p in sorted_paths:
-                sp = str(p).replace("\\", "/").replace("'", r"'\''")
-                f.write(f"file '{sp}'\n")
+    # ═══ 1) محاولة الدمج المباشر أولاً (بغض النظر عن العدد) ═══
+    print(f"      📌 محاولة دمج مباشر لـ {total} segment...")
+    listfile = tempfile.mktemp(suffix=".txt")
+    with open(listfile, "w", encoding="utf-8") as f:
+        for p in sorted_paths:
+            sp = str(p).replace("\\", "/").replace("'", r"'\''")
+            f.write(f"file '{sp}'\n")
 
-        for args, name in strategies:
-            if os.path.exists(out):
-                try: os.remove(out)
-                except Exception: pass
-            ok, err = _concat_attempt(listfile, out, args)
-            if ok:
-                print(f"         ✅ نجح: {name}")
-                try: os.remove(listfile)
-                except Exception: pass
-                return True
-            print(f"         ❌ {name}: {err[:180]}")
-        try: os.remove(listfile)
-        except Exception: pass
+    for args, name in strategies:
+        if os.path.exists(out):
+            try: os.remove(out)
+            except Exception: pass
+        ok, err = _concat_attempt(listfile, out, args, timeout=2400)
+        if ok:
+            print(f"         ✅ نجح: {name} (مباشر)")
+            try: os.remove(listfile)
+            except Exception: pass
+            return True
+        print(f"         ❌ {name}: {err[:180]}")
 
-    # للعدد الكبير — chunked
-    print(f"      📦 دمج على دفعات ({total} segment)...")
+    try: os.remove(listfile)
+    except Exception: pass
+
+    # ═══ 2) chunked دمج على دفعات ═══
+    print(f"      📦 محاولة الدمج على دفعات...")
     groups = [sorted_paths[i:i + CONCAT_CHUNK]
               for i in range(0, total, CONCAT_CHUNK)]
     group_files = []
@@ -205,6 +224,7 @@ def _smart_concat(sorted_paths, out):
                 f.write(f"file '{sp}'\n")
 
         ok = False
+        last_err = ""
         for args, name in strategies:
             if os.path.exists(gpath):
                 try: os.remove(gpath)
@@ -212,36 +232,40 @@ def _smart_concat(sorted_paths, out):
             ok, err = _concat_attempt(listfile, gpath, args, timeout=900)
             if ok:
                 break
+            last_err = err
 
         try: os.remove(listfile)
         except Exception: pass
 
         if ok:
             group_files.append(gpath)
-            print(f"         ✅ دفعة {gi+1}/{len(groups)}")
+            print(f"         ✅ دفعة {gi+1}/{len(groups)} ({len(grp)} segment)")
         else:
+            print(f"         ❌ دفعة {gi+1}/{len(groups)}: {last_err[:180]}")
             for gf in group_files:
                 try: os.remove(gf)
                 except Exception: pass
             return False
 
-    # دمج نهائي
-    print(f"      🔗 دمج نهائي {len(group_files)} دفعة...")
+    # ═══ 3) دمج الدفعات النهائية ═══
+    print(f"      🔗 دمج نهائي ({len(group_files)} دفعة)...")
     final_list = tempfile.mktemp(suffix=".txt")
     with open(final_list, "w", encoding="utf-8") as f:
         for p in group_files:
             sp = str(p).replace("\\", "/").replace("'", r"'\''")
             f.write(f"file '{sp}'\n")
 
-    ok = False
+    final_ok = False
     for args, name in strategies:
         if os.path.exists(out):
             try: os.remove(out)
             except Exception: pass
-        ok, err = _concat_attempt(final_list, out, args)
+        ok, err = _concat_attempt(final_list, out, args, timeout=1200)
         if ok:
-            print(f"         ✅ نجح: {name}")
+            print(f"         ✅ نجح نهائياً: {name}")
+            final_ok = True
             break
+        print(f"         ❌ نهائي {name}: {err[:180]}")
 
     try: os.remove(final_list)
     except Exception: pass
@@ -249,7 +273,7 @@ def _smart_concat(sorted_paths, out):
         try: os.remove(gf)
         except Exception: pass
 
-    return ok
+    return final_ok
 
 
 # ═══════════════════════════════════════════════════════════════
