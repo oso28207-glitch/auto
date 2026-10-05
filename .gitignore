@@ -19,3 +19,4 @@ Thumbs.db
 data/media/
 *.mp4
 *.ts
+data/.run.lock
