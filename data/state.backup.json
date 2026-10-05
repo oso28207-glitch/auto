@@ -341,6 +341,18 @@
           "width": 426,
           "height": 240,
           "duration": 1715
+        },
+        "43": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-43/",
+          "title": "مسلسل ما زلت في 17 الحلقة 43 مدبلجة",
+          "updated_at": "2026-10-05T00:45:33.768285+00:00",
+          "message_id": 1498,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIF2mrC8y2qDCMyK7vaRdsb564RhWlnAAJ3HwACfV8YUk7QuyUv553hHgQ",
+          "size": 26893788,
+          "width": 426,
+          "height": 240,
+          "duration": 1630
         }
       }
     },
@@ -541,6 +553,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1497,
+      "title": "مسلسل ما زلت في 17 — الحلقة 42",
+      "series": "مسلسل ما زلت في 17",
+      "episode": 42,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIF2WrC8o1d7qr4w9BWtVeOAgmwSTL5AAJ2HwACfV8YUlaFMbjOE6Z7HgQ",
+      "size": 35701022,
+      "width": 426,
+      "height": 240,
+      "duration": 1715,
+      "date": "2026-10-05T00:42:53"
+    },
     {
       "id": 1496,
       "title": "مسلسل ما زلت في 17 — الحلقة 41",
@@ -866,5 +890,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T00:42:53.933576+00:00"
+  "last_run": "2026-10-05T00:45:33.768297+00:00"
 }
