@@ -879,6 +879,18 @@
           "width": 426,
           "height": 240,
           "duration": 2573
+        },
+        "12": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-12/",
+          "title": "مسلسل الخفقان الحلقة 12 مدبلجة",
+          "updated_at": "2026-10-05T11:53:54.826048+00:00",
+          "message_id": 1536,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIGAAFqw4_S19NXsgivU0PJj_-uqppHywACPSAAAn1fGFKdXKhEC72pSh4E",
+          "size": 46001157,
+          "width": 426,
+          "height": 240,
+          "duration": 2444
         }
       }
     },
@@ -1059,6 +1071,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1536,
+      "title": "مسلسل الخفقان — الحلقة 12",
+      "series": "مسلسل الخفقان",
+      "episode": 12,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIGAAFqw4_S19NXsgivU0PJj_-uqppHywACPSAAAn1fGFKdXKhEC72pSh4E",
+      "size": 46001157,
+      "width": 426,
+      "height": 240,
+      "duration": 2444,
+      "date": "2026-10-05T11:53:54"
+    },
     {
       "id": 1535,
       "title": "مسلسل الخفقان — الحلقة 11",
@@ -1852,5 +1876,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T11:47:54.028766+00:00"
+  "last_run": "2026-10-05T11:53:54.829156+00:00"
 }
