@@ -783,6 +783,12 @@
           "width": 426,
           "height": 240,
           "duration": 2685
+        },
+        "4": {
+          "status": "downloading",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-04-vhq1/",
+          "title": "مسلسل الخفقان الحلقة 4 مدبلجة",
+          "updated_at": "2026-10-05T06:04:09.946412+00:00"
         }
       }
     },
@@ -1660,5 +1666,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T06:04:08.951116+00:00"
+  "last_run": "2026-10-05T06:04:09.946426+00:00"
 }
