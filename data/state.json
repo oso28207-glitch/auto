@@ -1059,6 +1059,18 @@
           "width": 426,
           "height": 240,
           "duration": 2443
+        },
+        "27": {
+          "status": "uploaded",
+          "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-27/",
+          "title": "مسلسل الخفقان الحلقة 27 مدبلجة",
+          "updated_at": "2026-10-05T13:13:00.566429+00:00",
+          "message_id": 1551,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIGD2rDolzcSWM7G-nhl2RP2rTRP0edAAKvIAACfV8gUlD3D5epfKt3HgQ",
+          "size": 45546829,
+          "width": 426,
+          "height": 240,
+          "duration": 2579
         }
       }
     },
@@ -1239,6 +1251,18 @@
     }
   },
   "videos": [
+    {
+      "id": 1551,
+      "title": "مسلسل الخفقان — الحلقة 27",
+      "series": "مسلسل الخفقان",
+      "episode": 27,
+      "file_id": "BAACAgQAAyEGAATS7MsnAAIGD2rDolzcSWM7G-nhl2RP2rTRP0edAAKvIAACfV8gUlD3D5epfKt3HgQ",
+      "size": 45546829,
+      "width": 426,
+      "height": 240,
+      "duration": 2579,
+      "date": "2026-10-05T13:13:00"
+    },
     {
       "id": 1550,
       "title": "مسلسل الخفقان — الحلقة 26",
@@ -2212,5 +2236,5 @@
       "date": "2026-10-04T23:12:15"
     }
   ],
-  "last_run": "2026-10-05T13:09:02.163776+00:00"
+  "last_run": "2026-10-05T13:13:00.569940+00:00"
 }
