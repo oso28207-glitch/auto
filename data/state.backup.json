@@ -1112,6 +1112,45 @@
           "source": "u3seq",
           "caption": "احتمال حب الحلقة 18",
           "updated_at": "2026-10-05T23:41:53.696612+00:00"
+        },
+        "51": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-05T23:49:15.991194+00:00"
+        },
+        "52": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-05T23:56:33.424313+00:00"
+        },
+        "53": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T00:03:29.103165+00:00"
+        },
+        "54": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T00:10:46.770053+00:00"
+        },
+        "55": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T00:18:04.339916+00:00"
+        },
+        "66": {
+          "status": "uploaded",
+          "message_id": 1560,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIGGGrEPwIAAT2ommye2y_XUT2NgRdrggAC1iEAAn1fIFItlSOHOuegdB4E",
+          "size": 31256327,
+          "width": 426,
+          "height": 240,
+          "duration": 1968,
+          "url": "https://u.3seq.com/video/modablaj-muhtemel-ask-episode-66/",
+          "type": "series",
+          "source": "u3seq",
+          "caption": "احتمال حب الحلقة 66",
+          "updated_at": "2026-10-06T00:21:22.508466+00:00"
         }
       },
       "status": "ok",
@@ -1121,7 +1160,7 @@
       "source": "u3seq",
       "season": 0,
       "total_parts": 75,
-      "last_updated": "2026-10-05T22:14:28"
+      "last_updated": "2026-10-05T23:41:53"
     },
     "مسلسل هذا البحر سوف يفيض": {
       "url": "https://u.3seq.com/video/modablaj-tasacak-bu-deniz-episode-09-novv/",
@@ -37716,5 +37755,5 @@
       "source": "telegram:@shoofFilm"
     }
   ],
-  "last_run": "2026-10-05T23:41:53.696628+00:00"
+  "last_run": "2026-10-06T00:21:22.508477+00:00"
 }
