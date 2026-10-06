@@ -1890,8 +1890,28 @@
           "source": "u3seq",
           "caption": "في الظل الحلقة 1",
           "updated_at": "2026-10-06T01:25:06.320194+00:00"
+        },
+        "2": {
+          "status": "uploaded",
+          "message_id": 1566,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIGHmrET0yhDVhFOEIqhCwctVNoqQ2_AALfIQACfV8gUgYBRTF6R5XqHgQ",
+          "size": 20255143,
+          "width": 426,
+          "height": 240,
+          "duration": 1502,
+          "url": "https://u.3seq.com/video/modablaj-yeralti-episode-02/",
+          "type": "series",
+          "source": "u3seq",
+          "caption": "في الظل الحلقة 2",
+          "updated_at": "2026-10-06T01:30:52.391822+00:00"
         }
-      }
+      },
+      "type": "series",
+      "source": "u3seq",
+      "season": 0,
+      "total_parts": 80,
+      "last_updated": "2026-10-06T01:25:06",
+      "status": "ok"
     },
     "مسلسل الوريث &#8211; ولي العهد": {
       "url": "https://u.3seq.com/video/modablaj-veliaht-episode-26/",
@@ -37855,5 +37875,5 @@
       "source": "telegram:@shoofFilm"
     }
   ],
-  "last_run": "2026-10-06T01:25:06.320205+00:00"
+  "last_run": "2026-10-06T01:30:52.391835+00:00"
 }

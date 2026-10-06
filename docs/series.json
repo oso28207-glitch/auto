@@ -12523,10 +12523,19 @@
         "duration": 1583,
         "url": "https://u.3seq.com/video/modablaj-yeralti-episode-01/",
         "title": "الحلقة 1"
+      },
+      {
+        "episode": 2,
+        "message_id": 1566,
+        "file_id": "BAACAgQAAyEGAATS7MsnAAIGHmrET0yhDVhFOEIqhCwctVNoqQ2_AALfIQACfV8gUgYBRTF6R5XqHgQ",
+        "size": 20255143,
+        "duration": 1502,
+        "url": "https://u.3seq.com/video/modablaj-yeralti-episode-02/",
+        "title": "الحلقة 2"
       }
     ],
-    "count": 1,
-    "last_updated": "2026-10-06T01:25:06"
+    "count": 2,
+    "last_updated": "2026-10-06T01:30:52"
   },
   {
     "name": "مسلسل ما زلت في 17",
