@@ -1165,6 +1165,20 @@
           "source": "u3seq",
           "caption": "احتمال حب الحلقة 67",
           "updated_at": "2026-10-06T00:24:21.239659+00:00"
+        },
+        "68": {
+          "status": "uploaded",
+          "message_id": 1562,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIGGmrEQGutmVaz9uCcxUIHsOflQwtzAALYIQACfV8gUmgFJPOqTKVXHgQ",
+          "size": 26181421,
+          "width": 426,
+          "height": 240,
+          "duration": 1953,
+          "url": "https://u.3seq.com/video/modablaj-muhtemel-ask-episode-68/",
+          "type": "series",
+          "source": "u3seq",
+          "caption": "احتمال حب الحلقة 68",
+          "updated_at": "2026-10-06T00:27:23.597965+00:00"
         }
       },
       "status": "ok",
@@ -1174,7 +1188,7 @@
       "source": "u3seq",
       "season": 0,
       "total_parts": 75,
-      "last_updated": "2026-10-06T00:21:22"
+      "last_updated": "2026-10-06T00:24:21"
     },
     "مسلسل هذا البحر سوف يفيض": {
       "url": "https://u.3seq.com/video/modablaj-tasacak-bu-deniz-episode-09-novv/",
@@ -37769,5 +37783,5 @@
       "source": "telegram:@shoofFilm"
     }
   ],
-  "last_run": "2026-10-06T00:24:21.239669+00:00"
+  "last_run": "2026-10-06T00:27:23.597976+00:00"
 }
