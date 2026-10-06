@@ -562,7 +562,7 @@
           "status": "failed",
           "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-61/",
           "title": "مسلسل ما زلت في 17 الحلقة 61 مدبلجة",
-          "updated_at": "2026-10-05T23:32:18.576024+00:00",
+          "updated_at": "2026-10-06T04:47:06.899411+00:00",
           "error": "فشل التحميل"
         },
         "62": {
@@ -1116,7 +1116,7 @@
         "51": {
           "status": "failed",
           "error": "فشل التحميل",
-          "updated_at": "2026-10-05T23:49:15.991194+00:00"
+          "updated_at": "2026-10-06T04:54:24.312218+00:00"
         },
         "52": {
           "status": "failed",
@@ -1234,9 +1234,9 @@
           "updated_at": "2026-10-06T01:01:25.758511+00:00"
         }
       },
-      "status": "ok",
+      "status": "failed",
       "failed_at": "2026-10-05T04:59:23",
-      "reason": "فشلت كل السيرفرات",
+      "reason": "فشلت أول حلقة",
       "type": "series",
       "source": "u3seq",
       "season": 0,
@@ -1369,7 +1369,7 @@
           "status": "failed",
           "url": "https://u.3seq.com/video/modablaj-uzak-sehir-episode-141-rkoy/",
           "title": "مسلسل المدينة البعيدة الحلقة 141 مدبلجة",
-          "updated_at": "2026-10-06T01:04:37.196835+00:00",
+          "updated_at": "2026-10-06T04:57:35.887687+00:00",
           "error": "فشل التحميل"
         }
       },
@@ -1782,7 +1782,7 @@
           "status": "failed",
           "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-34/",
           "title": "مسلسل الخفقان الحلقة 34 مدبلجة",
-          "updated_at": "2026-10-06T01:11:05.803049+00:00",
+          "updated_at": "2026-10-06T05:04:04.557088+00:00",
           "error": "فشل التحميل"
         },
         "35": {
@@ -1814,7 +1814,7 @@
           "status": "failed",
           "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e01-444x/",
           "title": "مسلسل المشردون 2 الموسم الثاني الحلقة 1 مدبلجة",
-          "updated_at": "2026-10-06T01:14:53.784261+00:00",
+          "updated_at": "2026-10-06T05:07:50.893638+00:00",
           "error": "فشل التحميل"
         }
       },
@@ -1831,7 +1831,7 @@
           "status": "failed",
           "url": "https://u.3seq.com/video/modablaj-esref-ruya-episode-10-2joa/",
           "title": "مسلسل حلم اشرف الحلقة 10 مدبلجة",
-          "updated_at": "2026-10-06T01:17:14.450946+00:00",
+          "updated_at": "2026-10-06T05:10:11.344407+00:00",
           "error": "فشل التحميل"
         }
       },
@@ -1848,7 +1848,7 @@
           "status": "failed",
           "url": "https://u.3seq.com/video/modablaj-umutsuz-ev-kadinlari-episode-s05e64/",
           "title": "مسلسل نساء حائرات الموسم الخامس الحلقة 64 مدبلجة والاخيرة",
-          "updated_at": "2026-10-06T01:17:32.122774+00:00",
+          "updated_at": "2026-10-06T05:10:28.651646+00:00",
           "error": "فشل التحميل"
         }
       },
@@ -1865,7 +1865,7 @@
           "status": "failed",
           "url": "https://u.3seq.com/video/modablaj-hay-sultan-episode-01-l8oq-2-yg73/",
           "title": "مسلسل الجيلاني الحلقة 1 مدبلجة",
-          "updated_at": "2026-10-06T01:19:37.306838+00:00",
+          "updated_at": "2026-10-06T05:12:54.135472+00:00",
           "error": "فشل التحميل"
         }
       },
@@ -1908,7 +1908,7 @@
         "3": {
           "status": "failed",
           "error": "فشل التحميل",
-          "updated_at": "2026-10-06T01:35:26.063150+00:00"
+          "updated_at": "2026-10-06T05:17:13.831196+00:00"
         },
         "4": {
           "status": "failed",
@@ -1957,6 +1957,11 @@
           "status": "failed",
           "error": "فشل التحميل",
           "updated_at": "2026-10-06T02:08:54.342123+00:00"
+        },
+        "10": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T02:13:32.855169+00:00"
         }
       },
       "type": "series",
@@ -1964,117 +1969,598 @@
       "season": 0,
       "total_parts": 80,
       "last_updated": "2026-10-06T01:53:51",
-      "status": "ok"
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل الوريث &#8211; ولي العهد": {
       "url": "https://u.3seq.com/video/modablaj-veliaht-episode-26/",
       "slug": "modablaj-veliaht-episode-26",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "1": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:19:34.328698+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل ورود وذنوب": {
       "url": "https://u.3seq.com/video/modablaj-guller-ve-gunahlar-episode-96-ammj/",
       "slug": "modablaj-guller-ve-gunahlar-episode-96-ammj",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "1": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.386477+00:00"
+        },
+        "2": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.411255+00:00"
+        },
+        "3": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.436144+00:00"
+        },
+        "4": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.461266+00:00"
+        },
+        "5": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.486232+00:00"
+        },
+        "6": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.511268+00:00"
+        },
+        "7": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.536167+00:00"
+        },
+        "8": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.561002+00:00"
+        },
+        "9": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.585702+00:00"
+        },
+        "11": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.610496+00:00"
+        },
+        "12": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.635243+00:00"
+        },
+        "13": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.660210+00:00"
+        },
+        "14": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.685415+00:00"
+        },
+        "15": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.710153+00:00"
+        },
+        "16": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.735083+00:00"
+        },
+        "17": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.759900+00:00"
+        },
+        "18": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.784651+00:00"
+        },
+        "19": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.809614+00:00"
+        },
+        "20": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.834643+00:00"
+        },
+        "21": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.859979+00:00"
+        },
+        "22": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.885066+00:00"
+        },
+        "23": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.909784+00:00"
+        },
+        "24": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.934943+00:00"
+        },
+        "25": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.959697+00:00"
+        },
+        "27": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:34.985266+00:00"
+        },
+        "28": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.010909+00:00"
+        },
+        "29": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.036074+00:00"
+        },
+        "30": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.061374+00:00"
+        },
+        "31": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.086656+00:00"
+        },
+        "32": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.111776+00:00"
+        },
+        "33": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.136964+00:00"
+        },
+        "34": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.163292+00:00"
+        },
+        "35": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.190465+00:00"
+        },
+        "36": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.218744+00:00"
+        },
+        "37": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.244560+00:00"
+        },
+        "38": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.270036+00:00"
+        },
+        "39": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.299760+00:00"
+        },
+        "40": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.328725+00:00"
+        },
+        "41": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.359613+00:00"
+        },
+        "42": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.391577+00:00"
+        },
+        "43": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.420123+00:00"
+        },
+        "44": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.448851+00:00"
+        },
+        "45": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.477769+00:00"
+        },
+        "46": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.506662+00:00"
+        },
+        "47": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.535851+00:00"
+        },
+        "48": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.565824+00:00"
+        },
+        "49": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.594820+00:00"
+        },
+        "50": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.624211+00:00"
+        },
+        "51": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.654239+00:00"
+        },
+        "52": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.683464+00:00"
+        },
+        "53": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.713278+00:00"
+        },
+        "54": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.742773+00:00"
+        },
+        "55": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.772605+00:00"
+        },
+        "56": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.802470+00:00"
+        },
+        "57": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:19:35.832094+00:00"
+        },
+        "10": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:22:47.002051+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل المشردون": {
       "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-96-pz4o/",
       "slug": "modablaj-sahipsizler-episode-96-pz4o",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "1": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:23:54.954983+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل جبل القلب (جبل جونول)": {
       "url": "https://u.3seq.com/video/modablaj-gonul-dagi-episode-25-qoom/",
       "slug": "modablaj-gonul-dagi-episode-25-qoom",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "1": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:24:11.931567+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل شراب التوت 3 الموسم الثالث": {
       "url": "https://u.3seq.com/video/modablaj-kizilcik-serbeti-episode-s03e127-7pxp/",
       "slug": "modablaj-kizilcik-serbeti-episode-s03e127-7pxp",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "108": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:25:19.766684+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل شراب التوت 2 الموسم الثاني": {
       "url": "https://u.3seq.com/video/modablaj-kizilcik-serbeti-episode-s02e119-1dmq/",
       "slug": "modablaj-kizilcik-serbeti-episode-s02e119-1dmq",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "1": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:25:36.863385+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل التحقيق": {
       "url": "https://u.3seq.com/video/modablaj-sorgu-episode-02-nza0/",
       "slug": "modablaj-sorgu-episode-02-nza0",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "2": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:25:54.414924+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل ابواب القدر 2 الموسم الثاني": {
       "url": "https://u.3seq.com/video/modablaj-zamanin-kapilari-episode-s02e10-dntn/",
       "slug": "modablaj-zamanin-kapilari-episode-s02e10-dntn",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "1": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:29:04.910823+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل القلعة (المنظمة)": {
       "url": "https://u.3seq.com/video/modablaj-teskilat-episode-01-2-49w2/",
       "slug": "modablaj-teskilat-episode-01-2-49w2",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "1": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:29:39.326113+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل فاطمة الموسم الاول": {
       "url": "https://u.3seq.com/video/modablaj-fatmagulun-episode-s01e90-seod/",
       "slug": "modablaj-fatmagulun-episode-s01e90-seod",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "1": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:30:29.644835+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل ورود حمراء 2 الموسم الثاني": {
       "url": "https://u.3seq.com/video/modablaj-kizil-goncalar-episode-s02e12-siy6/",
       "slug": "modablaj-kizil-goncalar-episode-s02e12-siy6",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "1": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:33:56.506252+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل صلاح الدين الايوبي": {
       "url": "https://u.3seq.com/video/modablaj-selahaddin-eyyubi-episode-01-y3zy/",
       "slug": "modablaj-selahaddin-eyyubi-episode-01-y3zy",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "61": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:29:22.606514+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل عندما يعشق الرجل": {
       "url": "https://u.3seq.com/video/erkek-severse-episode-03-trfv/",
       "slug": "erkek-severse-episode-03-trfv",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "1": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:29:55.749810+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل العشق المر": {
       "url": "https://u.3seq.com/video/modablaj-aci-ask-episode-10-rg72/",
       "slug": "modablaj-aci-ask-episode-10-rg72",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "1": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:30:46.261103+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل شراب التوت": {
       "url": "https://u.3seq.com/video/modablaj-kizilcik-serbeti-episode-05-em51/",
       "slug": "modablaj-kizilcik-serbeti-episode-05-em51",
-      "last_checked": "2026-10-05T16:56:44"
+      "last_checked": "2026-10-05T16:56:44",
+      "episodes": {
+        "5": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:35:04.992858+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل ثلاث اخوات": {
       "url": "https://u.3seq.com/video/modablaj-uc-kiz-kardes-episode-122-qxzg/",
       "slug": "modablaj-uc-kiz-kardes-episode-122-qxzg",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "5": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:30:12.676175+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل حكاية زواج": {
       "url": "https://u.3seq.com/video/modablaj-kendi-dusen-aglamaz-episode-03-p3vh/",
       "slug": "modablaj-kendi-dusen-aglamaz-episode-03-p3vh",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "3": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:34:13.538142+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل الحقيقة والخيال": {
       "url": "https://u.3seq.com/video/modablaj-hayaller-ve-hayatlar-episode-01-tdns/",
       "slug": "modablaj-hayaller-ve-hayatlar-episode-01-tdns",
-      "last_checked": "2026-10-05T16:56:43"
+      "last_checked": "2026-10-05T16:56:43",
+      "episodes": {
+        "1": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:34:30.970004+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل باهار": {
       "url": "https://u.3seq.com/video/modablaj-bahar-episode-04-s7pk/",
       "slug": "modablaj-bahar-episode-04-s7pk",
-      "last_checked": "2026-10-05T16:56:44"
+      "last_checked": "2026-10-05T16:56:44",
+      "episodes": {
+        "4": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:34:48.037511+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل انت من احببت": {
       "url": "https://u.3seq.com/video/modablaj-sevdigim-sensin-episode-75/",
       "slug": "modablaj-sevdigim-sensin-episode-75",
-      "last_checked": "2026-10-05T16:56:44"
+      "last_checked": "2026-10-05T16:56:44",
+      "episodes": {
+        "1": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:40:33.250126+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل لعبة الحياة": {
       "url": "https://u.3seq.com/video/modablaj-hayat-bugun-episode-40/",
       "slug": "modablaj-hayat-bugun-episode-40",
-      "last_checked": "2026-10-05T16:56:44"
+      "last_checked": "2026-10-05T16:56:44",
+      "episodes": {
+        "6": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:40:51.297111+00:00"
+        }
+      },
+      "status": "failed",
+      "reason": "فشلت أول حلقة"
     },
     "مسلسل اخي": {
       "url": "https://u.3seq.com/video/modablaj-a-b-i-episode-90/",
       "slug": "modablaj-a-b-i-episode-90",
-      "last_checked": "2026-10-05T16:56:44"
+      "last_checked": "2026-10-05T16:56:44",
+      "episodes": {
+        "1": {
+          "status": "uploaded",
+          "message_id": 1569,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIGIWrEjCLINEKT9v9vnh1xHzYXfzGBAAIGIgACfV8gUqBXqqhpzBJSHgQ",
+          "size": 33879155,
+          "width": 426,
+          "height": 240,
+          "duration": 1842,
+          "url": "https://u.3seq.com/video/modablaj-a-b-i-episode-01/",
+          "type": "series",
+          "source": "u3seq",
+          "caption": "اخي الحلقة 1",
+          "updated_at": "2026-10-06T05:50:27.013366+00:00"
+        }
+      }
     },
     "مسلسل يوم اخر": {
       "url": "https://u.3seq.com/video/modablaj-baska-bir-gun-episode-31/",
@@ -22178,6 +22664,26 @@
           "updated_at": "2026-10-05T16:32:21.347032+00:00"
         }
       }
+    },
+    "مسلسل اوراق النسيان": {
+      "url": "",
+      "episodes": {
+        "2": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:30:46.315207+00:00"
+        },
+        "3": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:30:46.341534+00:00"
+        },
+        "12": {
+          "status": "uploaded",
+          "source": "telegram_existing",
+          "updated_at": "2026-10-06T05:30:46.367075+00:00"
+        }
+      }
     }
   },
   "videos": [
@@ -37928,5 +38434,5 @@
       "source": "telegram:@shoofFilm"
     }
   ],
-  "last_run": "2026-10-06T02:08:54.342140+00:00"
+  "last_run": "2026-10-06T05:50:27.013379+00:00"
 }
