@@ -1928,13 +1928,27 @@
           "source": "u3seq",
           "caption": "في الظل الحلقة 5",
           "updated_at": "2026-10-06T01:47:33.927692+00:00"
+        },
+        "6": {
+          "status": "uploaded",
+          "message_id": 1568,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIGIGrEVK95duXEetOLCHkQi814sgHOAALiIQACfV8gUooMVTHXbUH4HgQ",
+          "size": 23823667,
+          "width": 426,
+          "height": 240,
+          "duration": 1945,
+          "url": "https://u.3seq.com/video/modablaj-yeralti-episode-06/",
+          "type": "series",
+          "source": "u3seq",
+          "caption": "في الظل الحلقة 6",
+          "updated_at": "2026-10-06T01:53:51.567535+00:00"
         }
       },
       "type": "series",
       "source": "u3seq",
       "season": 0,
       "total_parts": 80,
-      "last_updated": "2026-10-06T01:47:33",
+      "last_updated": "2026-10-06T01:53:51",
       "status": "ok"
     },
     "مسلسل الوريث &#8211; ولي العهد": {
@@ -37899,5 +37913,5 @@
       "source": "telegram:@shoofFilm"
     }
   ],
-  "last_run": "2026-10-06T01:47:33.950831+00:00"
+  "last_run": "2026-10-06T01:53:51.592426+00:00"
 }
