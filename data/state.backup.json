@@ -2559,8 +2559,48 @@
           "source": "u3seq",
           "caption": "اخي الحلقة 1",
           "updated_at": "2026-10-06T05:50:27.013366+00:00"
+        },
+        "2": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T05:56:32.056114+00:00"
+        },
+        "3": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T06:01:04.232508+00:00"
+        },
+        "4": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T06:06:59.276243+00:00"
+        },
+        "5": {
+          "status": "failed",
+          "error": "فشل التحميل",
+          "updated_at": "2026-10-06T06:11:24.617320+00:00"
+        },
+        "6": {
+          "status": "uploaded",
+          "message_id": 1570,
+          "file_id": "BAACAgQAAyEGAATS7MsnAAIGImrEkzG4_qQtl96PZWI6aPSWpCzPAAItHAACfV8oUo6ZonH6YI22HgQ",
+          "size": 26226898,
+          "width": 426,
+          "height": 240,
+          "duration": 1489,
+          "url": "https://u.3seq.com/video/modablaj-a-b-i-episode-06/",
+          "type": "series",
+          "source": "u3seq",
+          "caption": "اخي الحلقة 6",
+          "updated_at": "2026-10-06T06:20:33.806697+00:00"
         }
-      }
+      },
+      "type": "series",
+      "source": "u3seq",
+      "season": 0,
+      "total_parts": 90,
+      "last_updated": "2026-10-06T05:50:27",
+      "status": "ok"
     },
     "مسلسل يوم اخر": {
       "url": "https://u.3seq.com/video/modablaj-baska-bir-gun-episode-31/",
@@ -38434,5 +38474,5 @@
       "source": "telegram:@shoofFilm"
     }
   ],
-  "last_run": "2026-10-06T05:50:27.013379+00:00"
+  "last_run": "2026-10-06T06:20:33.806707+00:00"
 }
