@@ -1,4 +1,4 @@
-"""builder.py — يبني docs/ مع الصور."""
+"""builder.py — يبني docs/ مع الصور والتصنيفات."""
 
 import json
 import shutil
@@ -13,7 +13,6 @@ POSTERS_FILE = DATA_DIR / "posters.json"
 
 def _ensure_structure():
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
-    (DOCS_DIR / "series").mkdir(parents=True, exist_ok=True)
 
 
 def _copy_assets(force=False):
@@ -75,14 +74,17 @@ def _series_to_dict(name, poster_map):
             "title": v.get("title", f"الحلقة {k}"),
         })
 
-    # ★★★★★ poster من map
+    # ★ poster من map
     poster = poster_map.get(name, "")
 
     return {
         "name": name,
         "url": s.get("url", ""),
         "slug": s.get("slug", name.replace(" ", "_")),
-        "poster": poster,  # ★ جديد
+        "poster": poster,
+        "type": s.get("type", "series"),
+        "source": s.get("source", ""),
+        "season": s.get("season", 0),
         "episodes": uploaded,
         "count": len(uploaded),
         "last_updated": s.get("last_updated"),

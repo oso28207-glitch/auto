@@ -1,33 +1,24 @@
-/* ═══════════════════════════════════════════════════════════
-   شوف — Shoof App
-   ═══════════════════════════════════════════════════════════ */
+/* شوف — Shoof App with posters and categories */
 
 const API_BASE = (window.APP_CONFIG?.API_BASE || "").replace(/\/$/, "");
 
 const state = {
-  series: [],
-  filtered: [],
-  currentSort: "recent",
-  search: "",
-  page: 1,
-  perPage: 30,
+  series: [], filtered: [], currentSort: "recent", currentType: "all",
+  search: "", page: 1, perPage: 30,
 };
 
 const $ = (id) => document.getElementById(id);
 
-function toast(msg, ms = 2000) {
-  const t = $("toast");
-  t.textContent = msg;
-  t.classList.remove("hidden");
-  clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.add("hidden"), ms);
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s || "";
+  return d.innerHTML;
 }
 
 function formatDate(iso) {
   if (!iso) return "";
   try {
-    const d = new Date(iso);
-    const now = new Date();
+    const d = new Date(iso), now = new Date();
     const diff = (now - d) / 1000;
     if (diff < 60) return "الآن";
     if (diff < 3600) return `${Math.floor(diff / 60)} دقيقة`;
@@ -37,16 +28,10 @@ function formatDate(iso) {
   } catch { return ""; }
 }
 
-function escapeHtml(s) {
-  const d = document.createElement("div");
-  d.textContent = s || "";
-  return d.innerHTML;
-}
-
 function renderStats() {
   $("statSeries").textContent = state.series.length;
-  const totalEps = state.series.reduce((s, x) => s + (x.count || 0), 0);
-  $("statEpisodes").textContent = totalEps;
+  $("statEpisodes").textContent =
+    state.series.reduce((s, x) => s + (x.count || 0), 0);
   const dates = state.series.map(s => s.last_updated).filter(Boolean).sort().reverse();
   $("statUpdated").textContent = dates[0] ? formatDate(dates[0]) : "—";
 }
@@ -54,13 +39,22 @@ function renderStats() {
 function renderSeries(series) {
   const card = document.createElement("div");
   card.className = "card";
+
   const initial = (series.name || "?").charAt(0);
   const epsCount = series.count || 0;
   const isNew = series.last_updated &&
     (Date.now() - new Date(series.last_updated)) < 7 * 86400000;
 
+  // ★ poster إن وُجد
+  const thumbHtml = series.poster
+    ? `<img src="${escapeHtml(series.poster)}" alt="${escapeHtml(series.name)}"
+         loading="lazy" onerror="this.style.display='none';
+         this.parentElement.classList.add('no-poster')">`
+    : "";
+
   card.innerHTML = `
     <div class="card-thumb">
+      ${thumbHtml}
       <div class="card-thumb-placeholder">${escapeHtml(initial)}</div>
       ${isNew ? '<span class="card-badge new">جديد</span>' : ''}
       <div class="card-play">
@@ -79,21 +73,17 @@ function renderSeries(series) {
 function renderGrid() {
   const grid = $("grid");
   grid.innerHTML = "";
-
   if (!state.filtered.length) {
     $("emptyBox").classList.remove("hidden");
     $("loadMoreWrap").classList.add("hidden");
     return;
   }
   $("emptyBox").classList.add("hidden");
-
   const end = state.page * state.perPage;
   const visible = state.filtered.slice(0, end);
-
   const frag = document.createDocumentFragment();
   visible.forEach(s => frag.appendChild(renderSeries(s)));
   grid.appendChild(frag);
-
   if (end < state.filtered.length) {
     $("loadMoreWrap").classList.remove("hidden");
   } else {
@@ -101,16 +91,23 @@ function renderGrid() {
   }
 }
 
-function applySort() {
-  const arr = [...state.series];
+function applyFilters() {
+  let arr = [...state.series];
 
-  if (state.search) {
-    const q = state.search.toLowerCase();
-    state.filtered = arr.filter(s => s.name.toLowerCase().includes(q));
-  } else {
-    state.filtered = arr;
+  // ★ فلترة حسب النوع
+  if (state.currentType !== "all") {
+    arr = arr.filter(s => s.type === state.currentType);
   }
 
+  // بحث
+  if (state.search) {
+    const q = state.search.toLowerCase();
+    arr = arr.filter(s => s.name.toLowerCase().includes(q));
+  }
+
+  state.filtered = arr;
+
+  // ترتيب
   switch (state.currentSort) {
     case "recent":
       state.filtered.sort((a, b) =>
@@ -131,10 +128,8 @@ function applySort() {
 function openSeries(series) {
   $("seriesTitle").textContent = series.name;
   $("seriesMeta").textContent = `${series.count} حلقة`;
-
   const grid = $("episodesGrid");
   grid.innerHTML = "";
-
   if (!series.episodes || !series.episodes.length) {
     grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-3);padding:20px">لا توجد حلقات</p>';
   } else {
@@ -149,7 +144,6 @@ function openSeries(series) {
       grid.appendChild(btn);
     });
   }
-
   $("seriesModal").classList.remove("hidden");
   document.body.style.overflow = "hidden";
 }
@@ -163,11 +157,8 @@ function openPlayer(ep, seriesName) {
   const modal = $("playerModal");
   const video = $("player");
   const loader = $("playerLoader");
-
   $("modalTitle").textContent = `${seriesName} — الحلقة ${ep.episode}`;
   $("modalDesc").textContent = "";
-
-  // ★ بناء رابط البث بالكامل
   if (!ep.file_id || !ep.size) {
     video.src = "";
     loader.innerHTML = '<p style="color:var(--error)">البيانات غير مكتملة</p>';
@@ -179,13 +170,11 @@ function openPlayer(ep, seriesName) {
     video.load();
     video.play().catch(() => {});
   }
-
   video.onloadeddata = () => loader.classList.add("hidden");
   video.onerror = () => {
     loader.innerHTML = '<p style="color:var(--error)">تعذر تشغيل الفيديو</p>';
     loader.classList.remove("hidden");
   };
-
   modal.classList.remove("hidden");
   document.body.style.overflow = "hidden";
 }
@@ -202,7 +191,6 @@ function closePlayer() {
 
 async function init() {
   $("year").textContent = new Date().getFullYear();
-
   try {
     const res = await fetch("series.json", { cache: "no-cache" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -215,22 +203,27 @@ async function init() {
     $("errorMsg").textContent = "تعذر تحميل البيانات. حاول تحديث الصفحة.";
     return;
   }
-
   $("loading").classList.add("hidden");
   renderStats();
-  applySort();
+  applyFilters();
 
   $("search").addEventListener("input", (e) => {
     state.search = e.target.value.trim();
-    applySort();
+    applyFilters();
   });
 
+  // ★ تبويبات النوع (series/movie/all)
   document.querySelectorAll(".tab").forEach(tab => {
     tab.addEventListener("click", () => {
       document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
       tab.classList.add("active");
-      state.currentSort = tab.dataset.sort;
-      applySort();
+      if (tab.dataset.type) {
+        state.currentType = tab.dataset.type;
+      }
+      if (tab.dataset.sort) {
+        state.currentSort = tab.dataset.sort;
+      }
+      applyFilters();
     });
   });
 
@@ -252,7 +245,7 @@ async function init() {
     }
   });
 
-  console.log(`✅ شوف: ${state.series.length} مسلسل`);
+  console.log(`✅ شوف: ${state.series.length} عمل`);
 }
 
 document.addEventListener("DOMContentLoaded", init);

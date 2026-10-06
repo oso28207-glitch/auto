@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 """
-run_all.py — المنسق الموحد مع الفحص الثلاثي
-
-★ الفحص الثلاثي قبل التحميل:
-  1. state.json (ما رُفع سابقاً).
-  2. قنوات Telegram (shoofcima, shoofFilm).
-  3. الموقع الخارجي (u.3seq).
+run_all.py — المنسق الموحد مع مصادر متعددة ومنع التكرار
 """
 
 import asyncio
@@ -18,9 +13,7 @@ from pathlib import Path
 from config import config, DATA_DIR, MEDIA_DIR
 
 
-# ═══════════════════════════════════════════════════════════════
-# القفل الذكي
-# ═══════════════════════════════════════════════════════════════
+# ═══ القفل الذكي ═══
 LOCK_FILE = DATA_DIR / ".run.lock"
 LOCK_TTL = 3600 * 3
 
@@ -79,9 +72,6 @@ def release_lock():
         pass
 
 
-# ═══════════════════════════════════════════════════════════════
-# Git
-# ═══════════════════════════════════════════════════════════════
 def git_sync():
     if not _is_github_actions():
         return
@@ -128,8 +118,6 @@ def git_push_docs(force=False):
 
 
 # ═══════════════════════════════════════════════════════════════
-# المنسق الرئيسي
-# ═══════════════════════════════════════════════════════════════
 async def main():
     if not acquire_lock():
         print("⏭️ الخروج بسبب القفل")
@@ -142,7 +130,7 @@ async def main():
         print("""
 ╔══════════════════════════════════════════════════════╗
 ║           شوف — Shoof Automation                     ║
-║   فحص ثلاثي • تصنيفات • ضغط ذكي • 45MB             ║
+║   مصادر متعددة • تصنيفات • ضغط ذكي • 45MB           ║
 ╚══════════════════════════════════════════════════════╝
 """)
 
@@ -157,32 +145,23 @@ async def main():
         print(f"   الفيديوهات: {s['videos']}")
         print(f"   فاشلة: {s.get('failed_series', 0)}")
 
-        print(f"\n⏱️  الحد الزمني: {config.MAX_RUNTIME_SECONDS/60:.1f} دقيقة")
-        print(f"📦 حجم أقصى: {config.COMPRESS_MAX_SIZE_MB}MB @ {config.COMPRESS_SCALE}p")
-        print(f"📡 فحص القنوات: {config.CHECK_CHANNELS or 'معطّل'}")
-
-        # ★★★ فحص Telegram
-        existing_eps = {}
-        try:
-            from telegram_checker import (
-                fetch_existing_episodes, is_episode_uploaded, get_stats
-            )
-            existing_eps = await fetch_existing_episodes()
-            ch_stats = get_stats(existing_eps)
-            print(f"\n📡 Telegram: {ch_stats['episodes']} حلقة "
-                  f"({ch_stats['series']} عمل)")
-        except Exception as e:
-            print(f"\n⚠️ فشل فحص Telegram: {str(e)[:150]}")
-
-        # ★★★ فحص الموقع
-        from sources.u3seq import U3SeqSource
+        # ★★★ تحميل المصادر المفعّلة
         sources = []
-        enabled = [s.strip() for s in config.ENABLED_SOURCES.split(",") if s.strip()]
+        enabled = [x.strip() for x in config.ENABLED_SOURCES.split(",") if x.strip()]
+
         if "u3seq" in enabled:
+            from sources.u3seq import U3SeqSource
             sources.append(U3SeqSource())
+        if "yam" in enabled:
+            from sources.yam_ahwak import YamAhwakSource
+            sources.append(YamAhwakSource())
+        if "egybest" in enabled:
+            from sources.egybest import EgyBestSource
+            sources.append(EgyBestSource())
 
         print(f"\n📡 المصادر: {', '.join(s.name for s in sources)}")
 
+        # ★★★ جلب العناصر من كل المصادر
         all_items = []
         for src in sources:
             try:
@@ -195,14 +174,32 @@ async def main():
                 except Exception: pass
 
         print(f"\n📊 إجمالي: {len(all_items)} عنصر")
+        series_count = sum(1 for x in all_items if x.type == "series")
+        movie_count = sum(1 for x in all_items if x.type == "movie")
+        print(f"   • مسلسلات: {series_count}")
+        print(f"   • أفلام: {movie_count}")
 
         if not all_items:
+            print("\n✅ لا عناصر — الخروج")
             return 0
 
-        # ★★★ التحميل والرفع
+        # ★★★ فحص القنوات
+        existing_eps = {}
+        try:
+            from telegram_checker import (
+                fetch_existing_episodes, is_episode_uploaded, get_stats
+            )
+            existing_eps = await fetch_existing_episodes()
+            ch_stats = get_stats(existing_eps)
+            print(f"\n📡 Telegram: {ch_stats['episodes']} حلقة ({ch_stats['series']} عمل)")
+        except Exception as e:
+            print(f"\n⚠️ فشل فحص Telegram: {str(e)[:150]}")
+
+        # ★★★ تحميل ورفع
         from downloader import download_episode
         from uploader import uploader
         from builder import build_incremental
+        from telegram_checker import is_episode_uploaded
 
         await uploader.start()
         uploaded_count = 0
@@ -220,6 +217,16 @@ async def main():
                         and uploaded_count >= config.MAX_EPISODES_PER_RUN):
                     break
 
+                # ★★★ منع التكرار: ابحث عن اسم مشابه في قاعدة البيانات
+                existing_name = db.find_series_by_name(item.name)
+                if existing_name:
+                    # استخدم الاسم الموجود
+                    if existing_name != item.name:
+                        print(f"   🔄 دمج: '{item.name}' → '{existing_name}'")
+                    target_name = existing_name
+                else:
+                    target_name = item.name
+
                 # ★★★ الفحص الثلاثي
                 new_parts = []
                 for part in item.parts:
@@ -227,16 +234,14 @@ async def main():
                     purl = part.get("url", "")
 
                     # فحص 1: state.json
-                    status = db.episode_status(item.name, pnum)
+                    status = db.episode_status(target_name, pnum)
                     if status == "uploaded":
-                        print(f"   ⏭️ [state] {item.name} #{pnum}")
                         skipped_count += 1
                         continue
 
                     # فحص 2: Telegram
-                    if existing_eps and is_episode_uploaded(existing_eps, item.name, pnum):
-                        print(f"   ⏭️ [telegram] {item.name} #{pnum}")
-                        db.set_episode(item.name, pnum,
+                    if existing_eps and is_episode_uploaded(existing_eps, target_name, pnum):
+                        db.set_episode(target_name, pnum,
                                        status="uploaded",
                                        source="telegram_existing")
                         skipped_count += 1
@@ -244,7 +249,6 @@ async def main():
 
                     # فحص 3: الرابط
                     if not purl or not purl.startswith("http"):
-                        print(f"   ⚠️ [url] {item.name} #{pnum} — رابط غير صالح")
                         continue
 
                     new_parts.append(part)
@@ -273,19 +277,19 @@ async def main():
                     try:
                         file_path = await asyncio.to_thread(
                             download_episode,
-                            item.name, pnum, purl,
-                            item.type, item.name,
+                            target_name, pnum, purl,
+                            item.type, target_name,
                         )
                     except Exception as e:
                         print(f"   ❌ خطأ تحميل: {str(e)[:150]}")
                         file_path = None
 
                     if not file_path:
-                        db.mark_failed(item.name, pnum, "فشل التحميل")
+                        db.mark_failed(target_name, pnum, "فشل التحميل")
                         failed_count += 1
                         if pnum == first_part:
-                            print(f"   🚫 تخطي: {item.name}")
-                            db.set_series(item.name, {
+                            print(f"   🚫 تخطي: {target_name}")
+                            db.set_series(target_name, {
                                 "status": "failed",
                                 "reason": "فشلت أول حلقة",
                             })
@@ -295,22 +299,21 @@ async def main():
                     try:
                         info = await uploader.upload(
                             file_path=file_path,
-                            item_name=item.name,
+                            item_name=item.name_ar or item.name,
                             media_type=item.type,
                             part_number=pnum,
                             season=item.season,
-                            item_name_ar=item.name_ar or item.name,
                         )
                     except Exception as e:
                         print(f"   ❌ فشل رفع: {str(e)[:150]}")
-                        db.mark_failed(item.name, pnum, "فشل الرفع")
+                        db.mark_failed(target_name, pnum, "فشل الرفع")
                         failed_count += 1
                         try: file_path.unlink()
                         except Exception: pass
                         continue
 
                     db.set_episode(
-                        item.name, pnum,
+                        target_name, pnum,
                         status="uploaded",
                         message_id=info["message_id"],
                         file_id=info["file_id"],
@@ -326,7 +329,7 @@ async def main():
                     db.add_video({
                         "id": info["message_id"],
                         "title": info["caption"],
-                        "series": item.name,
+                        "series": target_name,
                         "episode": pnum,
                         "type": item.type,
                         "source": item.source,
@@ -335,7 +338,7 @@ async def main():
                         "duration": info["duration"],
                         "date": time.strftime("%Y-%m-%dT%H:%M:%S"),
                     })
-                    db.set_series(item.name, {
+                    db.set_series(target_name, {
                         "url": item.url,
                         "type": item.type,
                         "source": item.source,
@@ -349,7 +352,7 @@ async def main():
 
                     if config.AUTO_BUILD:
                         try:
-                            build_incremental(changed_series=[item.name])
+                            build_incremental(changed_series=[target_name])
                             if config.REALTIME_PUSH:
                                 git_push_docs()
                         except Exception as e:

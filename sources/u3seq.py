@@ -1,5 +1,5 @@
 """
-sources/u3seq.py — مصدر u.3seq.com (مسلسلات + أفلام مدبلجة)
+sources/u3seq.py — مصدر u.3seq.com (WordPress REST API)
 """
 
 import re
@@ -14,7 +14,7 @@ class U3SeqSource(SourceBase):
     name = "u3seq"
 
     def __init__(self):
-        self.base = config.SOURCE_BASE_URL.rstrip("/")
+        self.base = config.U3SEQ_BASE_URL.rstrip("/")
         self.scraper = cloudscraper.create_scraper(
             browser={"browser": "chrome", "platform": "windows", "mobile": False},
             delay=5,
@@ -49,18 +49,14 @@ class U3SeqSource(SourceBase):
         return 0
 
     def _is_movie(self, title):
-        """يحدد إذا كان فيلم أم مسلسل."""
         t = title or ""
-        # فيلم: لا يحتوي على "الحلقة" + يحتوي على "فيلم" أو جزء
         if "الحلقة" in t or "حلقة" in t or "episode" in t.lower():
             return False
         if "فيلم" in t or "film" in t.lower() or "movie" in t.lower():
             return True
-        # إذا لم يُذكر نوع، اعتبره مسلسل افتراضياً
         return False
 
     def _clean_name(self, title):
-        """ينظف الاسم من الحلقة والكلمات الزائدة."""
         t = re.sub(r"\s*الحلقة\s*\d+.*$", "", title or "").strip()
         t = re.sub(r"\s*[Ee]pisode\s*\d+.*$", "", t).strip()
         t = re.sub(r"\s*مدبلجة?\s*$", "", t).strip()
@@ -73,11 +69,11 @@ class U3SeqSource(SourceBase):
         print(f"📋 [{self.name}] جلب العناصر...")
         all_posts = []
 
-        for page in range(1, config.SOURCE_MAX_PAGES + 1):
+        for page in range(1, config.U3SEQ_MAX_PAGES + 1):
             posts = self._api_get(
                 "/wp-json/wp/v2/posts",
                 params={
-                    "categories": config.SOURCE_CATEGORY,
+                    "categories": config.U3SEQ_CATEGORY,
                     "per_page": 100,
                     "page": page,
                     "_fields": "id,title,featured_media,link,date,slug",
@@ -104,7 +100,6 @@ class U3SeqSource(SourceBase):
             ep_num = self._extract_ep_number(title)
             part_num = ep_num
 
-            # للأفلام: الجزء
             if is_movie:
                 m = re.search(r"الجزء\s*(\d+)", title)
                 if m:
@@ -128,7 +123,6 @@ class U3SeqSource(SourceBase):
                 "media_id": post.get("featured_media", 0),
             })
 
-        # ترتيب الأجزاء
         for item in items_map.values():
             item.parts.sort(key=lambda x: x["number"])
             item.total_parts = len(item.parts)
