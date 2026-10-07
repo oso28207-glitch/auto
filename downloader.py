@@ -1,18 +1,12 @@
 """
-downloader.py v36 — FINAL
+downloader.py v37 — FINAL
 ═══════════════════════════════════════════════════════════
-v36: إصلاح مشكلة 403 Forbidden من cdn-vids.xyz
-     - إزالة firefox133 (غير مدعوم في curl_cffi)
-     - إضافة Sec-Fetch-* + Sec-Ch-Ua-* لكل المحاولات
-     - إضافة N_m3u8DL-RE (الأقوى ضد CDN واقٍ)
-     - إضافة فحص صلاحية الرابط قبل التحميل
-     - ترتيب المحاولات: N_m3u8DL-RE → ffmpeg-HLS → yt-dlp → cffi
-
-محاولات التحميل:
-  0. N_m3u8DL-RE (الأقوى ضد CDN بتوكنات)
-  1. ffmpeg-HLS مباشرة (يفك AES-128 تلقائياً)
-  2. yt-dlp (fallback موثوق)
-  3. cffi+concat (فقط للمواقع غير المشفّرة)
+v37: إصلاح مشكلة "منتهي الصلاحية" الكاذبة
+     - إزالة _is_url_alive (كانت ترفض روابط صالحة)
+     - محاولة التحميل مباشرة على الروابط المستخرجة
+     - N_m3u8DL-RE كأول محاولة (تتعامل مع التوكنات أفضل)
+     - تحسين headers لـ cdn-vids.xyz
+     - إضافة chrome131/chrome136 (curl_cffi 0.13+)
 """
 
 import os
@@ -36,10 +30,9 @@ MIN_SIZE = 100 * 1024
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
-# ★ v36: إزالة firefox133 (غير مدعوم في curl_cffi الأقدم)
-IMPERSONATES = ["chrome124", "chrome131", "chrome120", "chrome110"]
+# ★ curl_cffi 0.13+ يدعم chrome131, chrome136
+IMPERSONATES = ["chrome131", "chrome124", "chrome120", "chrome110"]
 
-# هل N_m3u8DL-RE مثبتة؟
 _HAS_NM3U8DL = None
 
 
@@ -100,7 +93,6 @@ def _is_valid_url(url):
 
 
 def _is_valid_video(path):
-    """يقبل أي صيغة فيديو صالحة."""
     if not path or not os.path.exists(path) or os.path.getsize(path) < 100:
         return False
     try:
@@ -140,7 +132,6 @@ def _full_headers(referer, ck=None):
 
 
 def _headers_as_string(referer, ck=None):
-    """يبني headers كـ string لـ ffmpeg."""
     h = _full_headers(referer, ck)
     return "".join(f"{k}: {v}\r\n" for k, v in h.items())
 
@@ -487,24 +478,7 @@ def _resolve_m3u8(url, headers, depth=0, max_depth=4):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ فحص صلاحية الرابط
-# ═══════════════════════════════════════════════════════════════
-def _is_url_alive(m3u8_url, referer, ck):
-    """يتحقق أن الرابط لا يزال صالحاً (غير منتهي الصلاحية)."""
-    headers = _full_headers(referer, ck)
-    for imp in IMPERSONATES:
-        try:
-            r = cffi_requests.get(m3u8_url, headers=headers,
-                                   impersonate=imp, timeout=10, verify=False)
-            if r.status_code == 200 and len(r.content) > 50:
-                return True
-        except Exception:
-            continue
-    return False
-
-
-# ═══════════════════════════════════════════════════════════════
-# ★★★ محاولة 0: N_m3u8DL-RE (الأقوى ضد CDN بتوكنات)
+# N_m3u8DL-RE (الأقوى ضد CDN بتوكنات)
 # ═══════════════════════════════════════════════════════════════
 def _try_nm3u8dl(m3u8_url, out_path, referer, ck):
     if not _has_nm3u8dl():
@@ -547,7 +521,6 @@ def _try_nm3u8dl(m3u8_url, out_path, referer, ck):
 
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
-        # N_m3u8DL-RE يحفظ الملف مباشرة باسم out_name.mp4
         expected = Path(out_dir) / f"{out_name}.mp4"
         if expected.exists() and expected.stat().st_size > MIN_SIZE:
             if str(expected) != str(out_path):
@@ -566,7 +539,7 @@ def _try_nm3u8dl(m3u8_url, out_path, referer, ck):
 
 
 # ═══════════════════════════════════════════════════════════════
-# محاولة 1: ffmpeg-HLS (مع headers كاملة)
+# ffmpeg-HLS
 # ═══════════════════════════════════════════════════════════════
 def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
     print(f"      [ffmpeg-hls]", flush=True)
@@ -601,7 +574,7 @@ def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
 
 
 # ═══════════════════════════════════════════════════════════════
-# محاولة 2: yt-dlp
+# yt-dlp
 # ═══════════════════════════════════════════════════════════════
 def _ytdlp(url, out_path, referer, ck):
     print(f"      [yt-dlp]", flush=True)
@@ -664,7 +637,7 @@ def _ytdlp(url, out_path, referer, ck):
 
 
 # ═══════════════════════════════════════════════════════════════
-# محاولة 3: cffi+concat
+# cffi+concat
 # ═══════════════════════════════════════════════════════════════
 def _try_concat_protocol(seg_paths, out_path):
     concat_input = "concat:" + "|".join(seg_paths)
@@ -841,7 +814,7 @@ def _cffi_download(segments, out_path, referer, ck):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v36: استخراج m3u8 — الترتيب الجديد مع N_m3u8DL-RE
+# ★★★ v37: استخراج m3u8 — بدون فحص صلاحية
 # ═══════════════════════════════════════════════════════════════
 def _extract_from_iframe(sb, iframe_url, out_path):
     print(f"      🌐 iframe: {iframe_url[:80]}", flush=True)
@@ -882,7 +855,7 @@ def _extract_from_iframe(sb, iframe_url, out_path):
 
     m3u8s.sort(key=_priority)
 
-    # إزالة المكرر (نفس الرابط بمعاملات مختلفة)
+    # إزالة المكرر
     unique = []
     seen_bases = set()
     for u in m3u8s:
@@ -899,52 +872,34 @@ def _extract_from_iframe(sb, iframe_url, out_path):
     ck = _cookies(sb)
     ref = sb.cdp.get_current_url() or iframe_url
 
-    # ★ فلترة الروابط المنتهية الصلاحية
-    alive = []
-    for m in m3u8s[:3]:
-        if _is_url_alive(m, ref, ck):
-            alive.append(m)
-        else:
-            print(f"         ⚠️ منتهي الصلاحية", flush=True)
+    # ★★★ لا نفحص الصلاحية — نجرب التحميل مباشرة
+    # (لأن الفحص كان يرفض روابط صالحة)
 
-    if not alive:
-        print(f"      ⚠️ كل الروابط منتهية — إعادة محاولة بعد 2s", flush=True)
-        sb.cdp.sleep(2)
-        _play(sb)
-        found = _scan(sb)
-        for m in found[:3]:
-            if _is_url_alive(m, ref, ck):
-                alive.append(m)
-
-    if not alive:
-        print(f"      ❌ لا روابط صالحة", flush=True)
-        return None
-
-    # ═══ محاولة 0: N_m3u8DL-RE (الأقوى) ═══
+    # ═══ محاولة 0: N_m3u8DL-RE ═══
     if _has_nm3u8dl():
         print(f"      🎯 [0] N_m3u8DL-RE...", flush=True)
-        for m in alive[:2]:
+        for m in m3u8s[:2]:
             if _try_nm3u8dl(m, str(out_path), ref, ck):
                 if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
                     return (os.path.getsize(out_path), True)
 
     # ═══ محاولة 1: ffmpeg-HLS ═══
     print(f"      🎯 [1] ffmpeg-HLS...", flush=True)
-    for m in alive[:2]:
+    for m in m3u8s[:2]:
         if _ffmpeg_hls(m, str(out_path), ref, ck):
             if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
                 return (os.path.getsize(out_path), True)
 
     # ═══ محاولة 2: yt-dlp ═══
     print(f"      🎯 [2] yt-dlp...", flush=True)
-    for m in alive[:2]:
+    for m in m3u8s[:2]:
         if _ytdlp(m, str(out_path), ref, ck):
             if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
                 return (os.path.getsize(out_path), True)
 
     # ═══ محاولة 3: cffi+concat ═══
     print(f"      🎯 [3] cffi+concat...", flush=True)
-    for m in alive:
+    for m in m3u8s:
         headers = _full_headers(ref, ck)
         _, segs = _resolve_m3u8(m, headers)
         if segs:
@@ -956,7 +911,7 @@ def _extract_from_iframe(sb, iframe_url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# u3seq (عشق)
+# u3seq + yam
 # ═══════════════════════════════════════════════════════════════
 def _u3seq(sb, url, out_path):
     if "?do=watch" not in url:
@@ -1023,9 +978,6 @@ def _u3seq(sb, url, out_path):
     return _extract_from_iframe(sb, iframe_url, out_path)
 
 
-# ═══════════════════════════════════════════════════════════════
-# yam (اهواك)
-# ═══════════════════════════════════════════════════════════════
 def _yam(sb, url, out_path):
     print(f"🖥️  فتح: {url[:90]}", flush=True)
     _open(sb, url, wait=2)
