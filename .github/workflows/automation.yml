@@ -54,20 +54,19 @@ concurrency:
   group: shoof-automation
   cancel-in-progress: false
 
-# 🌍 متغيرات البيئة العامة
+# 🌍 متغيرات البيئة العامة — ✅ مصلح: أزلنا PIP_NO_CACHE_DIR
 env:
   PYTHON_VERSION: '3.11'
   TZ: 'Africa/Cairo'
   PYTHONUNBUFFERED: '1'
   PIP_DISABLE_PIP_VERSION_CHECK: '1'
-  PIP_NO_CACHE_DIR: '0'
   DISPLAY: ':99'
 
 jobs:
   automate:
     name: 🚀 تشغيل الأتمتة
     runs-on: ubuntu-24.04
-    timeout-minutes: 340  # 5.5 ساعات (أقصى حد لـ GitHub)
+    timeout-minutes: 340
     
     steps:
       # ═══════════════════════════════════════════════════════════
@@ -80,7 +79,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       # ═══════════════════════════════════════════════════════════
-      # 2️⃣ إعداد Python
+      # 2️⃣ إعداد Python + تفعيل cache (بدون تعارض)
       # ═══════════════════════════════════════════════════════════
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
@@ -99,20 +98,18 @@ jobs:
           ffmpeg -version | head -1
 
       # ═══════════════════════════════════════════════════════════
-      # 4️⃣ تثبيت Xvfb + Chrome (للمتصفح)
+      # 4️⃣ تثبيت Xvfb + Chrome
       # ═══════════════════════════════════════════════════════════
       - name: 🌐 Setup Chrome + Xvfb
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb wget
           
-          # تثبيت Google Chrome
           wget -q -O /tmp/chrome.deb \
             "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb"
           sudo apt-get install -y -qq /tmp/chrome.deb
           rm -f /tmp/chrome.deb
           
-          # تشغيل Xvfb
           sudo Xvfb :99 -screen 0 1920x1080x24 &
           echo "DISPLAY=:99" >> $GITHUB_ENV
           sleep 2
@@ -173,17 +170,10 @@ jobs:
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
           CHECK_CHANNELS: ${{ secrets.CHECK_CHANNELS }}
         run: |
-          # حساب المهلة بالثواني
           MAX_MIN="${{ github.event.inputs.max_runtime || '165' }}"
           MAX_SEC=$(( MAX_MIN * 60 ))
-          
-          # حساب أقصى حلقات
           MAX_EPS="${{ github.event.inputs.max_episodes || '0' }}"
-          
-          # المصادر
           SOURCES="${{ github.event.inputs.enabled_sources || 'u3seq,yam,egybest' }}"
-          
-          # تخطي الضغط
           SKIP_COMP="${{ github.event.inputs.skip_compress || 'false' }}"
           
           cat > .env << EOF
@@ -303,7 +293,7 @@ jobs:
           }
 
       # ═══════════════════════════════════════════════════════════
-      # 🔟 بناء الموقع (احتياطي إن لم يبنه run_all.py)
+      # 🔟 بناء الموقع (احتياطي)
       # ═══════════════════════════════════════════════════════════
       - name: 🏗️ Build site (fallback)
         if: always()
@@ -322,18 +312,16 @@ jobs:
           find docs/posters -type f 2>/dev/null | wc -l
 
       # ═══════════════════════════════════════════════════════════
-      # 1️⃣1️⃣ تنظيف الملفات المؤقتة
+      # 1️⃣1️⃣ تنظيف
       # ═══════════════════════════════════════════════════════════
       - name: 🧹 Cleanup temp files
         if: always()
         run: |
-          # إيقاف العمليات المعلقة
           pkill -9 -f "yt-dlp" 2>/dev/null || true
           pkill -9 -f "chrome" 2>/dev/null || true
           pkill -9 -f "ffmpeg" 2>/dev/null || true
           pkill -9 -f "Xvfb" 2>/dev/null || true
           
-          # مسح الوسائط المؤقتة
           rm -rf data/media/* 2>/dev/null || true
           rm -rf downloads_* 2>/dev/null || true
           rm -f /tmp/tmp*.txt /tmp/tmp*.log /tmp/tmp*.mp4 /tmp/tmp*.ts 2>/dev/null || true
@@ -343,7 +331,7 @@ jobs:
           df -h | head -3
 
       # ═══════════════════════════════════════════════════════════
-      # 1️⃣2️⃣ 💾 Commit + Push
+      # 1️⃣2️⃣ Commit + Push
       # ═══════════════════════════════════════════════════════════
       - name: 💾 Commit and push
         if: always()
@@ -351,23 +339,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # أضف الملفات
           git add -f data/ docs/ 2>/dev/null || true
           
-          # تحقق من وجود تغييرات
           if git diff --staged --quiet; then
             echo "ℹ️ لا تغييرات"
             exit 0
           fi
           
-          # إحصائيات
           echo "── التغييرات ──"
           git diff --staged --stat | tail -20
           
-          # Commit
           git commit -m "🤖 تحديث تلقائي: $(date -u +'%Y-%m-%d %H:%M')" || true
           
-          # Push مع إعادة المحاولة
           for i in 1 2 3; do
             if git push; then
               echo "✅ push نجح (محاولة $i)"
@@ -424,7 +407,7 @@ jobs:
           } >> $GITHUB_STEP_SUMMARY
 
       # ═══════════════════════════════════════════════════════════
-      # 1️⃣4️⃣ فشل صريح عند عدم وجود تحميلات
+      # 1️⃣4️⃣ فحص نهائي
       # ═══════════════════════════════════════════════════════════
       - name: ⚠️ Check run status
         if: always()
