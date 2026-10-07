@@ -1,13 +1,11 @@
 """
-downloader.py v54 — FINAL
+downloader.py v55 — FINAL
 ═══════════════════════════════════════════════════════════
-v54: binary concat (إصلاح التعليق)
-     - دمج ثنائي (نسخ بايتات) بدل ffmpeg concat demuxer
-     - remux TS→MP4 بـ timeout 300s
-     - fallback: استخدام TS مباشرة
-v53: timeout موثوق (AbortController + hard batch)
-v50: ضغط ذكي حسب المدة + حد 90MB
-v49: عند فشل الضغط — حذف الحلقة
+v55: yt-dlp أولاً (يتجاوز حجب IPs) + إيقاف سريع
+     - _ytdlp_simple: بدون cookies، مع referer
+     - إيقاف فوري بعد أول دفعتين فاشلتين
+     - v54: binary concat (سريع 100x)
+     - v50: ضغط ذكي حسب المدة + حد 90MB
 """
 
 import os
@@ -30,8 +28,8 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 MIN_HEIGHT = 360
 BATCH_SIZE = 6
-PER_SEG_MS = 25000
-BATCH_MS = 80000
+PER_SEG_MS = 20000
+BATCH_MS = 60000
 
 
 def _safe(n):
@@ -358,7 +356,7 @@ def _fetch_text_cdp(sb, url, referer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# fetch دفعة (v53: AbortController + hard batch timeout)
+# fetch دفعة
 # ═══════════════════════════════════════════════════════════════
 def _fetch_batch_in_browser(sb, urls_batch, referer,
                              per_seg_ms=PER_SEG_MS, batch_ms=BATCH_MS):
@@ -445,7 +443,6 @@ def _fetch_batch_in_browser(sb, urls_batch, referer,
         })
         value = (result or {}).get("result", {}).get("value")
         if not isinstance(value, str):
-            print(f"      ⚠️ batch: no result", flush=True)
             return None
 
         parsed = json.loads(value)
@@ -465,20 +462,24 @@ def _fetch_batch_in_browser(sb, urls_batch, referer,
 
 
 # ═══════════════════════════════════════════════════════════════
-# تحميل كل المقاطع بدفعات
+# ★★★ v55: تحميل بدفعات مع إيقاف سريع عند الفشل الكامل
 # ═══════════════════════════════════════════════════════════════
 def _download_all_segments(sb, seg_urls, referer, tmp_dir,
                             batch_size=BATCH_SIZE):
     total = len(seg_urls)
-    print(f"      ⚡ تحميل بدفعات ({batch_size} مقطع/دفعة، "
-          f"حد {PER_SEG_MS//1000}s/مقطع) — {total} مقطع", flush=True)
+    print(f"      ⚡ تحميل بدفعات ({batch_size} مقطع/دفعة) — {total} مقطع",
+          flush=True)
 
     paths = {}
     failed_indices = []
-    consecutive_fails = 0
     start = time.time()
 
+    # ★ v55: عداد فشل صارم
+    total_batches = 0
+    empty_batches = 0
+
     for i in range(0, total, batch_size):
+        total_batches += 1
         batch = seg_urls[i:i + batch_size]
         batch_end = min(i + batch_size, total)
         results = _fetch_batch_in_browser(sb, batch, referer)
@@ -486,11 +487,7 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
         if results is None:
             for j in range(len(batch)):
                 failed_indices.append(i + j)
-            consecutive_fails += 1
-            if consecutive_fails >= 3:
-                print(f"      ❌ 3 دفعات فاشلة متتالية — إيقاف التحميل",
-                      flush=True)
-                break
+            empty_batches += 1
         else:
             batch_ok = 0
             for j, data in enumerate(results):
@@ -508,13 +505,14 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
                     failed_indices.append(idx)
 
             if batch_ok == 0:
-                consecutive_fails += 1
-                if consecutive_fails >= 5:
-                    print(f"      ❌ 5 دفعات فاشلة متتالية — إيقاف التحميل",
-                          flush=True)
-                    break
+                empty_batches += 1
             else:
-                consecutive_fails = 0
+                empty_batches = 0
+
+        # ★ v55: إيقاف فوري بعد 2 دفعات فارغة متتالية (بدل 3-5)
+        if empty_batches >= 2:
+            print(f"      ❌ دفعتان فارغتان — إيقاف التحميل فوراً", flush=True)
+            break
 
         done = batch_end
         elapsed = time.time() - start
@@ -528,41 +526,120 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
               f"فشل: {len(failed_indices)} | {mb:.1f}MB | "
               f"{rate:.1f}/s | ETA: {eta:.0f}s", flush=True)
 
-    if failed_indices and len(failed_indices) < total * 0.6:
-        print(f"      🔁 إعادة محاولة {len(failed_indices)} مقطع فاشل...",
-              flush=True)
-        retry_urls = [seg_urls[idx] for idx in failed_indices]
-        still_failed = []
-        for k in range(0, len(retry_urls), 4):
-            sub = retry_urls[k:k + 4]
-            sub_idx = failed_indices[k:k + 4]
-            results = _fetch_batch_in_browser(sb, sub, referer,
-                                               per_seg_ms=20000,
-                                               batch_ms=60000)
-            if results:
-                for j, data in enumerate(results):
-                    idx = sub_idx[j]
-                    if data:
-                        seg_path = os.path.join(tmp_dir, f"seg_{idx:06d}.ts")
-                        try:
-                            with open(seg_path, "wb") as f:
-                                f.write(data)
-                            paths[idx] = seg_path
-                        except Exception:
-                            still_failed.append(idx)
-                    else:
-                        still_failed.append(idx)
-            else:
-                still_failed.extend(sub_idx)
-
-        if still_failed:
-            print(f"      ⚠️ {len(still_failed)} مقطع فشل نهائياً", flush=True)
-
     return paths, failed_indices
 
 
 # ═══════════════════════════════════════════════════════════════
-# downloader الرئيسي
+# ★★★ v55: yt-dlp بسيط (بدون cookies)
+# ═══════════════════════════════════════════════════════════════
+def _ytdlp_simple(url, out_path, referer):
+    """yt-dlp مع referer فقط — يتجاوز حجب IPs."""
+    print(f"      [yt-dlp simple]", flush=True)
+
+    cmd = [
+        "yt-dlp",
+        "--no-warnings", "--no-playlist", "--no-part",
+        "--retries", "5", "--fragment-retries", "10",
+        "--socket-timeout", "30",
+        "--concurrent-fragments", "16",
+        "--no-check-certificate",
+        "--hls-prefer-native",
+        "--user-agent", UA,
+        "--referer", referer,
+        "--add-header", f"Origin:{_origin(referer)}",
+        "--add-header", "Accept:*/*",
+        "--add-header", "Accept-Language:en-US,en;q=0.9",
+        "-o", out_path, url,
+    ]
+
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1500)
+        if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+            print(f"      ✅ yt-dlp: {os.path.getsize(out_path)/1048576:.1f}MB",
+                  flush=True)
+            return True
+        err = (r.stderr or "")[-250:]
+        print(f"      ⚠️ yt-dlp: {err}", flush=True)
+    except Exception as e:
+        print(f"      ⚠️ yt-dlp: {str(e)[:100]}", flush=True)
+    return False
+
+
+def _ytdlp_with_cookies(url, out_path, referer, cookies_dict):
+    """yt-dlp مع cookies (fallback)."""
+    print(f"      [yt-dlp cookies]", flush=True)
+    tmp_cookie = tempfile.mktemp(suffix=".txt")
+    try:
+        with open(tmp_cookie, "w", encoding="utf-8") as f:
+            f.write("# Netscape HTTP Cookie File\n")
+            domain = _origin(url).replace("https://", "").replace("http://", "")
+            for k, v in cookies_dict.items():
+                f.write(f".{domain}\tTRUE\t/\tTRUE\t0\t{k}\t{v}\n")
+    except Exception:
+        pass
+
+    cmd = [
+        "yt-dlp", "--no-warnings", "--no-playlist", "--no-part",
+        "--retries", "3", "--fragment-retries", "5",
+        "--socket-timeout", "30", "--concurrent-fragments", "16",
+        "--no-check-certificate", "--hls-prefer-native",
+        "--user-agent", UA, "--referer", referer,
+        "--add-header", "Origin:" + _origin(referer),
+        "--add-header", "Accept:*/*",
+        "-o", out_path, url,
+    ]
+    if os.path.exists(tmp_cookie):
+        cmd += ["--cookies", tmp_cookie]
+
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+            print(f"      ✅ yt-dlp: {os.path.getsize(out_path)/1048576:.1f}MB",
+                  flush=True)
+            try: os.unlink(tmp_cookie)
+            except Exception: pass
+            return True
+        err = (r.stderr or "")[-200:]
+        print(f"      ⚠️ yt-dlp: {err}", flush=True)
+    except Exception as e:
+        print(f"      ⚠️ yt-dlp: {str(e)[:100]}", flush=True)
+    try: os.unlink(tmp_cookie)
+    except Exception: pass
+    return False
+
+
+def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
+    print(f"      [ffmpeg-hls]", flush=True)
+    headers = (
+        f"Referer: {referer}\r\nOrigin: {_origin(referer)}\r\n"
+        f"User-Agent: {UA}\r\nAccept: */*\r\n"
+        "Sec-Fetch-Dest: empty\r\nSec-Fetch-Mode: cors\r\nSec-Fetch-Site: cross-site\r\n"
+    )
+    if ck:
+        headers += f"Cookie: {'; '.join(f'{k}={v}' for k,v in ck.items())[:8000]}\r\n"
+
+    cmd = [
+        _ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "warning",
+        "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+        "-headers", headers, "-user_agent", UA,
+        "-reconnect", "1", "-reconnect_streamed", "1",
+        "-i", m3u8_url, "-c", "copy", "-bsf:a", "aac_adtstoasc",
+        "-movflags", "+faststart", "-y", out_path,
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        if r.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+            print(f"      ✅ ffmpeg: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
+            return True
+        err = (r.stderr or "").strip().split("\n")[-1] if r.stderr else "?"
+        print(f"      ⚠️ ffmpeg: {err[:150]}", flush=True)
+    except Exception as e:
+        print(f"      ⚠️ ffmpeg: {str(e)[:100]}", flush=True)
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════
+# ★★★ v55: downloader مع ترتيب جديد
 # ═══════════════════════════════════════════════════════════════
 def _download_via_browser(sb, m3u8_url, out_path, referer):
     print(f"      🎯 التحميل عبر المتصفح...", flush=True)
@@ -599,6 +676,21 @@ def _download_via_browser(sb, m3u8_url, out_path, referer):
 
     print(f"      📋 {len(seg_urls)} مقطع", flush=True)
 
+    # ★★★ v55: yt-dlp أولاً (الأكثر موثوقية)
+    print(f"      🎯 [1/3] yt-dlp simple...", flush=True)
+    if _ytdlp_simple(m3u8_url, str(out_path), referer):
+        if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+            return (os.path.getsize(out_path), True)
+
+    # ★★★ ثم ffmpeg-hls
+    print(f"      🎯 [2/3] ffmpeg-hls...", flush=True)
+    ck = _cookies(sb)
+    if _ffmpeg_hls(m3u8_url, str(out_path), referer, ck):
+        if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+            return (os.path.getsize(out_path), True)
+
+    # ★★★ أخيراً: browser-fetch (بطيء لكن يعمل أحياناً)
+    print(f"      🎯 [3/3] browser-fetch...", flush=True)
     tmp_dir = tempfile.mkdtemp(prefix="br_segs_")
     start = time.time()
 
@@ -674,19 +766,14 @@ _pick_best_variant = _pick_smallest_variant
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v54: binary concat — أسرع 100x من ffmpeg concat demuxer
+# binary concat (v54)
 # ═══════════════════════════════════════════════════════════════
 def _concat_segments(seg_paths, out_path, seg_dir):
-    """
-    v54: binary concat أولاً.
-    ffmpeg يستخدم فقط للـ remux النهائي (TS → MP4).
-    """
     if not seg_paths:
         return False
 
     total = len(seg_paths)
 
-    # ═══ 1) دمج ثنائي — سريع جداً ═══
     print(f"      🔗 دمج {total} مقطع (binary)...", flush=True)
     t0 = time.time()
     raw_ts = os.path.join(seg_dir, "combined.ts")
@@ -707,7 +794,6 @@ def _concat_segments(seg_paths, out_path, seg_dir):
         print(f"      ❌ فشل الدمج الثنائي: {str(e)[:100]}", flush=True)
         return False
 
-    # ═══ 2) remux: TS → MP4 (timeout 300s) ═══
     print(f"      📼 تحويل TS → MP4...", flush=True)
     t0 = time.time()
     cmd = [
@@ -735,7 +821,7 @@ def _concat_segments(seg_paths, out_path, seg_dir):
         err = (r.stderr or "").strip().split("\n")[-1] if r.stderr else "?"
         print(f"      ⚠️ remux: {err[:150]}", flush=True)
     except subprocess.TimeoutExpired:
-        print(f"      ❌ remux timeout (300s) — إيقاف ffmpeg", flush=True)
+        print(f"      ❌ remux timeout (300s)", flush=True)
         try:
             subprocess.run(["pkill", "-9", "-f", "ffmpeg"],
                            capture_output=True, timeout=3)
@@ -744,7 +830,6 @@ def _concat_segments(seg_paths, out_path, seg_dir):
     except Exception as e:
         print(f"      ❌ remux: {str(e)[:100]}", flush=True)
 
-    # ═══ 3) fallback: TS مباشرة ═══
     print(f"      🔄 fallback: استخدام TS مباشرة", flush=True)
     try:
         shutil.move(raw_ts, out_path)
@@ -755,81 +840,6 @@ def _concat_segments(seg_paths, out_path, seg_dir):
     except Exception as e:
         print(f"      ❌ fallback: {str(e)[:100]}", flush=True)
 
-    return False
-
-
-# ═══════════════════════════════════════════════════════════════
-# fallback: yt-dlp + ffmpeg-HLS
-# ═══════════════════════════════════════════════════════════════
-def _ytdlp_with_cookies(url, out_path, referer, cookies_dict):
-    print(f"      [yt-dlp]", flush=True)
-    tmp_cookie = tempfile.mktemp(suffix=".txt")
-    try:
-        with open(tmp_cookie, "w", encoding="utf-8") as f:
-            f.write("# Netscape HTTP Cookie File\n")
-            domain = _origin(url).replace("https://", "").replace("http://", "")
-            for k, v in cookies_dict.items():
-                f.write(f".{domain}\tTRUE\t/\tTRUE\t0\t{k}\t{v}\n")
-    except Exception:
-        pass
-
-    cmd = [
-        "yt-dlp", "--no-warnings", "--no-playlist", "--no-part",
-        "--retries", "3", "--fragment-retries", "5",
-        "--socket-timeout", "30", "--concurrent-fragments", "16",
-        "--no-check-certificate", "--hls-prefer-native",
-        "--user-agent", UA, "--referer", referer,
-        "--add-header", "Origin:" + _origin(referer),
-        "--add-header", "Accept:*/*",
-        "-o", out_path, url,
-    ]
-    if os.path.exists(tmp_cookie):
-        cmd += ["--cookies", tmp_cookie]
-
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-            print(f"      ✅ yt-dlp: {os.path.getsize(out_path)/1048576:.1f}MB",
-                  flush=True)
-            try: os.unlink(tmp_cookie)
-            except Exception: pass
-            return True
-        err = (r.stderr or "")[-200:]
-        print(f"      ⚠️ yt-dlp: {err}", flush=True)
-    except Exception as e:
-        print(f"      ⚠️ yt-dlp: {str(e)[:100]}", flush=True)
-    try: os.unlink(tmp_cookie)
-    except Exception: pass
-    return False
-
-
-def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
-    print(f"      [ffmpeg-hls]", flush=True)
-    headers = (
-        f"Referer: {referer}\r\nOrigin: {_origin(referer)}\r\n"
-        f"User-Agent: {UA}\r\nAccept: */*\r\n"
-        "Sec-Fetch-Dest: empty\r\nSec-Fetch-Mode: cors\r\nSec-Fetch-Site: cross-site\r\n"
-    )
-    if ck:
-        headers += f"Cookie: {'; '.join(f'{k}={v}' for k,v in ck.items())[:8000]}\r\n"
-
-    cmd = [
-        _ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "warning",
-        "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
-        "-headers", headers, "-user_agent", UA,
-        "-reconnect", "1", "-reconnect_streamed", "1",
-        "-i", m3u8_url, "-c", "copy", "-bsf:a", "aac_adtstoasc",
-        "-movflags", "+faststart", "-y", out_path,
-    ]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
-        if r.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-            print(f"      ✅ ffmpeg: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
-            return True
-        err = (r.stderr or "").strip().split("\n")[-1] if r.stderr else "?"
-        print(f"      ⚠️ ffmpeg: {err[:150]}", flush=True)
-    except Exception as e:
-        print(f"      ⚠️ ffmpeg: {str(e)[:100]}", flush=True)
     return False
 
 
@@ -886,24 +896,11 @@ def _extract_from_iframe(sb, iframe_url, out_path):
         print(f"         · {u[:100]}", flush=True)
 
     ref = iframe_url
-    ck = _cookies(sb)
 
     for m in m3u8s[:2]:
         res = _download_via_browser(sb, m, str(out_path), ref)
         if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
             return res
-
-    print(f"      🎯 [fallback] yt-dlp...", flush=True)
-    for m in m3u8s[:2]:
-        if _ytdlp_with_cookies(m, str(out_path), ref, ck):
-            if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-                return (os.path.getsize(out_path), True)
-
-    print(f"      🎯 [fallback] ffmpeg-HLS...", flush=True)
-    for m in m3u8s[:2]:
-        if _ffmpeg_hls(m, str(out_path), ref, ck):
-            if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-                return (os.path.getsize(out_path), True)
 
     return None
 
@@ -1025,7 +1022,7 @@ def _run_browser(url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ضغط ذكي حسب المدة
+# ضغط ذكي
 # ═══════════════════════════════════════════════════════════════
 def _get_duration(path):
     try:
@@ -1131,7 +1128,7 @@ def _thumb(v, o):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ الواجهة العامة (v54)
+# ★★★ الواجهة العامة (v55)
 # ═══════════════════════════════════════════════════════════════
 def download_episode(series_name, episode_num, url,
                      media_type="series", item_name=None):
