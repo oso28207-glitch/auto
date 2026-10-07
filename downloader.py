@@ -1,12 +1,12 @@
 """
-downloader.py v52 — FINAL
+downloader.py v53 — FINAL
 ═══════════════════════════════════════════════════════════
-v52: رجوع إلى v48 (AbortController) + تحسينات v50
-     - _fetch_batch_in_browser: AbortController فقط (بدون Promise.race)
-     - BATCH_SIZE = 15
-     - consecutive_fails counter (إيقاف بعد 3 دفعات)
-     - ضغط ذكي حسب المدة
-     - حد الرفع 90MB
+v53: timeout موثوق بدون تعليق
+     - AbortController على fetch و arrayBuffer
+     - BATCH_SIZE = 6 (يطابق حد Chrome 6 اتصالات/مضيف)
+     - PER_SEG_MS = 25s | BATCH_MS = 80s
+     - hard batch timeout يلغي كل الـ controllers
+     - v50: ضغط ذكي حسب المدة + حد 90MB
 """
 
 import os
@@ -28,7 +28,9 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
 MIN_HEIGHT = 360
-BATCH_SIZE = 15
+BATCH_SIZE = 6
+PER_SEG_MS = 25000
+BATCH_MS = 80000
 
 
 def _safe(n):
@@ -355,12 +357,15 @@ def _fetch_text_cdp(sb, url, referer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v52: fetch دفعة بـ AbortController (نفس v48)
+# ★★★ v53: fetch دفعة مع timeout موثوق
 # ═══════════════════════════════════════════════════════════════
-def _fetch_batch_in_browser(sb, urls_batch, referer, timeout_s=90):
+def _fetch_batch_in_browser(sb, urls_batch, referer,
+                             per_seg_ms=PER_SEG_MS, batch_ms=BATCH_MS):
     """
-    v52: AbortController فقط (بدون Promise.race).
-    هذه هي الطريقة التي نجحت في v48.
+    v53: 
+      - AbortController على fetch و arrayBuffer معاً (25s per segment)
+      - Hard batch timeout (80s) يلغي كل الـ controllers
+      - يضمن العودة قبل 120s (حد CDP)
     """
     urls_json = json.dumps(urls_batch)
 
@@ -368,14 +373,19 @@ def _fetch_batch_in_browser(sb, urls_batch, referer, timeout_s=90):
     (async function(){{
         const urls = {urls_json};
         const referer = {repr(referer or '')};
+        const PER_SEG_MS = {per_seg_ms};
+        const BATCH_MS = {batch_ms};
 
-        const results = await Promise.all(urls.map(async (u) => {{
+        const controllers = [];
+
+        const batchPromise = Promise.all(urls.map(async (u, i) => {{
+            const controller = new AbortController();
+            controllers.push(controller);
+            const t = setTimeout(() => {{
+                try {{ controller.abort(); }} catch(e) {{}}
+            }}, PER_SEG_MS);
+
             try {{
-                const controller = new AbortController();
-                const t = setTimeout(() => {{
-                    try {{ controller.abort(); }} catch(e) {{}}
-                }}, {timeout_s * 1000});
-
                 const r = await fetch(u, {{
                     method: 'GET',
                     credentials: 'include',
@@ -384,30 +394,51 @@ def _fetch_batch_in_browser(sb, urls_batch, referer, timeout_s=90):
                     signal: controller.signal,
                     headers: {{ 'Accept': '*/*' }}
                 }});
-                clearTimeout(t);
-
-                if (!r.ok) return {{ ok: false, error: 'HTTP ' + r.status }};
+                if (!r.ok) {{
+                    clearTimeout(t);
+                    return {{ ok: false, error: 'HTTP ' + r.status }};
+                }}
                 const buf = await r.arrayBuffer();
+                clearTimeout(t);
                 const bytes = new Uint8Array(buf);
-
+                if (bytes.length === 0) {{
+                    return {{ ok: false, error: 'EMPTY' }};
+                }}
                 let binary = '';
                 const CHUNK = 8192;
-                for (let i = 0; i < bytes.length; i += CHUNK) {{
+                for (let j = 0; j < bytes.length; j += CHUNK) {{
                     binary += String.fromCharCode.apply(
-                        null, bytes.subarray(i, i + CHUNK));
+                        null, bytes.subarray(j, j + CHUNK));
                 }}
                 try {{
                     return {{ ok: true, data: btoa(binary) }};
                 }} catch(e) {{
-                    return {{ ok: false, error: 'btoa: ' + e.message }};
+                    return {{ ok: false, error: 'btoa:' + e.message }};
                 }}
             }} catch(e) {{
-                return {{ ok: false, error: (e.name || '') + ':' +
-                                                 (e.message || '') }};
+                clearTimeout(t);
+                const msg = (e.name || 'err') + ':' +
+                             (e.message || '').substring(0, 30);
+                return {{ ok: false, error: msg }};
             }}
         }}));
 
-        return JSON.stringify(results);
+        const hardTimeout = new Promise((resolve) => {{
+            setTimeout(() => {{
+                for (const c of controllers) {{
+                    try {{ c.abort(); }} catch(e) {{}}
+                }}
+                resolve('__HARD__');
+            }}, BATCH_MS);
+        }});
+
+        const result = await Promise.race([batchPromise, hardTimeout]);
+        if (result === '__HARD__') {{
+            return JSON.stringify(
+                urls.map(() => ({{ ok: false, error: 'batch_timeout' }}))
+            );
+        }}
+        return JSON.stringify(result);
     }})();
     """
 
@@ -439,13 +470,13 @@ def _fetch_batch_in_browser(sb, urls_batch, referer, timeout_s=90):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v52: تحميل بدفعات + consecutive_fails
+# تحميل بدفعات
 # ═══════════════════════════════════════════════════════════════
 def _download_all_segments(sb, seg_urls, referer, tmp_dir,
                             batch_size=BATCH_SIZE):
     total = len(seg_urls)
-    print(f"      ⚡ تحميل بدفعات ({batch_size} مقطع/دفعة) — {total} مقطع",
-          flush=True)
+    print(f"      ⚡ تحميل بدفعات ({batch_size} مقطع/دفعة، "
+          f"حد {PER_SEG_MS//1000}s/مقطع) — {total} مقطع", flush=True)
 
     paths = {}
     failed_indices = []
@@ -455,7 +486,7 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
     for i in range(0, total, batch_size):
         batch = seg_urls[i:i + batch_size]
         batch_end = min(i + batch_size, total)
-        results = _fetch_batch_in_browser(sb, batch, referer, timeout_s=90)
+        results = _fetch_batch_in_browser(sb, batch, referer)
 
         if results is None:
             for j in range(len(batch)):
@@ -466,7 +497,7 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
                       flush=True)
                 break
         else:
-            consecutive_fails = 0
+            batch_ok = 0
             for j, data in enumerate(results):
                 idx = i + j
                 if data:
@@ -475,10 +506,20 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
                         with open(seg_path, "wb") as f:
                             f.write(data)
                         paths[idx] = seg_path
+                        batch_ok += 1
                     except Exception:
                         failed_indices.append(idx)
                 else:
                     failed_indices.append(idx)
+
+            if batch_ok == 0:
+                consecutive_fails += 1
+                if consecutive_fails >= 5:
+                    print(f"      ❌ 5 دفعات فاشلة متتالية — إيقاف التحميل",
+                          flush=True)
+                    break
+            else:
+                consecutive_fails = 0
 
         done = batch_end
         elapsed = time.time() - start
@@ -492,16 +533,18 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
               f"فشل: {len(failed_indices)} | {mb:.1f}MB | "
               f"{rate:.1f}/s | ETA: {eta:.0f}s", flush=True)
 
-    # إعادة محاولة الفاشلة (بحذر)
-    if failed_indices and len(failed_indices) < total * 0.5:
+    # إعادة محاولة الفاشلة
+    if failed_indices and len(failed_indices) < total * 0.6:
         print(f"      🔁 إعادة محاولة {len(failed_indices)} مقطع فاشل...",
               flush=True)
         retry_urls = [seg_urls[idx] for idx in failed_indices]
         still_failed = []
-        for k in range(0, len(retry_urls), 5):
-            sub = retry_urls[k:k + 5]
-            sub_idx = failed_indices[k:k + 5]
-            results = _fetch_batch_in_browser(sb, sub, referer, timeout_s=60)
+        for k in range(0, len(retry_urls), 4):
+            sub = retry_urls[k:k + 4]
+            sub_idx = failed_indices[k:k + 4]
+            results = _fetch_batch_in_browser(sb, sub, referer,
+                                               per_seg_ms=20000,
+                                               batch_ms=60000)
             if results:
                 for j, data in enumerate(results):
                     idx = sub_idx[j]
@@ -588,7 +631,7 @@ def _download_via_browser(sb, m3u8_url, out_path, referer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# اختيار variant ذكي
+# اختيار variant
 # ═══════════════════════════════════════════════════════════════
 def _pick_smallest_variant(m3u8_text, base_url, min_height=360):
     variants = []
