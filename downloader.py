@@ -1,12 +1,12 @@
 """
-downloader.py v43 — FINAL
+downloader.py v44 — FINAL
 ═══════════════════════════════════════════════════════════
-v43: حل مشكلة Read timeout في Blob
-     - Blob بدون awaitPromise (fire-and-forget)
-     - polling لمتغير window.__hls_status
-     - تجاوز حدود 120s في CDP
-     - 10 مقاطع متوازية
-     - fallback base64 للحجم الصغير
+v44: حل جذري لتحميل مقاطع كثيرة (800+)
+     - ThreadPool من Python: 8 طلبات CDP متوازية
+     - كل طلب يجلب مقطعاً واحداً بـ base64
+     - لا حدود CDP (كل طلب < 120s)
+     - لا حاجة لـ Blob أو polling
+     - fallback للطرق الأخرى
 """
 
 import os
@@ -18,6 +18,7 @@ import tempfile
 import threading
 import time
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urlparse, urljoin
 
@@ -352,152 +353,13 @@ def _fetch_text_cdp(sb, url, referer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v43: Blob download بدون انتظار + polling
+# ★★★ v44: fetch مقطع واحد (يُستدعى من ThreadPool)
 # ═══════════════════════════════════════════════════════════════
-def _blob_download_async(sb, seg_urls, referer, download_dir, timeout=900):
+def _fetch_one_segment(driver, url, referer, max_size_mb=10):
     """
-    يحمّل المقاطع في المتصفح بدون انتظار الـ Promise (fire-and-forget)،
-    ثم يراقب window.__hls_status حتى ينتهي أو ينتهي الوقت.
+    يجلب مقطعاً واحداً عبر CDP.
+    آمن للاستدعاء من ThreadPool.
     """
-    download_dir = Path(download_dir).absolute()
-    download_dir.mkdir(parents=True, exist_ok=True)
-
-    for f in download_dir.glob("hls_download*"):
-        try: f.unlink()
-        except Exception: pass
-
-    _cdp(sb, "Page.setDownloadBehavior", {
-        "behavior": "allow",
-        "downloadPath": str(download_dir),
-    })
-
-    urls_json = json.dumps(seg_urls)
-    total = len(seg_urls)
-
-    # كود async يبدأ العملية ويحفظ الحالة في window
-    js = f"""
-    (function(){{
-        window.__hls_status = 'running';
-        window.__hls_ok = 0;
-        window.__hls_failed = 0;
-        window.__hls_total = {total};
-
-        (async function(){{
-            const urls = {urls_json};
-            const referer = {repr(referer or '')};
-            const CONCURRENT = 15;
-            const buffers = [];
-
-            for (let i = 0; i < urls.length; i += CONCURRENT) {{
-                const batch = urls.slice(i, i + CONCURRENT);
-                const results = await Promise.all(batch.map(async (u) => {{
-                    try {{
-                        const r = await fetch(u, {{
-                            method: 'GET',
-                            credentials: 'include',
-                            cache: 'no-store',
-                            referrer: referer,
-                            headers: {{ 'Accept': '*/*' }}
-                        }});
-                        if (!r.ok) return null;
-                        return await r.arrayBuffer();
-                    }} catch(e) {{ return null; }}
-                }}));
-                for (const b of results) {{
-                    if (b) {{ buffers.push(b); window.__hls_ok++; }}
-                    else {{ window.__hls_failed++; }}
-                }}
-                window.__hls_progress = buffers.length;
-            }}
-
-            if (buffers.length === 0) {{
-                window.__hls_status = 'error:no_segments';
-                return;
-            }}
-
-            const blob = new Blob(buffers, {{type: 'video/mp2t'}});
-            const blobUrl = URL.createObjectURL(blob);
-
-            const a = document.createElement('a');
-            a.href = blobUrl;
-            a.download = 'hls_download_' + Date.now() + '.ts';
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-
-            setTimeout(() => {{
-                URL.revokeObjectURL(blobUrl);
-                a.remove();
-            }}, 60000);
-
-            window.__hls_status = 'done:' + buffers.length + ':' + window.__hls_failed;
-        }})();
-
-        return 'STARTED:' + {total};
-    }})();
-    """
-
-    # 1) شغّل بدون awaitPromise
-    try:
-        result = sb.driver.execute_cdp_cmd("Runtime.evaluate", {
-            "expression": js,
-            "awaitPromise": False,
-            "returnByValue": True,
-        })
-        value = (result or {}).get("result", {}).get("value")
-        print(f"      🚀 Blob async: {value}", flush=True)
-    except Exception as e:
-        print(f"      ⚠️ Blob start exc: {str(e)[:120]}", flush=True)
-        return None
-
-    # 2) راقب الحالة
-    start = time.time()
-    last_progress = 0
-    last_print = time.time()
-    while time.time() - start < timeout:
-        sb.cdp.sleep(3)
-        try:
-            status_result = sb.driver.execute_cdp_cmd("Runtime.evaluate", {
-                "expression": "window.__hls_status + '|' + (window.__hls_progress||0) + '/' + (window.__hls_total||0)",
-                "awaitPromise": False,
-                "returnByValue": True,
-            })
-            status = (status_result or {}).get("result", {}).get("value") or ""
-        except Exception:
-            status = ""
-
-        # اطبع التقدم كل 20 ثانية
-        if time.time() - last_print > 20:
-            print(f"      📦 {status}", flush=True)
-            last_print = time.time()
-
-        if status.startswith("done:") or status.startswith("error:"):
-            print(f"      🏁 Blob: {status}", flush=True)
-            break
-
-    # 3) ابحث عن الملف
-    find_start = time.time()
-    while time.time() - find_start < 120:
-        candidates = list(download_dir.glob("hls_download_*.ts"))
-        complete = [c for c in candidates if not c.name.endswith(".crdownload")]
-        if complete:
-            f = complete[0]
-            size1 = f.stat().st_size
-            sb.cdp.sleep(2)
-            size2 = f.stat().st_size
-            if size1 == size2 and size1 > MIN_SIZE:
-                print(f"      ✅ Blob: {f.stat().st_size/1048576:.1f}MB", flush=True)
-                return f
-        sb.cdp.sleep(3)
-
-    print(f"      ⚠️ Blob: لم يظهر الملف", flush=True)
-    return None
-
-
-# ═══════════════════════════════════════════════════════════════
-# base64 fetch (fallback)
-# ═══════════════════════════════════════════════════════════════
-def _fetch_binary_cdp(sb, url, referer, max_size_mb=10):
     max_bytes = max_size_mb * 1024 * 1024
     js = f"""
     (function(){{
@@ -526,7 +388,7 @@ def _fetch_binary_cdp(sb, url, referer, max_size_mb=10):
     }})();
     """
     try:
-        result = sb.driver.execute_cdp_cmd("Runtime.evaluate", {
+        result = driver.execute_cdp_cmd("Runtime.evaluate", {
             "expression": js,
             "awaitPromise": True,
             "returnByValue": True,
@@ -541,6 +403,62 @@ def _fetch_binary_cdp(sb, url, referer, max_size_mb=10):
     except Exception:
         pass
     return None
+
+
+# ═══════════════════════════════════════════════════════════════
+# ★★★ v44: التحميل المتوازي عبر ThreadPool
+# ═══════════════════════════════════════════════════════════════
+def _parallel_download(sb, seg_urls, referer, tmp_dir, max_workers=8):
+    """
+    يحمّل المقاطع على دفعات متوازية عبر CDP.
+    كل مقطع عبر طلب CDP منفصل (< 120 ثانية).
+    """
+    driver = sb.driver
+    total = len(seg_urls)
+    paths = {}
+    failed = 0
+    done = 0
+    lock = threading.Lock()
+
+    # قائمة المهام: (index, url)
+    tasks = list(enumerate(seg_urls))
+
+    def _worker(task):
+        idx, url = task
+        data = _fetch_one_segment(driver, url, referer, max_size_mb=10)
+        if not data:
+            return (idx, None, 0)
+        seg_path = os.path.join(tmp_dir, f"seg_{idx:06d}.ts")
+        try:
+            with open(seg_path, "wb") as f:
+                f.write(data)
+        except Exception:
+            return (idx, None, 0)
+        return (idx, seg_path, len(data))
+
+    print(f"      ⚡ تحميل متوازٍ ({max_workers} workers) — {total} مقطع", flush=True)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = [ex.submit(_worker, t) for t in tasks]
+        for f in as_completed(futures):
+            try:
+                idx, path, size = f.result()
+            except Exception:
+                idx, path, size = (-1, None, 0)
+
+            with lock:
+                done += 1
+                if path:
+                    paths[idx] = path
+                else:
+                    failed += 1
+
+                if done % 40 == 0 or done == total:
+                    mb = sum(os.path.getsize(p) for p in paths.values()) / 1048576
+                    print(f"      📦 {done}/{total} | نجح: {len(paths)} | فشل: {failed} | {mb:.1f}MB",
+                          flush=True)
+
+    return paths, failed
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -580,50 +498,25 @@ def _download_via_browser(sb, m3u8_url, out_path, referer):
 
     print(f"      📋 {len(seg_urls)} مقطع", flush=True)
 
-    # ★★★ الطريقة 1: Blob async (الأسرع والأكثر موثوقية للمقاطع الكبيرة)
-    download_dir = Path(tempfile.mkdtemp(prefix="blob_dl_"))
-    result = _blob_download_async(sb, seg_urls, referer, download_dir,
-                                   timeout=max(300, len(seg_urls) * 2))
-    if result and result.exists() and result.stat().st_size > MIN_SIZE:
-        shutil.move(str(result), str(out_path))
-        shutil.rmtree(download_dir, ignore_errors=True)
-        if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-            print(f"      ✅ Blob: {os.path.getsize(out_path)/1048576:.1f}MB",
-                  flush=True)
-            return (os.path.getsize(out_path), True)
-    shutil.rmtree(download_dir, ignore_errors=True)
-
-    # ★★★ الطريقة 2: base64 fetch (fallback)
-    print(f"      🔄 fetch segments (base64)...", flush=True)
+    # ★★★ التحميل المتوازي عبر ThreadPool
     tmp_dir = tempfile.mkdtemp(prefix="br_segs_")
-    ok = 0
-    failed = 0
+    start = time.time()
+    paths, failed = _parallel_download(sb, seg_urls, referer, tmp_dir, max_workers=8)
+    elapsed = time.time() - start
 
-    for i, seg_url in enumerate(seg_urls, 1):
-        if i % 20 == 0 or i == len(seg_urls):
-            print(f"      📦 {i}/{len(seg_urls)} | نجح: {ok} | فشل: {failed}",
-                  flush=True)
-        data = _fetch_binary_cdp(sb, seg_url, referer, max_size_mb=10)
-        if not data:
-            failed += 1
-            continue
-        seg_path = os.path.join(tmp_dir, f"seg_{i:06d}.ts")
-        with open(seg_path, "wb") as f:
-            f.write(data)
-        ok += 1
-
-    if ok == 0:
+    if not paths:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+        print(f"      ❌ فشل كل المقاطع", flush=True)
         return None
 
-    seg_paths = sorted([
-        os.path.join(tmp_dir, f) for f in os.listdir(tmp_dir)
-        if f.endswith(".ts")
-    ])
+    print(f"      ✅ {len(paths)}/{len(seg_urls)} في {elapsed:.1f}s", flush=True)
+
+    seg_paths = [paths[k] for k in sorted(paths)]
     success = _concat_segments(seg_paths, str(out_path), tmp_dir)
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
     if success and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+        print(f"      ✅ تحميل: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
         return (os.path.getsize(out_path), True)
     return None
 
@@ -673,8 +566,9 @@ def _concat_segments(seg_paths, out_path, seg_dir):
         if (r.returncode == 0 and os.path.exists(out_path)
                 and os.path.getsize(out_path) > MIN_SIZE):
             return True
-    except Exception:
-        pass
+        print(f"      ⚠️ concat: {(r.stderr or '')[-120:]}", flush=True)
+    except Exception as e:
+        print(f"      ⚠️ concat: {str(e)[:100]}", flush=True)
 
     try:
         bin_path = os.path.join(seg_dir, "binary.ts")
@@ -702,7 +596,7 @@ def _concat_segments(seg_paths, out_path, seg_dir):
 
 
 # ═══════════════════════════════════════════════════════════════
-# fallback: yt-dlp + ffmpeg-HLS
+# fallback
 # ═══════════════════════════════════════════════════════════════
 def _ytdlp_with_cookies(url, out_path, referer, cookies_dict):
     print(f"      [yt-dlp]", flush=True)
@@ -1034,7 +928,6 @@ def download_episode(series_name, episode_num, url,
         try: result[0] = _run_browser(url, raw)
         except Exception as e: exc[0] = e
 
-    # رفع الوقت للسماح بتحميل 800+ مقطع
     episode_timeout = max(config.EPISODE_TIMEOUT, 2400)
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
