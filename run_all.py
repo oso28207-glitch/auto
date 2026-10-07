@@ -1,469 +1,337 @@
 #!/usr/bin/env python3
 """
-run_all.py — المنسق الموحد مع حفظ الصور تلقائياً
+run_all.py — المنسق الرئيسي
+1. جلب المصادر
+2. تحميل الحلقات
+3. رفع إلى Telegram
+4. بناء الموقع
+5. Git commit + push
 """
-
-import asyncio
-import json
-import os
-import subprocess
-import sys
-import time
+import os, sys, json, time, asyncio, subprocess, shutil
+from datetime import datetime
 from pathlib import Path
 
 from config import config, DATA_DIR, MEDIA_DIR
+from downloader import download_episode
+from build_site import build_site
 
-
-LOCK_FILE = DATA_DIR / ".run.lock"
-LOCK_TTL = 3600 * 3
-POSTERS_FILE = DATA_DIR / "posters.json"
+LOCK_FILE = DATA_DIR / ".lock"
+STATE_FILE = DATA_DIR / "series.json"
+UPLOADED_FILE = DATA_DIR / "uploaded.json"
 
 
 # ═══════════════════════════════════════════════════════════════
-# القفل الذكي
+# قفل بسيط
 # ═══════════════════════════════════════════════════════════════
-def _is_github_actions():
-    return os.environ.get("GITHUB_ACTIONS") == "true"
-
-
-def _is_process_alive(pid):
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except (OSError, ProcessLookupError):
-        return False
-
-
 def acquire_lock():
-    if _is_github_actions():
+    if os.environ.get("GITHUB_ACTIONS"):
         print("ℹ️  GitHub Actions — تخطي القفل")
         return True
-
     if LOCK_FILE.exists():
-        try:
-            content = LOCK_FILE.read_text().strip()
-            parts = content.split("|")
-            old_pid = int(parts[0]) if parts else 0
-            old_ts = float(parts[1]) if len(parts) > 1 else 0
-            age = time.time() - old_ts
-
-            if age > LOCK_TTL:
-                LOCK_FILE.unlink()
-            else:
-                if _is_process_alive(old_pid) and old_pid != os.getpid():
-                    print(f"⚠️ سكربت آخر يعمل (PID {old_pid})")
-                    return False
-                LOCK_FILE.unlink()
-        except Exception:
-            try: LOCK_FILE.unlink()
-            except Exception: pass
-
-    try:
-        LOCK_FILE.write_text(f"{os.getpid()}|{time.time()}")
-    except Exception:
-        pass
+        age = time.time() - LOCK_FILE.stat().st_mtime
+        if age < 3600:
+            print(f"⚠️  قفل موجود ({age/60:.0f}د) — خروج")
+            return False
+    LOCK_FILE.write_text(str(os.getpid()))
     return True
 
 
 def release_lock():
-    try:
-        if LOCK_FILE.exists():
-            LOCK_FILE.unlink()
-    except Exception:
-        pass
+    try: LOCK_FILE.unlink()
+    except Exception: pass
 
 
 # ═══════════════════════════════════════════════════════════════
-# Git
+# حالة التحميلات
 # ═══════════════════════════════════════════════════════════════
-def git_sync():
-    if not _is_github_actions():
-        return
-    try:
-        subprocess.run(["git", "pull", "--rebase", "--autostash"],
-                       capture_output=True, timeout=60)
-    except Exception:
-        pass
-
-
-def git_push_docs(force=False):
-    if not _is_github_actions():
-        return False
-    try:
-        subprocess.run(["git", "config", "user.name", "github-actions[bot]"],
-                       capture_output=True, timeout=10)
-        subprocess.run(["git", "config", "user.email",
-                        "github-actions[bot]@users.noreply.github.com"],
-                       capture_output=True, timeout=10)
-        subprocess.run(["git", "add", "-f", "docs/", "data/"],
-                       capture_output=True, timeout=30)
-
-        r = subprocess.run(["git", "diff", "--staged", "--quiet"],
-                           capture_output=True, timeout=10)
-        if r.returncode == 0:
-            return False
-
-        ts = time.strftime("%Y-%m-%d %H:%M")
-        subprocess.run(["git", "commit", "-m", f"🎬 تحديث تلقائي: {ts}"],
-                       capture_output=True, timeout=30)
-
-        r = subprocess.run(["git", "push"], capture_output=True, timeout=90)
-        if r.returncode == 0:
-            print(f"   🚀 تم الدفع")
-            return True
-
-        subprocess.run(["git", "pull", "--rebase", "--autostash"],
-                       capture_output=True, timeout=90)
-        r2 = subprocess.run(["git", "push"], capture_output=True, timeout=90)
-        return r2.returncode == 0
-    except Exception as e:
-        print(f"   ⚠️ فشل الدفع: {str(e)[:150]}")
-        return False
-
-
-# ═══════════════════════════════════════════════════════════════
-# ★★★ حفظ الصور من كل المصادر
-# ═══════════════════════════════════════════════════════════════
-def _load_posters() -> dict:
-    """يحمّل posters.json أو ينشئ قاموساً فارغاً."""
-    if POSTERS_FILE.exists():
+def load_state():
+    if STATE_FILE.exists():
         try:
-            data = json.loads(POSTERS_FILE.read_text(encoding="utf-8"))
-            return data if isinstance(data, dict) else {}
-        except Exception as e:
-            print(f"⚠️ فشل تحميل posters.json: {e}")
+            with open(STATE_FILE, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"series": [], "last_update": "", "total_episodes": 0}
+
+
+def save_state(state):
+    state["last_update"] = datetime.utcnow().isoformat()
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+
+
+def load_uploaded():
+    if UPLOADED_FILE.exists():
+        try:
+            with open(UPLOADED_FILE, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
     return {}
 
 
-def _save_posters(posters: dict):
-    """يحفظ posters.json."""
-    POSTERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    POSTERS_FILE.write_text(
-        json.dumps(posters, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+def save_uploaded(uploaded):
+    with open(UPLOADED_FILE, "w", encoding="utf-8") as f:
+        json.dump(uploaded, f, ensure_ascii=False, indent=2)
 
 
-def _collect_and_save_posters(all_items: list):
-    """
-    ★ يجمع الصور من كل عناصر المصادر ويحفظها في posters.json.
-    يخزّنها بصيغة: {"__series__{name}": poster_url}
-    """
-    posters = _load_posters()
-    added = 0
-    updated = 0
+# ═══════════════════════════════════════════════════════════════
+# تحميل قائمة الحلقات من مصادرنا
+# ═══════════════════════════════════════════════════════════════
+def fetch_all_sources():
+    """يجمع جميع المسلسلات من المصادر المفعّلة."""
+    all_series = []
 
-    for item in all_items:
-        if not item.poster:
+    for source in config.ENABLED_SOURCES.split(","):
+        source = source.strip().lower()
+        if not source:
             continue
+        print(f"\n📡 [{source}] جلب...")
+        try:
+            if source == "u3seq":
+                from sources.u3seq import fetch as fetch_u3seq
+                items = fetch_u3seq()
+                all_series.extend(items or [])
+                print(f"   ✅ {len(items or [])} عنصر")
+            elif source == "yam":
+                from sources.yam import fetch as fetch_yam
+                items = fetch_yam()
+                all_series.extend(items or [])
+                print(f"   ✅ {len(items or [])} مسلسل")
+            elif source == "egybest":
+                from sources.egybest import fetch as fetch_egybest
+                items = fetch_egybest()
+                all_series.extend(items or [])
+                print(f"   ✅ {len(items or [])} مسلسل")
+        except Exception as e:
+            print(f"   ⚠️  {source}: {str(e)[:120]}")
 
-        key = f"__series__{item.name}"
-        old = posters.get(key)
+    # دمج حسب الاسم
+    merged = {}
+    for s in all_series:
+        name = s.get("name", "").strip()
+        if not name:
+            continue
+        key = name
+        if key not in merged:
+            merged[key] = s
+        else:
+            # ادمج الحلقات
+            existing_eps = {e.get("num"): e for e in merged[key].get("episodes", [])}
+            for e in s.get("episodes", []):
+                if e.get("num") not in existing_eps:
+                    existing_eps[e["num"]] = e
+            merged[key]["episodes"] = list(existing_eps.values())
 
-        if not old:
-            posters[key] = item.poster
-            added += 1
-        elif old != item.poster:
-            posters[key] = item.poster
-            updated += 1
-
-    if added or updated:
-        _save_posters(posters)
-        print(f"   📸 صور محفوظة: {added} جديدة، {updated} مُحدّثة")
-    else:
-        print(f"   📸 لا صور جديدة")
-
-    total = len([k for k in posters if k.startswith("__series__")])
-    print(f"   📊 إجمالي الصور: {total}")
-    return posters
+    result = list(merged.values())
+    for s in result:
+        s["episodes"] = sorted(s.get("episodes", []),
+                                key=lambda x: x.get("num", 0))
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════
-# المنسق الرئيسي
+# الحلقة الرئيسية
 # ═══════════════════════════════════════════════════════════════
-async def main():
+def main():
     if not acquire_lock():
-        print("⏭️ الخروج بسبب القفل")
-        return 0
+        return 1
+
+    start = time.time()
+    max_sec = config.MAX_RUNTIME_SECONDS
+
+    print("╔" + "═" * 58 + "╗")
+    print("║" + " " * 12 + "شوف — Shoof Automation" + " " * 22 + "║")
+    print("║" + " " * 8 + "مصادر متعددة • ضغط ذكي • موقع تلقائي" + " " * 12 + "║")
+    print("╚" + "═" * 58 + "╝\n")
 
     try:
-        git_sync()
-        start = time.time()
-
-        print("""
-╔══════════════════════════════════════════════════════╗
-║           شوف — Shoof Automation                     ║
-║   مصادر متعددة • صور • تصنيفات • ضغط ذكي            ║
-╚══════════════════════════════════════════════════════╝
-""")
-
         config.validate()
         print("✅ الإعدادات صحيحة")
+    except Exception as e:
+        print(f"❌ {e}")
+        return 1
 
-        from database import db
-        s = db.stats()
-        print(f"\n📊 الحالة الحالية:")
-        print(f"   المسلسلات: {s['series']}")
-        print(f"   الحلقات المرفوعة: {s['uploaded']} من {s['episodes']}")
-        print(f"   الفيديوهات: {s['videos']}")
-        print(f"   فاشلة: {s.get('failed_series', 0)}")
+    # تحميل الحالة
+    state = load_state()
+    uploaded = load_uploaded()
+    print(f"💾 الحالة: {len(state.get('series', []))} مسلسل")
+    print(f"📤 تم رفعه: {len(uploaded)} حلقة")
 
-        # ═══ 1) تحميل المصادر ═══
-        sources = []
-        enabled = [x.strip() for x in config.ENABLED_SOURCES.split(",") if x.strip()]
+    # جلب المصادر
+    all_series = fetch_all_sources()
+    print(f"\n📊 إجمالي: {len(all_series)} مسلسل")
 
-        if "u3seq" in enabled:
-            from sources.u3seq import U3SeqSource
-            sources.append(U3SeqSource())
-        if "yam" in enabled:
-            from sources.yam_ahwak import YamAhwakSource
-            sources.append(YamAhwakSource())
-        if "egybest" in enabled:
-            from sources.egybest import EgyBestSource
-            sources.append(EgyBestSource())
+    if not all_series:
+        print("⚠️  لا مسلسلات — إنشاء موقع فارغ")
+        build_site()
+        git_commit_push()
+        return 0
 
-        print(f"\n📡 المصادر: {', '.join(s.name for s in sources)}")
+    # معالجة كل مسلسل
+    series_output = []
+    processed = 0
 
-        # ═══ 2) جلب العناصر ═══
-        all_items = []
-        for src in sources:
-            try:
-                items = await src.fetch_items()
-                all_items.extend(items)
-            except Exception as e:
-                print(f"⚠️ فشل {src.name}: {str(e)[:150]}")
-            finally:
-                try: src.cleanup()
-                except Exception: pass
+    for series in all_series:
+        if time.time() - start > max_sec:
+            print(f"\n⏰ انتهى الوقت ({max_sec//60}د)")
+            break
 
-        print(f"\n📊 إجمالي: {len(all_items)} عنصر")
-        series_count = sum(1 for x in all_items if x.type == "series")
-        movie_count = sum(1 for x in all_items if x.type == "movie")
-        print(f"   • مسلسلات: {series_count}")
-        print(f"   • أفلام: {movie_count}")
+        name = series.get("name", "")
+        episodes = series.get("episodes", [])
+        if not episodes:
+            continue
 
-        # ═══ 3) ★★★ جلب صور u3seq من WordPress API ═══
-        try:
-            from fetch_posters import fetch_posters
-            print(f"\n🖼️  جلب صور u3seq...")
-            fetch_posters()
-        except Exception as e:
-            print(f"⚠️ فشل fetch_posters: {str(e)[:150]}")
+        # حلقات جديدة فقط
+        new_eps = []
+        for ep in episodes:
+            ep_key = f"{name}|ep{ep.get('num', 0)}"
+            if ep_key in uploaded:
+                continue
+            new_eps.append(ep)
 
-        # ═══ 4) ★★★ حفظ صور من كل المصادر ═══
-        print(f"\n📸 جمع صور المصادر...")
-        _collect_and_save_posters(all_items)
+        if not new_eps:
+            # أضف المسلسل للموقع بدون تحميل
+            series_output.append({
+                "name": name,
+                "poster": series.get("poster", ""),
+                "genre": series.get("genre", ""),
+                "episodes": [
+                    {
+                        "num": ep.get("num"),
+                        "url": uploaded.get(f"{name}|ep{ep.get('num')}", {}).get("stream_url", "")
+                    }
+                    for ep in episodes
+                ],
+                "episodes_count": len(episodes),
+            })
+            continue
 
-        # ═══ 5) فحص Telegram ═══
-        existing_eps = {}
-        try:
-            from telegram_checker import (
-                fetch_existing_episodes, is_episode_uploaded, get_stats
-            )
-            existing_eps = await fetch_existing_episodes()
-            ch_stats = get_stats(existing_eps)
-            print(f"\n📡 Telegram: {ch_stats['episodes']} حلقة ({ch_stats['series']} عمل)")
-        except Exception as e:
-            print(f"\n⚠️ فشل فحص Telegram: {str(e)[:150]}")
-
-        # ═══ 6) تحميل ورفع ═══
-        from downloader import download_episode
-        from uploader import uploader
-        from builder import build_incremental
-        from telegram_checker import is_episode_uploaded
-
-        await uploader.start()
-        uploaded_count = 0
-        skipped_count = 0
-        failed_count = 0
-
-        try:
-            for item in all_items:
-                elapsed = time.time() - start
-                if elapsed >= config.MAX_RUNTIME_SECONDS:
-                    print(f"\n⏰ انتهى الوقت ({elapsed/60:.1f}د)")
-                    break
-
-                if (config.MAX_EPISODES_PER_RUN > 0
-                        and uploaded_count >= config.MAX_EPISODES_PER_RUN):
-                    break
-
-                # ★★★ منع التكرار
-                existing_name = db.find_series_by_name(item.name)
-                if existing_name and existing_name != item.name:
-                    print(f"   🔄 دمج: '{item.name}' → '{existing_name}'")
-                    target_name = existing_name
-                else:
-                    target_name = item.name
-
-                # ★★★ الفحص الثلاثي
-                new_parts = []
-                for part in item.parts:
-                    pnum = part.get("number", 0)
-                    purl = part.get("url", "")
-
-                    status = db.episode_status(target_name, pnum)
-                    if status == "uploaded":
-                        skipped_count += 1
-                        continue
-
-                    if existing_eps and is_episode_uploaded(existing_eps, target_name, pnum):
-                        db.set_episode(target_name, pnum,
-                                       status="uploaded",
-                                       source="telegram_existing")
-                        skipped_count += 1
-                        continue
-
-                    if not purl or not purl.startswith("http"):
-                        continue
-
-                    new_parts.append(part)
-
-                if not new_parts:
-                    continue
-
-                print(f"\n{'═' * 60}")
-                print(f"📺 {item.type.upper()}: {item.name}")
-                print(f"   أجزاء جديدة: {len(new_parts)} من {item.total_parts}")
-                print(f"   ⏱️  مضى: {elapsed/60:.1f}د | "
-                      f"متبقٍ: {(config.MAX_RUNTIME_SECONDS - elapsed)/60:.1f}د")
-                print(f"{'═' * 60}")
-
-                first_part = new_parts[0].get("number", 1)
-
-                for part in new_parts:
-                    if time.time() - start >= config.MAX_RUNTIME_SECONDS:
-                        break
-
-                    pnum = part.get("number", 0)
-                    purl = part.get("url", "")
-                    part_label = "الجزء" if item.type == "movie" else "الحلقة"
-                    print(f"\n   ── {part_label} {pnum} ──")
-
-                    try:
-                        file_path = await asyncio.to_thread(
-                            download_episode,
-                            target_name, pnum, purl,
-                            item.type, target_name,
-                        )
-                    except Exception as e:
-                        print(f"   ❌ خطأ تحميل: {str(e)[:150]}")
-                        file_path = None
-
-                    if not file_path:
-                        db.mark_failed(target_name, pnum, "فشل التحميل")
-                        failed_count += 1
-                        if pnum == first_part:
-                            print(f"   🚫 تخطي: {target_name}")
-                            db.set_series(target_name, {
-                                "status": "failed",
-                                "reason": "فشلت أول حلقة",
-                            })
-                            break
-                        continue
-
-                    try:
-                        info = await uploader.upload(
-                            file_path=file_path,
-                            item_name=item.name_ar or item.name,
-                            media_type=item.type,
-                            part_number=pnum,
-                            season=item.season,
-                        )
-                    except Exception as e:
-                        print(f"   ❌ فشل رفع: {str(e)[:150]}")
-                        db.mark_failed(target_name, pnum, "فشل الرفع")
-                        failed_count += 1
-                        try: file_path.unlink()
-                        except Exception: pass
-                        continue
-
-                    db.set_episode(
-                        target_name, pnum,
-                        status="uploaded",
-                        message_id=info["message_id"],
-                        file_id=info["file_id"],
-                        size=info["size"],
-                        width=info["width"],
-                        height=info["height"],
-                        duration=info["duration"],
-                        url=purl,
-                        type=item.type,
-                        source=item.source,
-                        caption=info["caption"],
-                    )
-                    db.add_video({
-                        "id": info["message_id"],
-                        "title": info["caption"],
-                        "series": target_name,
-                        "episode": pnum,
-                        "type": item.type,
-                        "source": item.source,
-                        "file_id": info["file_id"],
-                        "size": info["size"],
-                        "duration": info["duration"],
-                        "date": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                    })
-                    db.set_series(target_name, {
-                        "url": item.url,
-                        "type": item.type,
-                        "source": item.source,
-                        "season": item.season,
-                        "total_parts": item.total_parts,
-                        "last_updated": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                        "status": "ok",
-                    })
-                    uploaded_count += 1
-                    print(f"   ✅ «{info['caption']}» ({uploaded_count})")
-
-                    if config.AUTO_BUILD:
-                        try:
-                            build_incremental(changed_series=[target_name])
-                            if config.REALTIME_PUSH:
-                                git_push_docs()
-                        except Exception as e:
-                            print(f"   ⚠️ {str(e)[:100]}")
-
-                    if not config.KEEP_MEDIA:
-                        try: file_path.unlink()
-                        except Exception: pass
-
-        finally:
-            await uploader.stop()
-
-        elapsed = time.time() - start
         print(f"\n{'═' * 60}")
-        print(f"⏱️  المدة: {elapsed/60:.1f} دقيقة")
-        print(f"✅ رُفعت: {uploaded_count}")
-        print(f"⏭️  تُجوهلت: {skipped_count}")
-        print(f"❌ فشلت: {failed_count}")
+        print(f"📺 {name}")
+        print(f"   {len(new_eps)} حلقة جديدة من {len(episodes)}")
+        elapsed = (time.time() - start) / 60
+        remaining = (max_sec - (time.time() - start)) / 60
+        print(f"   ⏱️  مضى: {elapsed:.1f}د | متبقٍ: {remaining:.1f}د")
         print(f"{'═' * 60}")
 
-        # ═══ 7) بناء نهائي ═══
-        if config.AUTO_BUILD:
-            try:
-                build_incremental()
-                git_push_docs(force=True)
-            except Exception:
-                pass
+        success_count = 0
+        for ep in new_eps:
+            if time.time() - start > max_sec:
+                break
 
-        return 0
+            ep_num = ep.get("num", 0)
+            ep_url = ep.get("url", "")
+            if not ep_url:
+                continue
+
+            print(f"\n   ── الحلقة {ep_num} ──")
+            try:
+                result = download_episode(name, ep_num, ep_url)
+                if result and Path(result).exists():
+                    # رفع إلى Telegram (إن كان مفعلاً)
+                    uploaded_info = upload_to_telegram(result, name, ep_num)
+                    if uploaded_info:
+                        uploaded[f"{name}|ep{ep_num}"] = uploaded_info
+                        success_count += 1
+                        print(f"   ✅ تمت الحلقة {ep_num}")
+                    else:
+                        print(f"   ⚠️ فشل الرفع")
+                else:
+                    print(f"   ⚠️ فشل التحميل")
+            except Exception as e:
+                print(f"   ❌ {str(e)[:150]}")
+
+        # أضف للموقع
+        series_output.append({
+            "name": name,
+            "poster": series.get("poster", ""),
+            "genre": series.get("genre", ""),
+            "episodes": [
+                {
+                    "num": ep.get("num"),
+                    "url": uploaded.get(f"{name}|ep{ep.get('num')}", {}).get("stream_url", "")
+                    or ep.get("url", "")  # fallback: استخدم رابط المصدر
+                }
+                for ep in episodes
+            ],
+            "episodes_count": len(episodes),
+            "is_new": success_count > 0,
+            "added_at": datetime.utcnow().isoformat(),
+        })
+
+        processed += 1
+        save_state({"series": series_output,
+                    "total_episodes": sum(s["episodes_count"] for s in series_output)})
+        save_uploaded(uploaded)
+        print(f"   💾 حالة محدثة")
+
+    # اكتب بيانات الموقع
+    print(f"\n💾 كتابة {len(series_output)} مسلسل إلى series.json")
+    save_state({
+        "series": series_output,
+        "total_episodes": sum(s["episodes_count"] for s in series_output),
+    })
+    save_uploaded(uploaded)
+
+    # بناء الموقع
+    build_site()
+
+    # Git push
+    git_commit_push()
+
+    elapsed = (time.time() - start) / 60
+    print(f"\n{'═' * 60}")
+    print(f"⏱️  انتهى في {elapsed:.1f}د")
+    print(f"✅ {processed} مسلسل معالج")
+    print(f"{'═' * 60}")
+    return 0
+
+
+def upload_to_telegram(video_path, series_name, ep_num):
+    """رفع الفيديو إلى Telegram."""
+    if os.environ.get("SKIP_UPLOAD", "false").lower() == "true":
+        return {"stream_url": f"local://{video_path.name}", "uploaded": False}
+
+    try:
+        from uploader import upload_video
+        result = upload_video(str(video_path), series_name, ep_num)
+        return result
     except Exception as e:
-        import traceback
-        print(f"\n💥 خطأ: {e}")
-        traceback.print_exc()
-        try:
-            from builder import build_incremental
-            build_incremental()
-            git_push_docs(force=True)
-        except Exception:
-            pass
-        return 1
-    finally:
-        release_lock()
+        print(f"   ⚠️  رفع: {str(e)[:120]}")
+        return None
+
+
+def git_commit_push():
+    """commit + push إلى GitHub."""
+    try:
+        subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=False)
+        subprocess.run(["git", "config", "user.email",
+                        "github-actions[bot]@users.noreply.github.com"], check=False)
+        subprocess.run(["git", "add", "-f", "data/", "docs/"], check=False)
+
+        r = subprocess.run(["git", "diff", "--staged", "--quiet"], capture_output=True)
+        if r.returncode == 0:
+            print("ℹ️  لا تغييرات")
+            return
+
+        msg = f"🤖 تحديث تلقائي: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
+        subprocess.run(["git", "commit", "-m", msg], check=False)
+
+        for i in range(3):
+            r = subprocess.run(["git", "push"], capture_output=True, text=True)
+            if r.returncode == 0:
+                print("✅ push OK")
+                return
+            print(f"⚠️  push محاولة {i+1} فشل — pull --rebase")
+            subprocess.run(["git", "pull", "--rebase", "--autostash"], check=False)
+            time.sleep(5)
+    except Exception as e:
+        print(f"⚠️  git: {str(e)[:120]}")
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    try:
+        sys.exit(main())
+    finally:
+        release_lock()

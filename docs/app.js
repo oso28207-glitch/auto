@@ -1,138 +1,103 @@
-// app.js — مشغل HLS + autoplay + انتقال تلقائي
-let hls = null;
-let currentSeries = null;
-let currentEpisode = null;
-let countdownTimer = null;
+/* app.js — سلوك الصفحة الرئيسية */
+(function() {
+    'use strict';
 
-async function loadData() {
-    const r = await fetch('series.json');
-    return r.json();
-}
+    // شريط علوي شفاف عند التمرير
+    const topbar = document.querySelector('.topbar');
+    window.addEventListener('scroll', () => {
+        if (window.scrollY > 50) topbar.classList.add('scrolled');
+        else topbar.classList.remove('scrolled');
+    }, { passive: true });
 
-async function openPlayer(seriesName, episodeNum = 1) {
-    const data = await loadData();
-    const series = data.series.find(s => s.name === seriesName);
-    if (!series) return;
+    // بحث فوري
+    const searchInput = document.getElementById('search-input');
+    const searchResults = document.getElementById('search-results');
+    let seriesData = null;
+    let searchTimer = null;
 
-    currentSeries = series;
-    currentEpisode = episodeNum;
-
-    document.getElementById('player-modal').classList.remove('hidden');
-    document.getElementById('player-title').textContent = series.name;
-    document.getElementById('player-subtitle').textContent =
-        `الحلقة ${episodeNum} من ${series.episodes || '?'}`;
-
-    buildEpisodesGrid(series);
-
-    const url = series.episodes_urls?.[episodeNum - 1];
-    if (!url) return;
-
-    playVideo(url);
-}
-
-function playVideo(url) {
-    const video = document.getElementById('video-player');
-
-    if (hls) { hls.destroy(); hls = null; }
-
-    if (Hls.isSupported()) {
-        hls = new Hls({
-            maxBufferLength: 30,
-            enableWorker: true,
-            lowLatencyMode: false,
-        });
-        hls.loadSource(url);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            video.play().catch(e => console.log('autoplay blocked:', e));
-        });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = url;
-        video.play().catch(() => {});
+    async function loadSeries() {
+        if (seriesData) return seriesData;
+        try {
+            const r = await fetch('series.json');
+            const data = await r.json();
+            seriesData = data.series || [];
+            return seriesData;
+        } catch (e) {
+            return [];
+        }
     }
 
-    // autoplay للانتقال التلقائي
-    video.removeEventListener('timeupdate', onTimeUpdate);
-    video.removeEventListener('ended', onEnded);
-    video.addEventListener('timeupdate', onTimeUpdate);
-    video.addEventListener('ended', onEnded);
-}
-
-function onTimeUpdate(e) {
-    const v = e.target;
-    if (!v.duration) return;
-    const remaining = v.duration - v.currentTime;
-    if (remaining <= 10 && remaining > 0) {
-        showCountdown(Math.floor(remaining));
-    } else {
-        hideCountdown();
-    }
-}
-
-function onEnded() {
-    playNext();
-}
-
-function showCountdown(sec) {
-    const el = document.getElementById('autoplay-countdown');
-    const num = document.getElementById('countdown-num');
-    el.classList.remove('hidden');
-    num.textContent = sec;
-    if (countdownTimer) clearTimeout(countdownTimer);
-    countdownTimer = setTimeout(() => playNext(), sec * 1000);
-}
-
-function hideCountdown() {
-    document.getElementById('autoplay-countdown').classList.add('hidden');
-    if (countdownTimer) { clearTimeout(countdownTimer); countdownTimer = null; }
-}
-
-function playNext() {
-    hideCountdown();
-    if (!currentSeries) return;
-    const next = currentEpisode + 1;
-    const nextUrl = currentSeries.episodes_urls?.[next - 1];
-    if (nextUrl) {
-        openPlayer(currentSeries.name, next);
-    }
-}
-
-function buildEpisodesGrid(series) {
-    const grid = document.getElementById('episodes-grid');
-    grid.innerHTML = '';
-    (series.episodes_urls || []).forEach((url, i) => {
-        const ep = i + 1;
-        const btn = document.createElement('button');
-        btn.className = 'ep-btn' + (ep === currentEpisode ? ' active' : '');
-        btn.textContent = ep;
-        btn.onclick = () => openPlayer(series.name, ep);
-        grid.appendChild(btn);
+    searchInput?.addEventListener('input', (e) => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => doSearch(e.target.value), 180);
     });
-}
 
-function closePlayer() {
-    const video = document.getElementById('video-player');
-    video.pause();
-    if (hls) { hls.destroy(); hls = null; }
-    hideCountdown();
-    document.getElementById('player-modal').classList.add('hidden');
-}
+    async function doSearch(q) {
+        q = (q || '').trim().toLowerCase();
+        if (q.length < 2) {
+            searchResults.classList.add('hidden');
+            return;
+        }
+        const items = await loadSeries();
+        const matches = items.filter(s =>
+            s.name.toLowerCase().includes(q)
+        ).slice(0, 10);
 
-// click handlers
-document.addEventListener('click', e => {
-    const card = e.target.closest('.card');
-    if (card) {
-        e.preventDefault();
-        const name = decodeURIComponent(card.dataset.series);
-        openPlayer(name, 1);
+        if (matches.length === 0) {
+            searchResults.innerHTML = '<div class="result" style="color:#999">لا نتائج</div>';
+        } else {
+            searchResults.innerHTML = matches.map(s => `
+                <a class="result" href="watch/${s.slug}.html">
+                    <img src="${s.poster}" alt="${s.name}" loading="lazy">
+                    <div>
+                        <div style="font-weight:600">${s.name}</div>
+                        <div style="font-size:12px;color:#999">${s.episodes_count} حلقة • ${s.genre}</div>
+                    </div>
+                </a>
+            `).join('');
+        }
+        searchResults.classList.remove('hidden');
     }
-});
 
-// search
-document.getElementById('search-input')?.addEventListener('input', e => {
-    const q = e.target.value.toLowerCase();
-    document.querySelectorAll('.card').forEach(c => {
-        const name = (c.querySelector('.card-title')?.textContent || '').toLowerCase();
-        c.style.display = name.includes(q) ? '' : 'none';
+    // إغلاق النتائج عند النقر خارجها
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.search-box')) {
+            searchResults?.classList.add('hidden');
+        }
     });
-});
+
+    // تصفية بالتصنيف
+    document.querySelectorAll('.main-nav a[data-cat]').forEach(a => {
+        a.addEventListener('click', (e) => {
+            e.preventDefault();
+            const cat = a.dataset.cat;
+            document.querySelectorAll('.main-nav a').forEach(x => x.classList.remove('active'));
+            a.classList.add('active');
+
+            const rows = document.querySelectorAll('.row');
+            if (cat === 'الرئيسية') {
+                rows.forEach(r => r.style.display = '');
+            } else {
+                rows.forEach(r => {
+                    r.style.display = r.dataset.category === cat ? '' : 'none';
+                });
+            }
+        });
+    });
+
+    // تمرير سلس
+    window.scrollToRows = function() {
+        document.getElementById('rows-container')?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    // toggle row
+    window.toggleRow = function(btn) {
+        const row = btn.closest('.row');
+        const carousel = row.querySelector('.carousel');
+        const expanded = carousel.classList.toggle('expanded');
+        btn.textContent = expanded ? 'عرض أقل' : 'عرض الكل';
+        carousel.style.maxHeight = expanded ? 'none' : '';
+    };
+
+    console.log('Shoof app.js loaded');
+})();
