@@ -1,5 +1,5 @@
 """
-downloader.py — CDP Fetch.enable للالتقاط + XHR داخل iframe
+downloader.py — CDP Fetch.enable + تحقق من صلاحية URL
 """
 
 import base64
@@ -23,6 +23,7 @@ MIN_SIZE = 100 * 1024
 M3U8_SEARCH_TIMEOUT = int(os.environ.get("M3U8_SEARCH_TIMEOUT", "40"))
 YTDLP_TIMEOUT = int(os.environ.get("YTDLP_TIMEOUT", "120"))
 FFMPEG_HLS_TIMEOUT = int(os.environ.get("FFMPEG_HLS_TIMEOUT", "1800"))
+OPEN_TIMEOUT = int(os.environ.get("OPEN_TIMEOUT", "25"))
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -75,6 +76,46 @@ def _get_ffmpeg_exe():
     return "ffmpeg"
 
 
+# ═══════════════════════════════════════════════════════════════
+# ★★★ التحقق من صلاحية URL الحلقة — جديد
+# ═══════════════════════════════════════════════════════════════
+def _is_valid_episode_url(url):
+    """
+    يتحقق أن الرابط يبدو كرابط حلقة فعلية وليس صفحة تصنيف.
+    - u3seq: يحتوي 'modablaj-' أو '/video/'
+    - مشغلات مباشرة: /embed/, /e/, firestream, playmate, luluvdo
+    - يرفض: moslslat.php, topvideos.php, /series/, /category/ ...
+    """
+    if not url or not isinstance(url, str):
+        return False
+    u = url.lower()
+
+    # استثناءات: صفحات تصنيف معروفة
+    bad_markers = [
+        "/moslslat.php", "/topvideos.php", "/all-series.php",
+        "/series.php", "/category/", "/cats/", "/list/",
+        "?cat=", "?category=",
+    ]
+    for b in bad_markers:
+        if b in u:
+            return False
+
+    # u3seq episode pattern
+    if "modablaj-" in u or "/video/" in u:
+        return True
+
+    # مشغلات الفيديو المباشرة
+    play_markers = [
+        "/embed/", "firestream.to/", "playmate.to/",
+        "luluvdo.com/", "vidsonic", "vidaraa", "/e/",
+    ]
+    for m in play_markers:
+        if m in u:
+            return True
+
+    return False
+
+
 def _cdp_cmd(sb, cmd, params=None):
     if params is None: params = {}
     try:
@@ -101,20 +142,15 @@ def _cdp_eval_async(sb, expr, timeout_ms=120000):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ Fetch.enable — الحل الرئيسي لالتقاط m3u8
+# Fetch.enable للالتقاط
 # ═══════════════════════════════════════════════════════════════
 def _enable_fetch_capture(sb):
-    """
-    يستخدم CDP Fetch domain لاعتراض استجابات m3u8/mpd.
-    عند الاعتراض، يقرأ body فوراً ويحفظه، ثم يمرر الطلب.
-    """
     global _REQ_IDS, _RESP_BODIES
     with _NET_LOCK:
         _REQ_IDS.clear()
         _RESP_BODIES.clear()
 
     print("      🎯 Fetch.enable...")
-
     enabled = False
     for fn in [
         lambda: sb.driver.execute_cdp_cmd("Fetch.enable", {
@@ -125,12 +161,6 @@ def _enable_fetch_capture(sb):
             "handleAuthRequests": False,
         }),
         lambda: sb.cdp.send_cdp_cmd("Fetch.enable", {
-            "patterns": [
-                {"urlPattern": "*.m3u8*", "requestStage": "Response"},
-                {"urlPattern": "*.mpd*", "requestStage": "Response"},
-            ],
-        }),
-        lambda: sb.cdp.execute_cdp_cmd("Fetch.enable", {
             "patterns": [
                 {"urlPattern": "*.m3u8*", "requestStage": "Response"},
                 {"urlPattern": "*.mpd*", "requestStage": "Response"},
@@ -150,7 +180,6 @@ def _enable_fetch_capture(sb):
 
     print("      🎯 Fetch.enable OK")
 
-    # تسجيل handler
     def _handle_paused(params):
         try:
             rid = params.get("requestId", "")
@@ -171,10 +200,9 @@ def _enable_fetch_capture(sb):
                         with _NET_LOCK:
                             _RESP_BODIES[url] = b
                         print(f"      💾 m3u8 محفوظ ({len(str(b))}B)")
-                except Exception as e:
-                    print(f"      ⚠️ getResponseBody: {str(e)[:80]}")
+                except Exception:
+                    pass
 
-            # مرر الطلب دائماً
             if rid:
                 try:
                     _cdp_cmd(sb, "Fetch.continueRequest", {"requestId": rid})
@@ -187,8 +215,6 @@ def _enable_fetch_capture(sb):
             pass
 
     registered = False
-
-    # محاولة async
     try:
         import mycdp
         cls = getattr(mycdp.fetch, "RequestPaused", None)
@@ -202,31 +228,6 @@ def _enable_fetch_capture(sb):
                 registered = True
             except Exception:
                 pass
-
-            if not registered:
-                def _sync_handler(event):
-                    try:
-                        d = {}
-                        for k in ("requestId", "request_id"):
-                            v = getattr(event, k, None)
-                            if v: d["requestId"] = v
-                        req = getattr(event, "request", None)
-                        if req is not None:
-                            d["request"] = {"url": getattr(req, "url", "")}
-                        st = getattr(event, "response_status_code", None)
-                        if st is None:
-                            st = getattr(event, "responseStatusCode", None)
-                        if st is not None: d["responseStatusCode"] = st
-                        _handle_paused(d)
-                    except Exception:
-                        pass
-
-                try:
-                    sb.cdp.add_handler(cls, _sync_handler)
-                    print("      🎯 Fetch handler (sync)")
-                    registered = True
-                except Exception as e:
-                    print(f"      ⚠️ sync handler: {str(e)[:80]}")
     except Exception as e:
         print(f"      ⚠️ mycdp.fetch: {str(e)[:80]}")
 
@@ -234,7 +235,6 @@ def _enable_fetch_capture(sb):
 
 
 def _enable_network_capture(sb):
-    """تفعيل Network domain (backup)."""
     for fn in [
         lambda: sb.driver.execute_cdp_cmd("Network.enable", {}),
         lambda: sb.cdp.send_cdp_cmd("Network.enable", {}),
@@ -610,7 +610,6 @@ def _scan_for_m3u8(sb, netlog_read):
                 found.add(u)
     except Exception: pass
 
-    # ★ من _RESP_BODIES أيضاً
     with _NET_LOCK:
         for u in list(_RESP_BODIES.keys()):
             if ".m3u8" in u or ".mpd" in u:
@@ -712,7 +711,7 @@ def _scan_for_m3u8(sb, netlog_read):
 
 
 # ═══════════════════════════════════════════════════════════════
-# نقرات عدوانية
+# نقرات
 # ═══════════════════════════════════════════════════════════════
 def _aggressive_play(sb):
     try:
@@ -1037,10 +1036,42 @@ def _bypass_cloudflare(sb, iframe_url, timeout_seconds=30):
 
 
 # ═══════════════════════════════════════════════════════════════
+# ★★★ فتح الصفحة بمهلة — جديد
+# ═══════════════════════════════════════════════════════════════
+def _open_with_timeout(sb, url, timeout=OPEN_TIMEOUT):
+    """فتح URL مع مهلة قصوى، لا يتجاوز timeout ثانية."""
+    result = [False]
+
+    def _do():
+        try:
+            sb.cdp.open(url)
+            result[0] = True
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_do, daemon=True)
+    t.start()
+    t.join(timeout=timeout)
+    if t.is_alive():
+        try:
+            sb.driver.execute_cdp_cmd("Page.stopLoading", {})
+        except Exception:
+            pass
+        print(f"      ⏱️ تجاوز {timeout}s لتحميل الصفحة")
+        return False
+    return result[0]
+
+
+# ═══════════════════════════════════════════════════════════════
 # العملية الكاملة
 # ═══════════════════════════════════════════════════════════════
 def _process_with_browser(url, out_path):
     from seleniumbase import SB
+
+    # ★ التحقق من صلاحية URL قبل بدء المتصفح
+    if not _is_valid_episode_url(url):
+        print(f"    ⏭️ تخطي: رابط غير مدعوم ({url[:70]})")
+        return None
 
     netlog = tempfile.mktemp(suffix=".txt")
     open(netlog, "w").close()
@@ -1064,12 +1095,10 @@ def _process_with_browser(url, out_path):
             try:
                 sb.activate_cdp_mode()
 
-                # ★ ترتيب: Network أولاً ثم Fetch (Fetch يحتاج Network مفعل)
                 _enable_network_capture(sb)
                 _enable_fetch_capture(sb)
                 _install_interceptor(sb)
 
-                # تسجيل netlog عبر RequestWillBeSent
                 try:
                     import mycdp
                     async def on_req(params):
@@ -1087,14 +1116,18 @@ def _process_with_browser(url, out_path):
                 except Exception: pass
 
                 print(f"🖥️  فتح: {url[:80]}")
-                sb.cdp.open(url)
+                # ★ فتح بمهلة
+                if not _open_with_timeout(sb, url, timeout=OPEN_TIMEOUT):
+                    return None
                 sb.cdp.sleep(2)
 
                 cur = sb.cdp.get_current_url() or url
                 if "?" in cur: cur = cur.split("?")[0]
                 if not cur.endswith("/"): cur += "/"
                 watch_url = cur + "?do=watch"
-                sb.cdp.open(watch_url)
+
+                if not _open_with_timeout(sb, watch_url, timeout=OPEN_TIMEOUT):
+                    return None
                 sb.cdp.sleep(3)
 
                 servers = []
@@ -1116,7 +1149,9 @@ def _process_with_browser(url, out_path):
                             break
                     except Exception: pass
 
-                if not servers: return None
+                if not servers:
+                    print(f"   ⚠️ لا سيرفرات — صفحة غير مدعومة؟")
+                    return None
 
                 print(f"\n   📋 جمع iframes...")
                 iframe_map = {}
@@ -1175,7 +1210,8 @@ def _process_with_browser(url, out_path):
                             seen.add(u2)
                             iframe_map[f"{server.get('name')}_{sid}"] = u2
 
-                if not iframe_map: return None
+                if not iframe_map:
+                    return None
                 print(f"   ✅ {len(iframe_map)} iframe")
 
                 def _prio(item):
@@ -1225,9 +1261,8 @@ def _process_with_browser(url, out_path):
                                 else: break
                             except Exception: break
 
-                        # انتظار المشغل
                         player_found = False
-                        for _ in range(20):
+                        for _ in range(15):
                             sb.cdp.sleep(1)
                             try:
                                 p = sb.cdp.execute_script(
@@ -1272,12 +1307,10 @@ def _process_with_browser(url, out_path):
 
                         sb.cdp.sleep(2)
 
-                        # 1) CDP capture
                         for m_url in m3u8_urls[:2]:
                             if _hls_via_cdp(sb, m_url, str(out_path)):
                                 return (os.path.getsize(out_path), True)
 
-                        # 2) curl_cffi
                         cookies = _get_cookies(sb)
                         for m_url in m3u8_urls[:2]:
                             if _hls_via_curl(m_url, str(out_path),
@@ -1319,12 +1352,17 @@ def download_episode(series_name, episode_num, url,
         print(f"    ↳ موجودة: {final.name}")
         return final
 
+    # ★ التحقق المبكر من صحة URL
+    if not _is_valid_episode_url(url):
+        print(f"    ⏭️ تخطي (رابط غير مدعوم): {url[:80]}")
+        return None
+
     print(f"    ↳ تحميل {file_prefix}...")
     try:
         res = run_with_timeout(_process_with_browser, args=(url, raw),
-                                timeout=900, default=None)
+                                timeout=600, default=None)
     except TimeoutError_:
-        print(f"    ⏰ تجاوز 900s")
+        print(f"    ⏰ تجاوز 600s")
         for p in ["yt-dlp", "chrome", "ffmpeg"]:
             subprocess.run(["pkill", "-9", "-f", p],
                            capture_output=True, timeout=5)
