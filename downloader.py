@@ -1,5 +1,5 @@
 """
-downloader.py — حقن JavaScript + تحميل HLS عبر المتصفح (الأقوى)
+downloader.py — CDP Network Capture + XHR من داخل المتصفح
 """
 
 import base64
@@ -23,10 +23,14 @@ MIN_SIZE = 100 * 1024
 M3U8_SEARCH_TIMEOUT = int(os.environ.get("M3U8_SEARCH_TIMEOUT", "60"))
 YTDLP_TIMEOUT = int(os.environ.get("YTDLP_TIMEOUT", "120"))
 FFMPEG_HLS_TIMEOUT = int(os.environ.get("FFMPEG_HLS_TIMEOUT", "1800"))
-BROWSER_FETCH_TIMEOUT = int(os.environ.get("BROWSER_FETCH_TIMEOUT", "90"))
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+# ═══ حالة الشبكة (تُملأ عبر CDP handler) ═══
+_REQ_IDS = {}          # url → requestId
+_RESP_BODIES = {}      # url → body (str أو bytes)
+_NET_LOCK = threading.Lock()
 
 
 class TimeoutError_(Exception):
@@ -73,7 +77,290 @@ def _get_ffmpeg_exe():
 
 
 # ═══════════════════════════════════════════════════════════════
-# حقن JavaScript لاعتراض m3u8
+# ★★★ CDP Network Capture — الحل الأساسي
+# ═══════════════════════════════════════════════════════════════
+def _enable_network_capture(sb):
+    """تفعيل Network domain وتسجيل handler لالتقاط requestId لكل URL."""
+    global _REQ_IDS, _RESP_BODIES
+    with _NET_LOCK:
+        _REQ_IDS.clear()
+        _RESP_BODIES.clear()
+
+    try:
+        sb.cdp.send_cdp_cmd("Network.enable", {})
+    except Exception as e:
+        print(f"      ⚠️ Network.enable: {str(e)[:80]}")
+
+    # محاولة تسجيل handler بعدة طرق (compat)
+    registered = False
+    for attempt in ("mycdp.network.ResponseReceived",
+                    "mycdp.network.RequestWillBeSent"):
+        try:
+            if attempt.endswith("ResponseReceived"):
+                import mycdp
+                event = mycdp.network.ResponseReceived
+
+                async def _on_response(params):
+                    try:
+                        resp = params.get("response", {}) or {}
+                        url = resp.get("url", "")
+                        rid = params.get("requestId", "")
+                        if url and rid:
+                            with _NET_LOCK:
+                                _REQ_IDS[url] = rid
+                    except Exception:
+                        pass
+
+                sb.cdp.add_handler(event, _on_response)
+                registered = True
+                print("      📡 CDP network capture enabled")
+                break
+        except Exception as e:
+            print(f"      ⚠️ handler [{attempt}]: {str(e)[:80]}")
+
+    if not registered:
+        print("      ⚠️ لم يتم تسجيل CDP handler — سنستخدم netlog بدلاً")
+
+
+def _get_response_body(sb, url):
+    """قراءة نص الاستجابة من ذاكرة المتصفح — بدون طلب جديد."""
+    with _NET_LOCK:
+        if url in _RESP_BODIES:
+            return _RESP_BODIES[url]
+        rid = _REQ_IDS.get(url)
+
+    if not rid:
+        return None
+
+    try:
+        result = sb.cdp.send_cdp_cmd("Network.getResponseBody", {
+            "requestId": rid
+        })
+        if result and "body" in result:
+            body = result["body"]
+            if result.get("base64Encoded"):
+                try:
+                    body = base64.b64decode(body)
+                except Exception:
+                    pass
+            with _NET_LOCK:
+                _RESP_BODIES[url] = body
+            return body
+    except Exception:
+        pass
+    return None
+
+
+def _wait_for_body(sb, url, timeout=15):
+    """ينتظر ظهور الاستجابة في ذاكرة المتصفح."""
+    start = time.time()
+    while time.time() - start < timeout:
+        body = _get_response_body(sb, url)
+        if body:
+            return body
+        sb.cdp.sleep(0.5)
+    return None
+
+
+def _fetch_segments_via_xhr(sb, urls, batch_timeout_ms=120000):
+    """
+    تحميل المقاطع عبر XHR من داخل الصفحة —
+    يستخدم جلسة المشغل الفعلية (كوكيز + بصمة TLS + هيدرات).
+    """
+    expr = (
+        "(async () => {"
+        f"  const urls = {json.dumps(urls)};"
+        "  const out = [];"
+        "  for (const u of urls) {"
+        "    try {"
+        "      const xhr = new XMLHttpRequest();"
+        "      xhr.open('GET', u, true);"
+        "      xhr.responseType = 'arraybuffer';"
+        "      xhr.withCredentials = true;"
+        "      const resp = await new Promise((resolve) => {"
+        "        xhr.onload = () => resolve(xhr.status === 200 ? xhr.response : ('__HTTP_' + xhr.status));"
+        "        xhr.onerror = () => resolve('__NETERR__');"
+        "        xhr.ontimeout = () => resolve('__TIMEOUT__');"
+        "        xhr.send();"
+        "      });"
+        "      if (typeof resp === 'string') { out.push(resp); continue; }"
+        "      const bytes = new Uint8Array(resp);"
+        "      let bin = '';"
+        "      for (let i = 0; i < bytes.length; i += 8192) {"
+        "        bin += String.fromCharCode.apply(null, bytes.subarray(i, i+8192));"
+        "      }"
+        "      out.push('B64:' + btoa(bin));"
+        "    } catch (e) {"
+        "      out.push('__ERR__:' + e.message);"
+        "    }"
+        "  }"
+        "  return out;"
+        "})()"
+    )
+    try:
+        result = sb.cdp.send_cdp_cmd("Runtime.evaluate", {
+            "expression": expr,
+            "awaitPromise": True,
+            "returnByValue": True,
+            "timeout": batch_timeout_ms,
+        })
+    except Exception as e:
+        print(f"         ⚠️ XHR batch: {str(e)[:80]}")
+        return None
+
+    if not result or "result" not in result:
+        return None
+    val = result["result"].get("value")
+    if not isinstance(val, list):
+        return None
+    return val
+
+
+# ═══════════════════════════════════════════════════════════════
+# ★★★ HLS عبر CDP — الأقوى والأكيد
+# ═══════════════════════════════════════════════════════════════
+def _hls_via_cdp(sb, m3u8_url, out):
+    """
+    1) اقرأ m3u8 من ذاكرة المتصفح (بدون طلب جديد)
+    2) حلل المقاطع
+    3) حمّل كل مقطع عبر XHR من داخل الصفحة
+    4) ادمج محلياً بـ ffmpeg
+    """
+    print(f"         🌐 CDP capture HLS...")
+
+    # 1) اقرأ m3u8 من ذاكرة المتصفح
+    body = _wait_for_body(sb, m3u8_url, timeout=10)
+    if not body:
+        print(f"         ⚠️ m3u8 body غير متاح في ذاكرة المتصفح")
+        return False
+
+    if isinstance(body, bytes):
+        try:
+            body = body.decode("utf-8", errors="ignore")
+        except Exception:
+            print(f"         ⚠️ m3u8 ليس نصاً")
+            return False
+
+    if "#EXTM3U" not in body:
+        print(f"         ⚠️ ليست m3u8 صالحة")
+        return False
+
+    content = body
+    cur_url = m3u8_url
+
+    # 2) إذا master playlist، ابحث عن variant
+    if "#EXT-X-STREAM-INF" in content:
+        variant_url = None
+        for line in content.splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                variant_url = urljoin(cur_url, line)
+                break
+
+        if variant_url:
+            print(f"         ↪️ variant: انتظار تحميله...")
+            vbody = _wait_for_body(sb, variant_url, timeout=20)
+            if vbody:
+                if isinstance(vbody, bytes):
+                    vbody = vbody.decode("utf-8", errors="ignore")
+                if "#EXTINF" in vbody or "#EXT-X-TARGETDURATION" in vbody:
+                    content = vbody
+                    cur_url = variant_url
+                else:
+                    print(f"         ⚠️ variant غير صالح")
+                    return False
+            else:
+                print(f"         ⚠️ لم يُجلب variant")
+                return False
+
+    # 3) حلل المقاطع
+    segments = []
+    for line in content.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            segments.append(urljoin(cur_url, line))
+
+    if not segments:
+        print(f"         ⚠️ لا مقاطع")
+        return False
+
+    print(f"         📥 {len(segments)} مقطع")
+
+    tmpdir = tempfile.mkdtemp(prefix="hls_cdp_")
+    try:
+        # 4) حمّل المقاطع على دفعات (5 لكل دفعة)
+        seg_paths = []
+        BATCH = 5
+        total = len(segments)
+        idx = 0
+
+        while idx < total:
+            batch = segments[idx:idx+BATCH]
+            results = _fetch_segments_via_xhr(sb, batch, batch_timeout_ms=120000)
+            if results is None:
+                print(f"         ⚠️ فشل الدفعة عند {idx}")
+                idx += BATCH
+                continue
+
+            for j, r in enumerate(results):
+                if not isinstance(r, str) or not r.startswith("B64:"):
+                    continue
+                try:
+                    data = base64.b64decode(r[4:])
+                    if len(data) < 100:
+                        continue
+                    p = os.path.join(tmpdir, f"seg_{idx+j:05d}.ts")
+                    with open(p, "wb") as f:
+                        f.write(data)
+                    seg_paths.append(p)
+                except Exception:
+                    continue
+
+            idx += BATCH
+            if idx % 25 == 0 or idx >= total:
+                print(f"         📊 {min(idx, total)}/{total}")
+
+        print(f"         ✅ {len(seg_paths)}/{total} مقطع")
+
+        if len(seg_paths) < 3:
+            print(f"         ⚠️ مقاطع غير كافية")
+            return False
+
+        # 5) دمج
+        concat_file = os.path.join(tmpdir, "concat.txt")
+        with open(concat_file, "w") as f:
+            for p in seg_paths:
+                f.write(f"file '{p}'\n")
+
+        ff = _get_ffmpeg_exe()
+        cmd = [
+            ff, "-nostdin", "-hide_banner", "-loglevel", "error",
+            "-f", "concat", "-safe", "0",
+            "-i", concat_file,
+            "-c", "copy", "-bsf:a", "aac_adtstoasc",
+            "-movflags", "+faststart",
+            "-y", str(out),
+        ]
+        try:
+            print(f"         🎬 دمج محلي...")
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            if (r.returncode == 0 and os.path.exists(out)
+                    and os.path.getsize(out) > MIN_SIZE):
+                mb = os.path.getsize(out) / 1048576
+                print(f"         ✅ نجح: {mb:.1f}MB")
+                return True
+            err = (r.stderr or "").strip()[-150:] if r.stderr else "?"
+            print(f"         ⚠️ دمج فشل: {err}")
+            return False
+        except subprocess.TimeoutExpired:
+            print(f"         ⏰ دمج timeout")
+            return False
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+# ═══════════════════════════════════════════════════════════════
+# حقن JS لاعتراض m3u8 (كما هو)
 # ═══════════════════════════════════════════════════════════════
 _INTERCEPTOR_JS = r"""
 (function() {
@@ -230,189 +517,6 @@ def _read_captured_m3u8(sb):
     return []
 
 
-# ═══════════════════════════════════════════════════════════════
-# ★★★ المتصفح: fetch() عبر CDP Runtime.evaluate
-# ═══════════════════════════════════════════════════════════════
-def _cdp_eval(sb, expr, await_promise=False, timeout_ms=90000):
-    """تنفيذ JS عبر CDP. إن await_promise، ينتظر حتى انتهاء Promise."""
-    try:
-        result = sb.cdp.send_cdp_cmd("Runtime.evaluate", {
-            "expression": expr,
-            "awaitPromise": bool(await_promise),
-            "returnByValue": True,
-            "timeout": int(timeout_ms),
-        })
-    except Exception as e:
-        return None
-    if not result:
-        return None
-    if "exceptionDetails" in result:
-        return None
-    if "result" in result:
-        return result["result"].get("value")
-    return None
-
-
-def _browser_fetch_text(sb, url, timeout=30):
-    """جلب نص URL عبر fetch() داخل المتصفح (يستخدم كوكيز/هيدرات المتصفح الحقيقية)."""
-    expr = (
-        "(async () => { try {"
-        f"  const r = await fetch({json.dumps(url)}, {{credentials:'include'}});"
-        "  if (!r.ok) return '__HTTP_' + r.status + '__';"
-        "  return await r.text();"
-        "} catch (e) { return '__ERROR__: ' + e.message; } })()"
-    )
-    result = _cdp_eval(sb, expr, await_promise=True, timeout_ms=timeout*1000)
-    if not isinstance(result, str):
-        return None
-    if result.startswith("__"):
-        return None
-    return result
-
-
-def _browser_fetch_base64_batch(sb, urls, timeout=180):
-    """جلب عدة روابط دفعة واحدة عبر fetch() داخل المتصفح، وإرجاع قائمة بـ base64."""
-    expr = (
-        "(async () => {"
-        f"  const urls = {json.dumps(urls)};"
-        "  const out = [];"
-        "  for (const u of urls) {"
-        "    try {"
-        "      const r = await fetch(u, {credentials:'include'});"
-        "      if (!r.ok) { out.push('__HTTP_' + r.status + '__'); continue; }"
-        "      const b = await r.arrayBuffer();"
-        "      const bytes = new Uint8Array(b);"
-        "      let bin = '';"
-        "      const CH = 8192;"
-        "      for (let i = 0; i < bytes.length; i += CH) {"
-        "        bin += String.fromCharCode.apply(null, bytes.subarray(i, i+CH));"
-        "      }"
-        "      out.push(btoa(bin));"
-        "    } catch (e) { out.push('__ERR__:' + e.message); }"
-        "  }"
-        "  return out;"
-        "})()"
-    )
-    result = _cdp_eval(sb, expr, await_promise=True, timeout_ms=timeout*1000)
-    if not isinstance(result, list):
-        return None
-    return result
-
-
-# ═══════════════════════════════════════════════════════════════
-# ★★★ HLS عبر المتصفح — الحل الأقوى والأكيد
-# ═══════════════════════════════════════════════════════════════
-def _hls_via_browser(sb, m3u8_url, out):
-    """
-    تحميل HLS كاملاً عبر شبكة المتصفح الحقيقية:
-    - fetch() للـ m3u8 (بكوكيز المتصفح)
-    - fetch() لكل مقطع (بنفس الجلسة)
-    - دمج محلي بـ ffmpeg
-    """
-    print(f"         🌐 browser fetch HLS...")
-
-    # 1) جلب m3u8 الرئيسي
-    content = _browser_fetch_text(sb, m3u8_url, timeout=30)
-    if not content:
-        print(f"         ⚠️ فشل جلب m3u8 عبر المتصفح")
-        return False
-
-    cur_url = m3u8_url
-
-    # 2) إذا master، اختر variant الأول
-    if "#EXT-X-STREAM-INF" in content:
-        variant = None
-        for line in content.splitlines():
-            line = line.strip()
-            if line and not line.startswith("#"):
-                variant = urljoin(cur_url, line)
-                break
-        if variant:
-            print(f"         ↪️ variant")
-            vtxt = _browser_fetch_text(sb, variant, timeout=30)
-            if vtxt:
-                content = vtxt
-                cur_url = variant
-
-    # 3) استخراج المقاطع
-    segments = []
-    for line in content.splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            segments.append(urljoin(cur_url, line))
-
-    if not segments:
-        print(f"         ⚠️ لا مقاطع")
-        return False
-
-    print(f"         📥 {len(segments)} مقطع عبر المتصفح...")
-
-    tmpdir = tempfile.mkdtemp(prefix="hls_br_")
-    try:
-        seg_paths = []
-        BATCH = 5
-        for i in range(0, len(segments), BATCH):
-            batch = segments[i:i+BATCH]
-            results = _browser_fetch_base64_batch(sb, batch, timeout=120)
-            if not results:
-                print(f"         ⚠️ فشل الدفعة {i//BATCH+1}")
-                continue
-            for j, b64 in enumerate(results):
-                if not isinstance(b64, str) or b64.startswith("__"):
-                    continue
-                try:
-                    data = base64.b64decode(b64)
-                    if len(data) < 100:
-                        continue
-                    p = os.path.join(tmpdir, f"seg_{i+j:05d}.ts")
-                    with open(p, "wb") as f:
-                        f.write(data)
-                    seg_paths.append(p)
-                except Exception:
-                    continue
-            done_n = min(i+BATCH, len(segments))
-            print(f"         📊 {done_n}/{len(segments)}")
-
-        if len(seg_paths) < 3:
-            print(f"         ⚠️ مقاطع غير كافية: {len(seg_paths)}")
-            return False
-
-        # 4) concat + دمج محلي
-        concat_file = os.path.join(tmpdir, "concat.txt")
-        with open(concat_file, "w") as f:
-            for p in seg_paths:
-                f.write(f"file '{p}'\n")
-
-        ff = _get_ffmpeg_exe()
-        cmd = [
-            ff, "-nostdin", "-hide_banner", "-loglevel", "error",
-            "-f", "concat", "-safe", "0",
-            "-i", concat_file,
-            "-c", "copy", "-bsf:a", "aac_adtstoasc",
-            "-movflags", "+faststart",
-            "-y", str(out),
-        ]
-        try:
-            print(f"         🎬 دمج محلي...")
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-            if (r.returncode == 0 and os.path.exists(out)
-                    and os.path.getsize(out) > MIN_SIZE):
-                mb = os.path.getsize(out) / 1048576
-                print(f"         ✅ نجح: {mb:.1f}MB")
-                return True
-            err = (r.stderr or "").strip()[-150:] if r.stderr else "?"
-            print(f"         ⚠️ دمج فشل: {err}")
-            return False
-        except subprocess.TimeoutExpired:
-            print(f"         ⏰ دمج timeout")
-            return False
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
-
-
-# ═══════════════════════════════════════════════════════════════
-# كشف m3u8
-# ═══════════════════════════════════════════════════════════════
 def _scan_for_m3u8(sb, netlog_read):
     found = set()
 
@@ -523,64 +627,78 @@ def _scan_for_m3u8(sb, netlog_read):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ffmpeg HLS (احتياطي)
+# نقرات عدوانية (كما هو)
 # ═══════════════════════════════════════════════════════════════
-def _ffmpeg_hls(m3u8_url, out, iframe_url, cookies=None):
-    cookies = cookies or {}
-    cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
-    origin = _origin(iframe_url)
+def _aggressive_play(sb):
+    try:
+        sb.cdp.execute_script("""
+            (function(){try{
+                ['iframe[id*="ad"]','div[class*="popup"]','[class*="overlay"]','.ads']
+                    .forEach(function(sel){
+                        document.querySelectorAll(sel).forEach(function(el){
+                            el.style.display = 'none';
+                        });
+                    });
+                document.body.style.overflow = 'auto';
+            }catch(e){}})();
+        """)
+    except Exception: pass
 
-    headers_parts = []
-    if iframe_url:
-        headers_parts.append(f"Referer: {iframe_url}")
-    if origin:
-        headers_parts.append(f"Origin: {origin}")
-    headers_parts.append("Accept: */*")
-    headers_parts.append("Accept-Language: ar,en;q=0.9")
-    if cookie_str:
-        headers_parts.append(f"Cookie: {cookie_str}")
-    headers = "\r\n".join(headers_parts) + "\r\n"
-
-    ff = _get_ffmpeg_exe()
-
-    for codec_args, name in [
-        (["-c", "copy", "-bsf:a", "aac_adtstoasc",
-          "-movflags", "+faststart"], "aac-ts"),
-        (["-c", "copy", "-movflags", "+faststart"], "copy"),
-    ]:
-        if os.path.exists(out):
-            try: os.remove(out)
+    for sel in ["video", ".jw-icon-playback", ".jw-display-icon-container",
+                ".vjs-big-play-button", "[class*='play']", "#play"]:
+        for _ in range(2):
+            try: sb.cdp.click_if_visible(sel)
             except Exception: pass
 
-        cmd = [
-            ff, "-nostdin", "-hide_banner", "-loglevel", "warning",
-            "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
-            "-headers", headers,
-            "-user_agent", UA,
-            "-reconnect", "1", "-reconnect_streamed", "1",
-            "-reconnect_delay_max", "5",
-            "-i", m3u8_url,
-        ] + codec_args + ["-y", str(out)]
+    try:
+        rect = sb.cdp.execute_script("""
+            (function(){
+                var v = document.querySelector('video');
+                if (!v) return null;
+                var r = v.getBoundingClientRect();
+                if (r.width < 50 || r.height < 50) return null;
+                return {x: Math.round(r.left+r.width/2), y: Math.round(r.top+r.height/2)};
+            })();
+        """)
+        if rect and rect.get("x", 0) > 0:
+            for _ in range(2):
+                sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+                    "type": "mousePressed", "x": rect['x'], "y": rect['y'],
+                    "button": "left", "clickCount": 1,
+                })
+                sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+                    "type": "mouseReleased", "x": rect['x'], "y": rect['y'],
+                    "button": "left", "clickCount": 1,
+                })
+                sb.cdp.sleep(0.3)
+    except Exception: pass
 
-        try:
-            print(f"         🎬 ffmpeg HLS [{name}]...")
-            r = subprocess.run(cmd, capture_output=True, text=True,
-                               timeout=FFMPEG_HLS_TIMEOUT)
-            if (r.returncode == 0 and os.path.exists(out)
-                    and os.path.getsize(out) > MIN_SIZE):
-                mb = os.path.getsize(out) / 1048576
-                print(f"         ✅ نجح: {mb:.1f}MB")
-                return True
-            err = (r.stderr or "").strip().split("\n")[-1] if r.stderr else "?"
-            print(f"         ⚠️ [{name}]: {err[:120]}")
-        except subprocess.TimeoutExpired:
-            print(f"         ⏰ [{name}]: timeout")
-            subprocess.run(["pkill", "-9", "-f", "ffmpeg"],
-                           capture_output=True, timeout=5)
-        except Exception as e:
-            print(f"         ⚠️ [{name}]: {str(e)[:80]}")
+    try:
+        sb.cdp.execute_script("""
+            (function(){try{
+                if(typeof jwplayer!=='undefined'){
+                    var p=jwplayer();
+                    if(p){ if(p.play)p.play(true); if(p.setMute)p.setMute(true); }
+                }
+                if(typeof videojs!=='undefined'){
+                    var p2 = videojs.getPlayers();
+                    for (var k in p2) { try { p2[k].play(); p2[k].muted(true); } catch(e){} }
+                }
+                var v=document.querySelector('video');
+                if(v){ v.muted=true; if(v.play)v.play().catch(function(){}); }
+            }catch(e){}})();
+        """)
+    except Exception: pass
 
-    return False
+
+def _get_cookies(sb):
+    try:
+        r = sb.driver.execute_cdp_cmd("Network.getAllCookies", {})
+        if r and r.get("cookies"):
+            return {c["name"]: c["value"] for c in r["cookies"]
+                    if c.get("name") and c.get("value")}
+    except Exception: pass
+    return {}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -589,8 +707,7 @@ def _ffmpeg_hls(m3u8_url, out, iframe_url, cookies=None):
 def _hls_via_curl(m3u8_url, out, iframe_url, cookies=None):
     cookies = cookies or {}
     headers = {
-        "User-Agent": UA,
-        "Accept": "*/*",
+        "User-Agent": UA, "Accept": "*/*",
         "Accept-Language": "ar,en;q=0.9",
     }
     if iframe_url:
@@ -706,82 +823,7 @@ def _hls_via_curl(m3u8_url, out, iframe_url, cookies=None):
 
 
 # ═══════════════════════════════════════════════════════════════
-# نقرات عدوانية
-# ═══════════════════════════════════════════════════════════════
-def _aggressive_play(sb):
-    try:
-        sb.cdp.execute_script("""
-            (function(){try{
-                ['iframe[id*="ad"]','div[class*="popup"]','[class*="overlay"]','.ads']
-                    .forEach(function(sel){
-                        document.querySelectorAll(sel).forEach(function(el){
-                            el.style.display = 'none';
-                        });
-                    });
-                document.body.style.overflow = 'auto';
-            }catch(e){}})();
-        """)
-    except Exception: pass
-
-    for sel in ["video", ".jw-icon-playback", ".jw-display-icon-container",
-                ".vjs-big-play-button", "[class*='play']", "#play"]:
-        for _ in range(2):
-            try: sb.cdp.click_if_visible(sel)
-            except Exception: pass
-
-    try:
-        rect = sb.cdp.execute_script("""
-            (function(){
-                var v = document.querySelector('video');
-                if (!v) return null;
-                var r = v.getBoundingClientRect();
-                if (r.width < 50 || r.height < 50) return null;
-                return {x: Math.round(r.left+r.width/2), y: Math.round(r.top+r.height/2)};
-            })();
-        """)
-        if rect and rect.get("x", 0) > 0:
-            for _ in range(2):
-                sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
-                    "type": "mousePressed", "x": rect['x'], "y": rect['y'],
-                    "button": "left", "clickCount": 1,
-                })
-                sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
-                    "type": "mouseReleased", "x": rect['x'], "y": rect['y'],
-                    "button": "left", "clickCount": 1,
-                })
-                sb.cdp.sleep(0.3)
-    except Exception: pass
-
-    try:
-        sb.cdp.execute_script("""
-            (function(){try{
-                if(typeof jwplayer!=='undefined'){
-                    var p=jwplayer();
-                    if(p){ if(p.play)p.play(true); if(p.setMute)p.setMute(true); }
-                }
-                if(typeof videojs!=='undefined'){
-                    var p2 = videojs.getPlayers();
-                    for (var k in p2) { try { p2[k].play(); p2[k].muted(true); } catch(e){} }
-                }
-                var v=document.querySelector('video');
-                if(v){ v.muted=true; if(v.play)v.play().catch(function(){}); }
-            }catch(e){}})();
-        """)
-    except Exception: pass
-
-
-def _get_cookies(sb):
-    try:
-        r = sb.driver.execute_cdp_cmd("Network.getAllCookies", {})
-        if r and r.get("cookies"):
-            return {c["name"]: c["value"] for c in r["cookies"]
-                    if c.get("name") and c.get("value")}
-    except Exception: pass
-    return {}
-
-
-# ═══════════════════════════════════════════════════════════════
-# الضغط
+# الضغط (كما هو)
 # ═══════════════════════════════════════════════════════════════
 def _get_duration(path):
     try:
@@ -867,7 +909,7 @@ def _compress_twopass(inp, out, max_size_mb, duration, ff):
 
 
 # ═══════════════════════════════════════════════════════════════
-# CF bypass
+# CF bypass (كما هو)
 # ═══════════════════════════════════════════════════════════════
 def _bypass_cloudflare(sb, iframe_url, timeout_seconds=30):
     print(f"      🔄 CF bypass ({timeout_seconds}s)...")
@@ -924,6 +966,9 @@ def _process_with_browser(url, out_path):
                 page_load_strategy="eager", locale_code="en") as sb:
             try:
                 sb.activate_cdp_mode()
+
+                # ★ تفعيل التقاط الشبكة أولاً
+                _enable_network_capture(sb)
                 _install_interceptor(sb)
 
                 try:
@@ -1109,23 +1154,19 @@ def _process_with_browser(url, out_path):
                         for u in m3u8_urls[:3]:
                             print(f"         · {u[:100]}")
 
-                        cookies = _get_cookies(sb)
+                        # ★ انتظر قليلاً ليُخزّن المتصفح الاستجابات
+                        sb.cdp.sleep(2)
 
-                        # ★ 1) عبر المتصفح مباشرة (الأقوى — يستخدم جلسة المتصفح الحقيقية)
+                        # ★ 1) CDP capture (الأقوى)
                         for m_url in m3u8_urls[:2]:
-                            if _hls_via_browser(sb, m_url, str(out_path)):
+                            if _hls_via_cdp(sb, m_url, str(out_path)):
                                 return (os.path.getsize(out_path), True)
 
                         # ★ 2) curl_cffi
+                        cookies = _get_cookies(sb)
                         for m_url in m3u8_urls[:2]:
                             if _hls_via_curl(m_url, str(out_path),
                                              iframe_url, cookies):
-                                return (os.path.getsize(out_path), True)
-
-                        # ★ 3) ffmpeg مباشر
-                        for m_url in m3u8_urls[:2]:
-                            if _ffmpeg_hls(m_url, str(out_path),
-                                           iframe_url, cookies):
                                 return (os.path.getsize(out_path), True)
 
                         print(f"   ⏭️ فشل: {sname}")
