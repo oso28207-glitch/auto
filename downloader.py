@@ -1,11 +1,11 @@
 """
-downloader.py v47 — FINAL
+downloader.py v48 — FINAL
 ═══════════════════════════════════════════════════════════
-v47: إصلاح فوري
-     - CHUNK=8192 (آمن، تجنب RangeError في apply)
-     - طباعة أخطاء fetch (أول 3 فقط)
-     - اختيار variant ذكي: تحقق من وجود >1 variant
-     - 16 workers (يُبقى)
+v48: توازي حقيقي داخل المتصفح
+     - كل CDP call يجلب 20 مقطع في Promise.all
+     - لا threads على Python (chromedriver thread-safe? No!)
+     - 42 دورة × 20 = 834 مقطع في ~3 دقائق
+     - retry تلقائي للمقاطع الفاشلة
 """
 
 import os
@@ -17,7 +17,6 @@ import tempfile
 import threading
 import time
 import base64
-import concurrent.futures
 from pathlib import Path
 from urllib.parse import urlparse, urljoin
 
@@ -28,10 +27,7 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
 MIN_HEIGHT = 360
-
-# عدادات للأخطاء (لمنع ضجيج السجل)
-_fetch_error_count = 0
-_fetch_exc_count = 0
+BATCH_SIZE = 20  # عدد المقاطع في كل CDP call
 
 
 def _safe(n):
@@ -358,173 +354,179 @@ def _fetch_text_cdp(sb, url, referer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v47: fetch مقطع واحد (CHUNK=8192)
+# ★★★ v48: جلب دفعة من المقاطع داخل المتصفح (Promise.all)
 # ═══════════════════════════════════════════════════════════════
-def _fetch_one_segment(driver, url, referer, max_size_mb=10, timeout_s=60):
-    global _fetch_error_count, _fetch_exc_count
+def _fetch_batch_in_browser(sb, urls_batch, referer, timeout_s=90):
+    """
+    يجلب دفعة مقاطع (حتى 20) في CDP call واحد.
+    التوازي حقيقي داخل المتصفح.
+    يعيد: list of (bytes | None).
+    """
+    urls_json = json.dumps(urls_batch)
 
-    max_bytes = max_size_mb * 1024 * 1024
     js = f"""
-    (function(){{
-        var controller = new AbortController();
-        var timer = setTimeout(function(){{
-            try {{ controller.abort(); }} catch(e) {{}}
-        }}, {timeout_s * 1000});
+    (async function(){{
+        const urls = {urls_json};
+        const referer = {repr(referer or '')};
 
-        return fetch({repr(url)}, {{
-            method: 'GET',
-            credentials: 'include',
-            cache: 'no-store',
-            referrer: {repr(referer or '')},
-            signal: controller.signal,
-            headers: {{ 'Accept': '*/*' }}
-        }})
-        .then(r => {{
-            clearTimeout(timer);
-            if (!r.ok) return 'ERROR: HTTP ' + r.status;
-            return r.arrayBuffer();
-        }})
-        .then(buf => {{
-            var bytes = new Uint8Array(buf);
-            if (bytes.length > {max_bytes}) return 'ERROR: TOO_BIG';
-            var binary = '';
-            var CHUNK = 8192;
-            for (var i = 0; i < bytes.length; i += CHUNK) {{
-                var sub = bytes.subarray(i, i + CHUNK);
-                binary += String.fromCharCode.apply(null, sub);
-            }}
+        const results = await Promise.all(urls.map(async (u) => {{
             try {{
-                return 'OK:' + btoa(binary);
-            }} catch(b64err) {{
-                return 'ERROR: btoa: ' + b64err.message;
+                const controller = new AbortController();
+                const t = setTimeout(() => {{
+                    try {{ controller.abort(); }} catch(e) {{}}
+                }}, {timeout_s * 1000});
+
+                const r = await fetch(u, {{
+                    method: 'GET',
+                    credentials: 'include',
+                    cache: 'no-store',
+                    referrer: referer,
+                    signal: controller.signal,
+                    headers: {{ 'Accept': '*/*' }}
+                }});
+                clearTimeout(t);
+
+                if (!r.ok) return {{ ok: false, error: 'HTTP ' + r.status }};
+                const buf = await r.arrayBuffer();
+                const bytes = new Uint8Array(buf);
+
+                // base64 آمن (CHUNK=8192)
+                let binary = '';
+                const CHUNK = 8192;
+                for (let i = 0; i < bytes.length; i += CHUNK) {{
+                    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+                }}
+                try {{
+                    return {{ ok: true, data: btoa(binary) }};
+                }} catch(e) {{
+                    return {{ ok: false, error: 'btoa: ' + e.message }};
+                }}
+            }} catch(e) {{
+                return {{ ok: false, error: e.name + ': ' + (e.message || '') }};
             }}
-        }})
-        .catch(e => {{
-            clearTimeout(timer);
-            return 'ERROR: ' + (e.message || e.name || 'fetch failed');
-        }});
+        }}));
+
+        return JSON.stringify(results);
     }})();
     """
 
     try:
-        result = driver.execute_cdp_cmd("Runtime.evaluate", {
+        result = sb.driver.execute_cdp_cmd("Runtime.evaluate", {
             "expression": js,
             "awaitPromise": True,
             "returnByValue": True,
         })
         value = (result or {}).get("result", {}).get("value")
         if not isinstance(value, str):
+            print(f"      ⚠️ batch: لا نتيجة", flush=True)
             return None
-        if value.startswith("ERROR:"):
-            _fetch_error_count += 1
-            if _fetch_error_count <= 3:
-                print(f"      ⚠️ fetch error #{_fetch_error_count}: "
-                      f"{value[6:150]}", flush=True)
-            return None
-        if value.startswith("OK:"):
-            return base64.b64decode(value[3:])
+
+        parsed = json.loads(value)
+        decoded = []
+        for item in parsed:
+            if item.get("ok"):
+                try:
+                    decoded.append(base64.b64decode(item["data"]))
+                except Exception:
+                    decoded.append(None)
+            else:
+                decoded.append(None)
+        return decoded
     except Exception as e:
-        _fetch_exc_count += 1
-        if _fetch_exc_count <= 3:
-            print(f"      ⚠️ fetch exc #{_fetch_exc_count}: "
-                  f"{str(e)[:120]}", flush=True)
-    return None
+        print(f"      ⚠️ batch exc: {str(e)[:120]}", flush=True)
+        return None
 
 
 # ═══════════════════════════════════════════════════════════════
-# التحميل المتوازي
+# ★★★ v48: تحميل كل المقاطع بدفعات
 # ═══════════════════════════════════════════════════════════════
-def _parallel_download(sb, seg_urls, referer, tmp_dir, max_workers=16,
-                       hard_deadline_s=1800):
-    driver = sb.driver
+def _download_all_segments(sb, seg_urls, referer, tmp_dir,
+                            batch_size=BATCH_SIZE):
+    """
+    يحمّل كل المقاطع بدفعات عبر CDP.
+    كل دفعة = CDP call واحد مع Promise.all (20 متوازي).
+    """
     total = len(seg_urls)
-    paths = {}
-    failed = 0
-    done = 0
-    lock = threading.Lock()
-
-    def _worker(task):
-        idx, url = task
-        try:
-            data = _fetch_one_segment(driver, url, referer,
-                                       max_size_mb=10, timeout_s=60)
-        except Exception:
-            return (idx, None, 0)
-        if not data:
-            return (idx, None, 0)
-        seg_path = os.path.join(tmp_dir, f"seg_{idx:06d}.ts")
-        try:
-            with open(seg_path, "wb") as f:
-                f.write(data)
-        except Exception:
-            return (idx, None, 0)
-        return (idx, seg_path, len(data))
-
-    print(f"      ⚡ تحميل متوازٍ ({max_workers} workers) — {total} مقطع",
+    print(f"      ⚡ تحميل بدفعات ({batch_size} مقطع/دفعة) — {total} مقطع",
           flush=True)
 
-    tasks = [(i, s) for i, s in enumerate(seg_urls)]
-
+    paths = {}
+    failed_indices = []
     start = time.time()
-    hard_deadline = start + hard_deadline_s
-    last_print = start
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
-        future_map = {ex.submit(_worker, t): t for t in tasks}
-        pending = set(future_map.keys())
+    for i in range(0, total, batch_size):
+        batch = seg_urls[i:i + batch_size]
+        batch_end = min(i + batch_size, total)
+        results = _fetch_batch_in_browser(sb, batch, referer, timeout_s=90)
 
-        while pending and time.time() < hard_deadline:
-            done_set, pending = concurrent.futures.wait(
-                pending, timeout=3,
-                return_when=concurrent.futures.FIRST_COMPLETED,
-            )
-            for f in done_set:
-                try:
-                    idx, path, size = f.result(timeout=1)
-                except Exception:
-                    idx, path, size = (-1, None, 0)
-
-                with lock:
-                    done += 1
-                    if path:
-                        paths[idx] = path
-                    else:
-                        failed += 1
-
-            now = time.time()
-            if done % 100 == 0 or (done < total and now - last_print > 15 and done > 0):
-                with lock:
+        if results is None:
+            # فشل كامل للدفعة
+            for j in range(len(batch)):
+                failed_indices.append(i + j)
+        else:
+            for j, data in enumerate(results):
+                idx = i + j
+                if data:
+                    seg_path = os.path.join(tmp_dir, f"seg_{idx:06d}.ts")
                     try:
-                        mb = sum(os.path.getsize(p) for p in paths.values()) / 1048576
+                        with open(seg_path, "wb") as f:
+                            f.write(data)
+                        paths[idx] = seg_path
                     except Exception:
-                        mb = 0
-                    elapsed = now - start
-                    rate = done / elapsed if elapsed > 0 else 0
-                    eta = (total - done) / rate if rate > 0 else 0
-                    print(f"      📦 {done}/{total} | نجح: {len(paths)} | "
-                          f"فشل: {failed} | {mb:.1f}MB | {rate:.1f}/s | "
-                          f"ETA: {eta:.0f}s", flush=True)
-                last_print = now
+                        failed_indices.append(idx)
+                else:
+                    failed_indices.append(idx)
 
-        if pending:
-            print(f"      ⚠️ {len(pending)} طلب معلّق — إلغاء", flush=True)
-            for f in pending:
-                try:
-                    f.cancel()
-                except Exception:
-                    pass
+        # progress كل دفعة
+        done = batch_end
+        elapsed = time.time() - start
+        rate = done / elapsed if elapsed > 0 else 0
+        eta = (total - done) / rate if rate > 0 else 0
+        try:
+            mb = sum(os.path.getsize(p) for p in paths.values()) / 1048576
+        except Exception:
+            mb = 0
+        print(f"      📦 {done}/{total} | نجح: {len(paths)} | "
+              f"فشل: {len(failed_indices)} | {mb:.1f}MB | "
+              f"{rate:.1f}/s | ETA: {eta:.0f}s", flush=True)
 
-    return paths, failed
+    # ★ إعادة محاولة الفاشلة (مرة واحدة)
+    if failed_indices:
+        print(f"      🔁 إعادة محاولة {len(failed_indices)} مقطع فاشل...",
+              flush=True)
+        retry_urls = [seg_urls[idx] for idx in failed_indices]
+        # دفعات من 10 لإعادة المحاولة
+        still_failed = []
+        for k in range(0, len(retry_urls), 10):
+            sub = retry_urls[k:k + 10]
+            sub_idx = failed_indices[k:k + 10]
+            results = _fetch_batch_in_browser(sb, sub, referer, timeout_s=60)
+            if results:
+                for j, data in enumerate(results):
+                    idx = sub_idx[j]
+                    if data:
+                        seg_path = os.path.join(tmp_dir, f"seg_{idx:06d}.ts")
+                        try:
+                            with open(seg_path, "wb") as f:
+                                f.write(data)
+                            paths[idx] = seg_path
+                        except Exception:
+                            still_failed.append(idx)
+                    else:
+                        still_failed.append(idx)
+            else:
+                still_failed.extend(sub_idx)
+
+        if still_failed:
+            print(f"      ⚠️ {len(still_failed)} مقطع فشل نهائياً", flush=True)
+
+    return paths, failed_indices
 
 
 # ═══════════════════════════════════════════════════════════════
 # downloader الرئيسي
 # ═══════════════════════════════════════════════════════════════
 def _download_via_browser(sb, m3u8_url, out_path, referer):
-    global _fetch_error_count, _fetch_exc_count
-    _fetch_error_count = 0
-    _fetch_exc_count = 0
-
     print(f"      🎯 التحميل عبر المتصفح...", flush=True)
 
     m3u8_text = _fetch_text_cdp(sb, m3u8_url, referer)
@@ -561,15 +563,10 @@ def _download_via_browser(sb, m3u8_url, out_path, referer):
 
     tmp_dir = tempfile.mkdtemp(prefix="br_segs_")
     start = time.time()
-    hard_deadline_s = min(1800, max(300, len(seg_urls) * 2))
 
-    paths, failed = _parallel_download(
-        sb, seg_urls, referer, tmp_dir,
-        max_workers=16,
-        hard_deadline_s=hard_deadline_s,
-    )
-
+    paths, failed = _download_all_segments(sb, seg_urls, referer, tmp_dir)
     elapsed = time.time() - start
+
     if not paths:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         print(f"      ❌ فشل كل المقاطع", flush=True)
@@ -590,14 +587,9 @@ def _download_via_browser(sb, m3u8_url, out_path, referer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v47: اختيار variant ذكي
+# اختيار variant ذكي
 # ═══════════════════════════════════════════════════════════════
 def _pick_smallest_variant(m3u8_text, base_url, min_height=360):
-    """
-    v47: 
-    - إذا كان هناك variant واحد فقط → لا تغيير (يعيد None)
-    - إذا كانت هناك variants متعددة → اختر الأصغر بجودة >= min_height
-    """
     variants = []
     lines = m3u8_text.splitlines()
 
@@ -616,11 +608,9 @@ def _pick_smallest_variant(m3u8_text, base_url, min_height=360):
                     base_url.rsplit("/", 1)[0] + "/", uri)
                 variants.append({"bw": bw, "h": height, "url": full})
 
-    # لا variants → لا تغيير
     if not variants:
         return None
 
-    # variant واحد فقط → لا داعي للتغيير
     if len(variants) == 1:
         v = variants[0]
         print(f"      ℹ️ variant واحد فقط ({v['h']}p@{v['bw']//1000}kbps) — "
@@ -701,7 +691,7 @@ def _concat_segments(seg_paths, out_path, seg_dir):
 
 
 # ═══════════════════════════════════════════════════════════════
-# fallback
+# fallback: yt-dlp + ffmpeg-HLS
 # ═══════════════════════════════════════════════════════════════
 def _ytdlp_with_cookies(url, out_path, referer, cookies_dict):
     print(f"      [yt-dlp]", flush=True)
