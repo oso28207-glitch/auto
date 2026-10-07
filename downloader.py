@@ -1,12 +1,11 @@
 """
-downloader.py — Universal HLS Downloader v26 (FIXED)
+downloader.py — Universal HLS Downloader v27 (FINAL FIXED)
 ═══════════════════════════════════════════════════════════
-إصلاحات v26:
-  • إعادة تفعيل Fetch.enable بعد كل navigate (يحل 1vid.xyz)
-  • نقرات مكثفة داخل iframe (10+ نقرات)
-  • M3U8_SEARCH_TIMEOUT أطول (60s)
-  • run_with_timeout 300s + pkill دائماً
-  • _safe_get_source لقراءة HTML بمهلة
+إصلاحات v27:
+  • إزالة threading من أدوات CDP (يحل "event loop is already running")
+  • تتبع nested iframes (2 مستويات)
+  • Hls.instances + jwplayer().getConfig() + videojs API
+  • لا نستخدم sb.cdp.open مطلقاً
 """
 
 import base64
@@ -29,21 +28,15 @@ from config import config, MEDIA_DIR
 MIN_SIZE = 100 * 1024
 MIN_PARTIAL_ACCEPT = 30 * 1024 * 1024
 
-M3U8_SEARCH_TIMEOUT = int(os.environ.get("M3U8_SEARCH_TIMEOUT", "60"))
+M3U8_SEARCH_TIMEOUT = int(os.environ.get("M3U8_SEARCH_TIMEOUT", "40"))
 YTDLP_TIMEOUT = int(os.environ.get("YTDLP_TIMEOUT", "600"))
 OPEN_TIMEOUT = int(os.environ.get("OPEN_TIMEOUT", "12"))
-EVAL_TIMEOUT = int(os.environ.get("EVAL_TIMEOUT", "6"))
 STALL_TIMEOUT = int(os.environ.get("STALL_TIMEOUT", "45"))
 
 CURL_CFFI_WORKERS = int(os.environ.get("CURL_CFFI_WORKERS", "16"))
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-
-SERVER_PRIORITY = [
-    "luluvdo", "vinovo", "vidsonic", "playmate", "firestream",
-    "vidaraa", "vids", "bysejikuar", "vidsp", "savefiles", "voe",
-]
 
 _RESP_BODIES = {}
 _NET_LOCK = threading.Lock()
@@ -90,41 +83,30 @@ def _get_ffmpeg_exe():
 
 
 # ═══════════════════════════════════════════════════════════════
-# أدوات آمنة (كل استدعاء له مهلة)
+# ★★★ أدوات CDP بسيطة (بدون threads — يحل event loop error)
 # ═══════════════════════════════════════════════════════════════
-def _safe_eval(sb, js, timeout=EVAL_TIMEOUT, default=None):
-    result = [default]; done = threading.Event()
-    def _run():
-        try: result[0] = sb.cdp.execute_script(js)
-        except Exception: pass
-        finally: done.set()
-    threading.Thread(target=_run, daemon=True).start()
-    done.wait(timeout=timeout)
-    return result[0]
+def _eval(sb, js, default=None):
+    """execute_script مباشر — قد يعلّق إذا الصفحة بطيئة لكن بدون تعارض asyncio."""
+    try:
+        return sb.cdp.execute_script(js)
+    except Exception:
+        return default
 
 
-def _safe_cdp(sb, cmd, params=None, timeout=EVAL_TIMEOUT):
+def _cdp(sb, cmd, params=None):
+    """execute_cdp_cmd مباشر."""
     if params is None: params = {}
-    result = [None]; done = threading.Event()
-    def _run():
-        try: result[0] = sb.driver.execute_cdp_cmd(cmd, params)
-        except Exception: pass
-        finally: done.set()
-    threading.Thread(target=_run, daemon=True).start()
-    done.wait(timeout=timeout)
-    return result[0]
+    try:
+        return sb.driver.execute_cdp_cmd(cmd, params)
+    except Exception:
+        return None
 
 
-def _safe_get_source(sb, timeout=5):
-    """قراءة HTML مع مهلة."""
-    result = [""]; done = threading.Event()
-    def _run():
-        try: result[0] = sb.cdp.get_page_source() or ""
-        except Exception: pass
-        finally: done.set()
-    threading.Thread(target=_run, daemon=True).start()
-    done.wait(timeout=timeout)
-    return result[0]
+def _get_source(sb, default=""):
+    try:
+        return sb.cdp.get_page_source() or default
+    except Exception:
+        return default
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -151,25 +133,22 @@ def _is_valid_episode_url(url):
 # التقاط m3u8
 # ═══════════════════════════════════════════════════════════════
 def _setup_capture(sb):
-    """تفعيل Fetch.enable + Network.enable."""
     global _RESP_BODIES
     with _NET_LOCK: _RESP_BODIES.clear()
 
-    try:
-        sb.driver.execute_cdp_cmd("Network.enable", {})
-    except Exception: pass
+    _cdp(sb, "Network.enable", {})
 
     ok = False
-    for fn in [
-        lambda: sb.driver.execute_cdp_cmd("Fetch.enable", {
+    try:
+        sb.driver.execute_cdp_cmd("Fetch.enable", {
             "patterns": [
                 {"urlPattern": "*.m3u8*", "requestStage": "Response"},
                 {"urlPattern": "*.mpd*", "requestStage": "Response"},
             ],
-        }),
-    ]:
-        try: fn(); ok = True; break
-        except Exception: pass
+        })
+        ok = True
+    except Exception:
+        pass
 
     if not ok:
         print("      ⚠️ Fetch فشل", flush=True)
@@ -184,7 +163,7 @@ def _setup_capture(sb):
             url = req.get("url", "") if isinstance(req, dict) else ""
             if url and (".m3u8" in url or ".mpd" in url):
                 try:
-                    r = _safe_cdp(sb, "Fetch.getResponseBody", {"requestId": rid}, timeout=5)
+                    r = sb.driver.execute_cdp_cmd("Fetch.getResponseBody", {"requestId": rid})
                     if r and "body" in r:
                         b = r["body"]
                         if r.get("base64Encoded"):
@@ -194,9 +173,9 @@ def _setup_capture(sb):
                         print(f"      💾 m3u8 ({len(str(b))}B)", flush=True)
                 except Exception: pass
             if rid:
-                try: _safe_cdp(sb, "Fetch.continueRequest", {"requestId": rid}, timeout=3)
+                try: sb.driver.execute_cdp_cmd("Fetch.continueRequest", {"requestId": rid})
                 except Exception:
-                    try: _safe_cdp(sb, "Fetch.continueResponse", {"requestId": rid}, timeout=3)
+                    try: sb.driver.execute_cdp_cmd("Fetch.continueResponse", {"requestId": rid})
                     except Exception: pass
         except Exception: pass
 
@@ -213,7 +192,6 @@ def _setup_capture(sb):
 
 
 def _re_enable_fetch(sb):
-    """★ إعادة تفعيل Fetch.enable (مهم بعد التنقل لـ iframe)."""
     try:
         sb.driver.execute_cdp_cmd("Fetch.enable", {
             "patterns": [
@@ -229,7 +207,7 @@ def _re_enable_fetch(sb):
 # ═══════════════════════════════════════════════════════════════
 def _get_cookies(sb):
     try:
-        r = _safe_cdp(sb, "Network.getAllCookies", {}, timeout=5)
+        r = _cdp(sb, "Network.getAllCookies", {})
         if r and r.get("cookies"):
             return {c["name"]: c["value"] for c in r["cookies"]
                     if c.get("name") and c.get("value")}
@@ -387,7 +365,7 @@ def _ytdlp(url, out_path, referer, cookies_dict):
 
 
 # ═══════════════════════════════════════════════════════════════
-# كشف m3u8 (سريع وآمن)
+# ★★★ كشف m3u8 (شامل Hls.instances + jwplayer + videojs)
 # ═══════════════════════════════════════════════════════════════
 def _scan_m3u8(sb):
     found = set()
@@ -395,52 +373,51 @@ def _scan_m3u8(sb):
         for u in list(_RESP_BODIES.keys()):
             if ".m3u8" in u or ".mpd" in u: found.add(u)
 
-    try:
-        perf = _safe_eval(sb, """
-            (function(){try{return performance.getEntriesByType('resource').map(e => e.name);}catch(e){return [];}})();
-        """, timeout=3)
-        if isinstance(perf, list):
-            for u in perf:
-                if ".m3u8" in u or ".mpd" in u: found.add(u)
-    except Exception: pass
+    # performance
+    perf = _eval(sb, "try{return performance.getEntriesByType('resource').map(e=>e.name)}catch(e){return[]}", [])
+    if isinstance(perf, list):
+        for u in perf:
+            if ".m3u8" in u or ".mpd" in u: found.add(u)
 
+    # HTML
     try:
-        html = _safe_get_source(sb, timeout=3)
+        html = _get_source(sb, "")
         for m in re.finditer(r'(https?:[^\s"\'<>\\]+\.m3u8[^\s"\'<>\\]*)', html):
             found.add(m.group(1).replace("\\/", "/"))
     except Exception: pass
 
-    try:
-        jw = _safe_eval(sb, """
-            (function(){try{
-                if(typeof jwplayer!=='undefined'){var p=jwplayer();if(p&&p.getPlaylist){var f=[];p.getPlaylist().forEach(function(i){if(i.file)f.push(i.file);if(i.sources)i.sources.forEach(function(s){if(s.file)f.push(s.file);});});return f;}}
-                if(typeof videojs!=='undefined'){var p2=videojs.getPlayers();var f2=[];for(var k in p2){try{var src=p2[k].currentSrc&&p2[k].currentSrc();if(src&&src.indexOf('.m3u8')!==-1)f2.push(src);}catch(e){}}return f2;}
+    # ★ API المشغلات
+    urls_js = _eval(sb, """
+        (function(){
+            var out=[];
+            try{
+                // HLS.js
+                if(typeof Hls!=='undefined'){
+                    if(Hls.instances){Hls.instances.forEach(function(h){try{if(h.url)out.push(h.url);}catch(e){}});}
+                    if(Hls.DefaultConfig){} // ignore
+                }
+                // window.hls (some players set it)
+                if(window.hls&&window.hls.url)out.push(window.hls.url);
+                // jwplayer
+                if(typeof jwplayer!=='undefined'){
+                    try{var p=jwplayer();if(p){var c=p.getConfig&&p.getConfig();if(c&&c.file)out.push(c.file);var pl=p.getPlaylist&&p.getPlaylist();if(pl)pl.forEach(function(it){if(it.file)out.push(it.file);if(it.sources)it.sources.forEach(function(s){if(s.file)out.push(s.file);});});}}catch(e){}
+                }
+                // videojs
+                if(typeof videojs!=='undefined'){
+                    try{var p2=videojs.getPlayers();for(var k in p2){try{var src=p2[k].currentSrc&&p2[k].currentSrc();if(src)out.push(src);var t=p2[k].tech&&p2[k].tech(true);if(t&&t.hls&&t.hls.url)out.push(t.hls.url);}catch(e){}}}catch(e){}
+                }
+                // video element
                 var v=document.querySelector('video');
-                if(v&&v.currentSrc&&v.currentSrc.indexOf('.m3u8')!==-1)return [v.currentSrc];
-                return [];
-            }catch(e){return [];}})();
-        """, timeout=3)
-        if isinstance(jw, list):
-            for u in jw:
-                if isinstance(u, str) and (".m3u8" in u or ".mpd" in u): found.add(u)
-    except Exception: pass
-
-    # ★ sources من <video><source>
-    try:
-        src = _safe_eval(sb, """
-            (function(){
-                var out=[];
-                document.querySelectorAll('video, source').forEach(function(el){
-                    var s=el.src||el.currentSrc;
-                    if(s && s.indexOf('.m3u8')!==-1) out.push(s);
-                });
-                return out;
-            })();
-        """, timeout=3)
-        if isinstance(src, list):
-            for u in src:
-                if isinstance(u, str) and ".m3u8" in u: found.add(u)
-    except Exception: pass
+                if(v){if(v.currentSrc)out.push(v.currentSrc);if(v.src)out.push(v.src);}
+                // source elements
+                document.querySelectorAll('source').forEach(function(s){if(s.src)out.push(s.src);});
+            }catch(e){}
+            return out;
+        })();
+    """, [])
+    if isinstance(urls_js, list):
+        for u in urls_js:
+            if isinstance(u, str) and (".m3u8" in u or ".mpd" in u): found.add(u)
 
     urls = [u for u in found if "ping.gif" not in u and "jwpltx" not in u]
     idx = [u for u in urls if "index" in u.lower()]
@@ -451,33 +428,32 @@ def _scan_m3u8(sb):
 
 
 # ═══════════════════════════════════════════════════════════════
-# تشغيل الفيديو (مكثف)
+# تشغيل الفيديو
 # ═══════════════════════════════════════════════════════════════
 def _trigger_play(sb):
-    _safe_eval(sb, """
+    _eval(sb, """
         (function(){try{
             var v=document.querySelector('video');
             if(v){v.muted=true;if(v.play)v.play().catch(function(){});}
-            if(typeof jwplayer!=='undefined'){var p=jwplayer();if(p){if(p.play)p.play(true);if(p.setMute)p.setMute(true);}}
+            if(typeof jwplayer!=='undefined'){var p=jwplayer();if(p){if(p.play)p.play(true);if(p.setMute)p.setMute(true);if(p.setVolume)p.setVolume(0);}}
             if(typeof videojs!=='undefined'){var p2=videojs.getPlayers();for(var k in p2){try{p2[k].play();p2[k].muted(true);}catch(e){}}}
-            ['video','.vjs-big-play-button','.jw-icon-playback',
-             '.jw-display-icon-container','[class*=play]','button'].forEach(function(s){
-                var el=document.querySelector(s);
-                if(el)try{el.click();}catch(e){}
+            ['video','.vjs-big-play-button','.jw-icon-playback','.jw-display-icon-container','[class*=play]','button','.play-button','#play'].forEach(function(s){
+                var els=document.querySelectorAll(s);
+                els.forEach(function(el){try{el.click();}catch(e){}});
             });
         }catch(e){}})();
-    """, timeout=3)
-    # نقرة في مركز الفيديو
+    """)
+    # نقرة مركز الفيديو
     try:
-        rect = _safe_eval(sb, """
+        rect = _eval(sb, """
             (function(){
-                var cs=[document.querySelector('video'),document.querySelector('.jwplayer'),document.querySelector('.video-js')];
+                var cs=[document.querySelector('video'),document.querySelector('.jwplayer'),document.querySelector('.video-js'),document.querySelector('iframe')];
                 for(var i=0;i<cs.length;i++){var el=cs[i];if(!el)continue;var r=el.getBoundingClientRect();if(r.width>50&&r.height>50)return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)};}
                 return null;
             })();
-        """, timeout=3)
+        """)
         if rect and rect.get("x", 0) > 0:
-            for _ in range(2):
+            for _ in range(3):
                 sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
                     "type": "mousePressed", "x": rect['x'], "y": rect['y'],
                     "button": "left", "clickCount": 1,
@@ -486,22 +462,19 @@ def _trigger_play(sb):
                     "type": "mouseReleased", "x": rect['x'], "y": rect['y'],
                     "button": "left", "clickCount": 1,
                 })
-                sb.cdp.sleep(0.3)
+                sb.cdp.sleep(0.4)
     except Exception: pass
 
 
 # ═══════════════════════════════════════════════════════════════
-# فتح سريع + إعادة تفعيل Fetch
+# فتح
 # ═══════════════════════════════════════════════════════════════
-def _fast_open(sb, url, wait=1.0, re_enable_fetch=True):
-    """فتح سريع + إعادة تفعيل Fetch.enable بعد التنقل."""
-    _safe_cdp(sb, "Page.navigate", {"url": url}, timeout=OPEN_TIMEOUT)
+def _fast_open(sb, url, wait=1.0):
+    _cdp(sb, "Page.navigate", {"url": url})
     sb.cdp.sleep(wait)
-    _safe_cdp(sb, "Runtime.evaluate",
-              {"expression": "try{window.stop()}catch(e){}"}, timeout=3)
-    # ★ إعادة تفعيل Fetch.enable (مهم للـ iframe!)
-    if re_enable_fetch:
-        _re_enable_fetch(sb)
+    _cdp(sb, "Runtime.evaluate",
+         {"expression": "try{window.stop()}catch(e){}"})
+    _re_enable_fetch(sb)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -510,7 +483,7 @@ def _fast_open(sb, url, wait=1.0, re_enable_fetch=True):
 def _cf_bypass(sb, url, timeout_s=15):
     print(f"      🔄 CF...", flush=True)
     start = time.time()
-    _safe_cdp(sb, "Page.navigate", {"url": url, "referrer": ""}, timeout=OPEN_TIMEOUT)
+    _cdp(sb, "Page.navigate", {"url": url, "referrer": ""})
     sb.cdp.sleep(2)
     _re_enable_fetch(sb)
     for _ in range(2):
@@ -528,99 +501,99 @@ def _cf_bypass(sb, url, timeout_s=15):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ معالج موحّد — مع إعادة تفعيل Fetch للـ iframe
+# ★★★ تتبع nested iframes
 # ═══════════════════════════════════════════════════════════════
-def _process_url(sb, url, out_path):
-    """معالج عام مع إعادة تفعيل Fetch بعد التنقل لـ iframe."""
-    print(f"🖥️  فتح: {url[:90]}", flush=True)
-    _fast_open(sb, url, wait=1.5)
-
-    # نقرات سريعة
-    for cycle in range(3):
-        _trigger_play(sb)
-        sb.cdp.sleep(1)
-        if _scan_m3u8(sb): break
-
-    # ★ iframe متداخل — مع إعادة تفعيل Fetch
-    ifr = _safe_eval(sb, """
+def _get_nested_iframe(sb, exclude=None):
+    """يرجع src لأول iframe مفيد (ليس google/facebook/exclude)."""
+    if exclude is None: exclude = []
+    ifr = _eval(sb, """
         (function(){
-            var f=document.querySelector('iframe');
-            if(f&&f.src&&f.src.startsWith('http')
-                &&f.src.indexOf('google')===-1
-                &&f.src.indexOf('facebook')===-1)
-                return f.src;
+            var ifs=document.querySelectorAll('iframe');
+            for(var i=0;i<ifs.length;i++){
+                var f=ifs[i];
+                var s=f.src||f.getAttribute('src')||'';
+                if(s&&s.startsWith('http')
+                    &&s.indexOf('google')===-1
+                    &&s.indexOf('facebook')===-1
+                    &&s.indexOf('doubleclick')===-1
+                    &&s.indexOf('googletag')===-1)
+                    return s;
+            }
             return null;
         })();
-    """, timeout=3)
+    """)
+    if not ifr: return None
+    ifr = ifr.replace("&amp;", "&")
+    for ex in exclude:
+        if ifr == ex: return None
+    return ifr
 
-    if ifr:
-        print(f"      🔄 iframe: {ifr[:80]}", flush=True)
-        # ★★ إعادة تفعيل Fetch بعد التنقل للـ iframe
-        _fast_open(sb, ifr, wait=2.5, re_enable_fetch=True)
 
-        # ★★ نقرات مكثفة داخل iframe (6 دورات)
-        for cycle in range(6):
+# ═══════════════════════════════════════════════════════════════
+# ★★★ المعالج العام (نستنبط m3u8 من nested iframes)
+# ═══════════════════════════════════════════════════════════════
+def _process_url(sb, url, out_path):
+    """
+    1. فتح الصفحة
+    2. اكتشاف iframe متداخل (2 مستويات)
+    3. التقاط m3u8 (Fetch + APIs)
+    """
+    print(f"🖥️  فتح: {url[:90]}", flush=True)
+    _fast_open(sb, url, wait=2.0)
+
+    # نقرات أولية
+    for _ in range(3):
+        _trigger_play(sb)
+        sb.cdp.sleep(1.0)
+        if _scan_m3u8(sb): break
+
+    # ★ تتبع iframes متعددة (حتى 2 مستويات)
+    visited = []
+    for level in range(3):
+        ifr = _get_nested_iframe(sb, exclude=visited)
+        if not ifr:
+            break
+        print(f"      🔄 [L{level+1}] iframe: {ifr[:80]}", flush=True)
+        visited.append(ifr)
+        _fast_open(sb, ifr, wait=2.5)
+
+        # نقرات داخل iframe
+        for _ in range(4):
             _trigger_play(sb)
             sb.cdp.sleep(1.2)
             if _scan_m3u8(sb):
-                print(f"      ✨ m3u8 بعد دورة {cycle+1}", flush=True)
+                print(f"      ✨ m3u8 في L{level+1}", flush=True)
                 break
+        else:
+            continue
+        break
 
-        # ★★ محاولة النقر على عناصر إضافية في iframe
-        _safe_eval(sb, """
-            (function(){
-                try{
-                    // انقر على كل الأزرار القابلة للنقر
-                    document.querySelectorAll('button, [role="button"], .play, [class*=play]').forEach(function(el){
-                        try{el.click();}catch(e){}
-                    });
-                    // try to trigger HLS.js
-                    var v=document.querySelector('video');
-                    if(v){v.muted=true;v.play&&v.play().catch(function(){});}
-                }catch(e){}
-            })();
-        """, timeout=3)
-
-        # ★★ انتظر m3u8 داخل iframe (40s)
-        print(f"      🎬 بحث m3u8 في iframe ({M3U8_SEARCH_TIMEOUT}s)...", flush=True)
-        search_start = time.time()
-        m3u8_urls = []
-        while time.time() - search_start < M3U8_SEARCH_TIMEOUT:
-            found = _scan_m3u8(sb)
-            if found: m3u8_urls = found; break
-            _trigger_play(sb)
-            sb.cdp.sleep(1.5)
-
-        if not m3u8_urls:
-            print(f"      ⚠️ فشل iframe — نحاول once more", flush=True)
-            # ★ محاولة أخيرة: نقرات مكثفة
-            for _ in range(3):
-                _trigger_play(sb)
-                sb.cdp.sleep(2)
-                found = _scan_m3u8(sb)
-                if found: m3u8_urls = found; break
-    else:
-        # لا iframe — ننتظر في الصفحة نفسها
-        print(f"   🎬 بحث m3u8 ({M3U8_SEARCH_TIMEOUT}s)...", flush=True)
-        search_start = time.time()
-        m3u8_urls = []
-        while time.time() - search_start < M3U8_SEARCH_TIMEOUT:
-            found = _scan_m3u8(sb)
-            if found: m3u8_urls = found; break
-            _trigger_play(sb)
-            sb.cdp.sleep(1.5)
+    # بحث m3u8 (طويل)
+    print(f"   🎬 بحث m3u8 ({M3U8_SEARCH_TIMEOUT}s)...", flush=True)
+    search_start = time.time()
+    m3u8_urls = []
+    while time.time() - search_start < M3U8_SEARCH_TIMEOUT:
+        found = _scan_m3u8(sb)
+        if found: m3u8_urls = found; break
+        _trigger_play(sb)
+        sb.cdp.sleep(1.5)
 
     if not m3u8_urls:
-        print(f"   ❌ لا m3u8", flush=True)
+        # ★ إذا فشل → جرّب yt-dlp مباشرة على الرابط
+        print(f"   ⚠️ لا m3u8 — نحاول yt-dlp مباشرة", flush=True)
+        cookies = _get_cookies(sb)
+        ref = visited[-1] if visited else url
+        if _ytdlp(url, str(out_path), ref, cookies):
+            if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+                return (os.path.getsize(out_path), True)
         return None
 
     print(f"   🎯 {len(m3u8_urls)} مرشح", flush=True)
     for u in m3u8_urls[:3]: print(f"      · {u[:100]}", flush=True)
 
     cookies = _get_cookies(sb)
-    ref = sb.cdp.get_current_url() or ifr or url
+    ref = visited[-1] if visited else url
 
-    # cffi-deep
     for m3u8 in m3u8_urls[:3]:
         headers = {
             "Referer": ref, "Origin": _origin(ref),
@@ -634,7 +607,6 @@ def _process_url(sb, url, out_path):
             if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
                 return res
 
-    # yt-dlp
     for m3u8 in m3u8_urls[:3]:
         if _ytdlp(m3u8, str(out_path), ref, cookies):
             if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
@@ -644,7 +616,7 @@ def _process_url(sb, url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# معالج u3seq (بدون نقر على السيرفرات)
+# معالج u3seq
 # ═══════════════════════════════════════════════════════════════
 def _process_u3seq(sb, url, out_path):
     if "?do=watch" not in url:
@@ -658,11 +630,10 @@ def _process_u3seq(sb, url, out_path):
     print(f"🖥️  فتح: {watch_url[:90]}", flush=True)
     _fast_open(sb, watch_url, wait=2.5)
 
-    # انتظار serversList
     servers = []
     for i in range(10):
         sb.cdp.sleep(0.8)
-        servers = _safe_eval(sb, """
+        servers = _eval(sb, """
             (function(){
                 var l=document.querySelector('.serversList');
                 if(!l)return [];
@@ -672,7 +643,7 @@ def _process_u3seq(sb, url, out_path):
                     onclick:li.getAttribute('onclick')||''
                 }));
             })();
-        """, timeout=3) or []
+        """, []) or []
         if servers:
             print(f"   ✅ {len(servers)} سيرفر", flush=True)
             break
@@ -681,74 +652,59 @@ def _process_u3seq(sb, url, out_path):
         print(f"   🔄 لا سيرفرات → معالج عام", flush=True)
         return _process_url(sb, url, out_path)
 
-    # اقرأ iframe مباشرة
-    print(f"   📋 قراءة iframe مباشرة...", flush=True)
     iframe_url = None
     for i in range(6):
         sb.cdp.sleep(1)
-        iframe_url = _safe_eval(sb, """
+        iframe_url = _eval(sb, """
             (function(){
                 var ifr=document.querySelector('.watch iframe');
                 if(ifr&&ifr.src&&ifr.src.startsWith('http'))return ifr.src;
                 return null;
             })();
-        """, timeout=3)
+        """)
         if iframe_url:
             print(f"   ✅ iframe: {iframe_url[:80]}", flush=True)
             break
 
     if not iframe_url and servers:
-        first = servers[0]
-        onclick = first.get("onclick", "")
+        onclick = servers[0].get("onclick", "")
         if onclick:
             m = re.search(r'getServer2\([^,]+,\s*(\d+)\s*,\s*(\d+)\s*\)', onclick)
             if m:
                 vid, sid = m.group(1), m.group(2)
-                _safe_eval(sb, f"try{{getServer2(null,{vid},{sid})}}catch(e){{}}", timeout=5)
+                _eval(sb, f"try{{getServer2(null,{vid},{sid})}}catch(e){{}}")
                 sb.cdp.sleep(2)
-                iframe_url = _safe_eval(sb, """
+                iframe_url = _eval(sb, """
                     (function(){
                         var ifr=document.querySelector('.watch iframe');
                         if(ifr&&ifr.src&&ifr.src.startsWith('http'))return ifr.src;
                         return null;
                     })();
-                """, timeout=3)
+                """)
 
     if not iframe_url:
         print(f"   ⚠️ لا iframe → معالج عام", flush=True)
         return _process_url(sb, url, out_path)
 
     iframe_url = iframe_url.replace("&amp;", "&")
-
-    # انتقل إلى iframe + إعادة تفعيل Fetch
     print(f"   ➡️ iframe: {iframe_url[:80]}", flush=True)
-    _fast_open(sb, iframe_url, wait=2.5, re_enable_fetch=True)
+    _fast_open(sb, iframe_url, wait=2.5)
 
-    # نقرات مكثفة
-    for cycle in range(6):
+    # نقرات
+    for _ in range(5):
         _trigger_play(sb)
         sb.cdp.sleep(1.2)
         if _scan_m3u8(sb): break
 
-    # iframe متداخل ثاني
-    ifr2 = _safe_eval(sb, f"""
-        (function(){{
-            var f=document.querySelector('iframe');
-            if(f&&f.src&&f.src.startsWith('http')
-                &&f.src.indexOf('google')===-1
-                &&f.src!=='{iframe_url}')
-                return f.src;
-            return null;
-        }})();
-    """, timeout=3)
+    # iframe ثانٍ
+    ifr2 = _get_nested_iframe(sb, exclude=[iframe_url])
     if ifr2:
         print(f"      🔄 متداخل: {ifr2[:70]}", flush=True)
-        _fast_open(sb, ifr2, wait=2.5, re_enable_fetch=True)
-        for _ in range(3):
+        _fast_open(sb, ifr2, wait=2.5)
+        for _ in range(4):
             _trigger_play(sb)
             sb.cdp.sleep(1)
 
-    # بحث m3u8
     print(f"   🎬 بحث m3u8 ({M3U8_SEARCH_TIMEOUT}s)...", flush=True)
     search_start = time.time()
     m3u8_urls = []
@@ -768,7 +724,6 @@ def _process_u3seq(sb, url, out_path):
     cookies = _get_cookies(sb)
     ref = sb.cdp.get_current_url() or iframe_url
 
-    # تحميل
     for m3u8 in m3u8_urls[:3]:
         headers = {
             "Referer": ref, "Origin": _origin(ref),
@@ -802,7 +757,7 @@ def _process_with_browser(url, out_path):
                 page_load_strategy="eager", locale_code="en") as sb:
             try:
                 sb.activate_cdp_mode()
-                try: sb.driver.set_page_load_timeout(15)
+                try: sb.driver.set_page_load_timeout(20)
                 except Exception: pass
 
                 _setup_capture(sb)
@@ -841,7 +796,7 @@ def _process_with_browser(url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# الضغط
+# الضغط + thumbnail
 # ═══════════════════════════════════════════════════════════════
 def _compress_to_target(inp, out):
     max_size_mb = getattr(config, "COMPRESS_MAX_SIZE_MB", 45)
@@ -908,7 +863,6 @@ def download_episode(series_name, episode_num, url,
         return None
 
     print(f"    ↳ تحميل {file_prefix}...", flush=True)
-    # ★ مهلة أقصر (300s بدلاً من 600s)
     try:
         res = run_with_timeout(_process_with_browser, args=(url, raw),
                                 timeout=300, default=None)
@@ -919,7 +873,6 @@ def download_episode(series_name, episode_num, url,
         print(f"    ⚠️ {str(e)[:150]}", flush=True)
         res = None
     finally:
-        # ★ pkill دائماً لضمان النظافة
         for p in ["yt-dlp", "ffmpeg"]:
             try:
                 subprocess.run(["pkill", "-9", "-f", p], capture_output=True, timeout=3)
