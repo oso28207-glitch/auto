@@ -1,15 +1,17 @@
 """
-downloader.py v41 — FINAL
+downloader.py v42 — FINAL
 ═══════════════════════════════════════════════════════════
-v41: إصلاح جذري لمشكلة fetch في المتصفح
-     - استخدام Runtime.evaluate مع awaitPromise=true
-     - تعطيل CORS عبر --disable-web-security
-     - إضافة referrer صريح في fetch
-     - حذف CDP interception غير الفعّال
+v42: حل مشكلة الوقت لمقاطع كبيرة (834+ مقطع)
+     - Blob download: المقاطع تُدمج في المتصفح ثم تُحفظ مباشرة على القرص
+     - تجاوز حدود CDP/base64 تماماً
+     - جلب متوازٍ (10 مقاطع معاً) عبر Promise.all
+     - fallback إلى base64 للحجم الصغير
+     - رفع EPISODE_TIMEOUT إلى 1800s
 """
 
 import os
 import re
+import json
 import shutil
 import subprocess
 import tempfile
@@ -315,64 +317,9 @@ def _scan(sb):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v41: fetch عبر CDP مع awaitPromise + referrer
+# ★★★ v42: fetch CDP (للـ m3u8 فقط)
 # ═══════════════════════════════════════════════════════════════
-def _fetch_binary_cdp(sb, url, referer, max_size_mb=500):
-    """
-    يجلب بيانات ثنائية عبر fetch() داخل المتصفح.
-    يستخدم Runtime.evaluate مع awaitPromise=true (الإصلاح الرئيسي).
-    """
-    max_bytes = max_size_mb * 1024 * 1024
-
-    js = f"""
-    (function(){{
-        return fetch({repr(url)}, {{
-            method: 'GET',
-            credentials: 'include',
-            cache: 'no-store',
-            referrer: {repr(referer or '')},
-            referrerPolicy: 'no-referrer-when-downgrade',
-            headers: {{ 'Accept': '*/*' }}
-        }})
-        .then(r => {{
-            if (!r.ok) return 'ERROR: HTTP ' + r.status;
-            return r.arrayBuffer();
-        }})
-        .then(buf => {{
-            var bytes = new Uint8Array(buf);
-            if (bytes.length > {max_bytes}) return 'ERROR: TOO_BIG';
-            var binary = '';
-            var CHUNK = 8192;
-            for (var i = 0; i < bytes.length; i += CHUNK) {{
-                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
-            }}
-            return 'OK:' + btoa(binary);
-        }})
-        .catch(e => 'ERROR: ' + (e.message || 'fetch failed'));
-    }})();
-    """
-
-    try:
-        result = sb.driver.execute_cdp_cmd("Runtime.evaluate", {
-            "expression": js,
-            "awaitPromise": True,
-            "returnByValue": True,
-        })
-        value = (result or {}).get("result", {}).get("value")
-        if not isinstance(value, str):
-            return None
-        if value.startswith("ERROR:"):
-            print(f"      ⚠️ fetch: {value[6:150]}", flush=True)
-            return None
-        if value.startswith("OK:"):
-            return base64.b64decode(value[3:])
-    except Exception as e:
-        print(f"      ⚠️ fetch exc: {str(e)[:120]}", flush=True)
-    return None
-
-
 def _fetch_text_cdp(sb, url, referer):
-    """يجلب نص (m3u8) عبر fetch() داخل المتصفح."""
     js = f"""
     (function(){{
         return fetch({repr(url)}, {{
@@ -380,7 +327,6 @@ def _fetch_text_cdp(sb, url, referer):
             credentials: 'include',
             cache: 'no-store',
             referrer: {repr(referer or '')},
-            referrerPolicy: 'no-referrer-when-downgrade',
             headers: {{ 'Accept': '*/*' }}
         }})
         .then(r => r.ok ? r.text() : 'ERROR: HTTP ' + r.status)
@@ -405,11 +351,184 @@ def _fetch_text_cdp(sb, url, referer):
     return None
 
 
-def _download_via_browser(sb, m3u8_url, out_path, referer):
-    """الحل الجذري: تحميل m3u8 والمقاطع من داخل المتصفح."""
-    print(f"      🎯 التحميل عبر fetch (CDP)...", flush=True)
+# ═══════════════════════════════════════════════════════════════
+# ★★★ v42: Blob download — الأسرع للمقاطع الكبيرة
+# ═══════════════════════════════════════════════════════════════
+def _blob_download(sb, seg_urls, referer, download_dir):
+    """
+    يحمّل المقاطع في المتصفح، يدمجها في Blob، ثم يحفظها عبر Chrome download.
+    - لا يمر عبر CDP/base64 → سريع جداً
+    - يستخدم fetch متوازي (10 مقاطع معاً)
+    """
+    download_dir = Path(download_dir).absolute()
+    download_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1) جلب m3u8
+    # مسح أي ملف سابق
+    for f in download_dir.glob("hls_download*"):
+        try:
+            f.unlink()
+        except Exception:
+            pass
+
+    # تعيين سلوك التحميل
+    _cdp(sb, "Page.setDownloadBehavior", {
+        "behavior": "allow",
+        "downloadPath": str(download_dir),
+    })
+
+    urls_json = json.dumps(seg_urls)
+
+    # الكود: يجلب المقاطع بـ Promise.all (10 معاً)، يدمجها في Blob، ثم يحفظها
+    js = f"""
+    (async function(){{
+        const urls = {urls_json};
+        const referer = {repr(referer or '')};
+        const CONCURRENT = 10;
+        const buffers = [];
+        let failed = 0;
+
+        for (let i = 0; i < urls.length; i += CONCURRENT) {{
+            const batch = urls.slice(i, i + CONCURRENT);
+            const results = await Promise.all(batch.map(async (u) => {{
+                try {{
+                    const r = await fetch(u, {{
+                        method: 'GET',
+                        credentials: 'include',
+                        cache: 'no-store',
+                        referrer: referer,
+                        headers: {{ 'Accept': '*/*' }}
+                    }});
+                    if (!r.ok) return null;
+                    return await r.arrayBuffer();
+                }} catch(e) {{ return null; }}
+            }}));
+            for (const b of results) {{
+                if (b) buffers.push(b);
+                else failed++;
+            }}
+        }}
+
+        if (buffers.length === 0) return 'ERROR: no segments';
+
+        // دمج في Blob
+        const blob = new Blob(buffers, {{type: 'video/mp2t'}});
+        const blobUrl = URL.createObjectURL(blob);
+
+        // إنشاء رابط تحميل
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = 'hls_download_' + Date.now() + '.ts';
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+
+        // تنظيف لاحق
+        setTimeout(() => {{
+            URL.revokeObjectURL(blobUrl);
+            a.remove();
+        }}, 10000);
+
+        return 'OK:' + buffers.length + ':' + failed;
+    }})();
+    """
+
+    try:
+        result = sb.driver.execute_cdp_cmd("Runtime.evaluate", {
+            "expression": js,
+            "awaitPromise": True,
+            "returnByValue": True,
+        })
+        value = (result or {}).get("result", {}).get("value")
+        print(f"      📥 Blob: {value}", flush=True)
+
+        if not value or not value.startswith("OK:"):
+            return None
+
+        # انتظار ظهور الملف
+        start = time.time()
+        downloaded = None
+        while time.time() - start < 300:  # 5 دقائق max
+            candidates = list(download_dir.glob("hls_download_*.ts"))
+            # استبعد الملفات .crdownload (قيد التحميل)
+            complete = [c for c in candidates if not c.name.endswith(".crdownload")]
+            if complete:
+                # تحقق من أن الحجم مستقر
+                f = complete[0]
+                size1 = f.stat().st_size
+                time.sleep(3)
+                size2 = f.stat().st_size
+                if size1 == size2 and size1 > MIN_SIZE:
+                    downloaded = f
+                    break
+            time.sleep(2)
+
+        if downloaded:
+            print(f"      ✅ Blob download: {downloaded.stat().st_size/1048576:.1f}MB",
+                  flush=True)
+            return downloaded
+
+        print(f"      ⚠️ Blob: لم يظهر الملف في الوقت المحدد", flush=True)
+        return None
+    except Exception as e:
+        print(f"      ⚠️ Blob exc: {str(e)[:150]}", flush=True)
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════
+# base64 fetch (fallback للحجم الصغير)
+# ═══════════════════════════════════════════════════════════════
+def _fetch_binary_cdp(sb, url, referer, max_size_mb=30):
+    max_bytes = max_size_mb * 1024 * 1024
+    js = f"""
+    (function(){{
+        return fetch({repr(url)}, {{
+            method: 'GET',
+            credentials: 'include',
+            cache: 'no-store',
+            referrer: {repr(referer or '')},
+            headers: {{ 'Accept': '*/*' }}
+        }})
+        .then(r => {{
+            if (!r.ok) return 'ERROR: HTTP ' + r.status;
+            return r.arrayBuffer();
+        }})
+        .then(buf => {{
+            var bytes = new Uint8Array(buf);
+            if (bytes.length > {max_bytes}) return 'ERROR: TOO_BIG';
+            var binary = '';
+            var CHUNK = 32768;
+            for (var i = 0; i < bytes.length; i += CHUNK) {{
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+            }}
+            return 'OK:' + btoa(binary);
+        }})
+        .catch(e => 'ERROR: ' + (e.message || 'fetch failed'));
+    }})();
+    """
+    try:
+        result = sb.driver.execute_cdp_cmd("Runtime.evaluate", {
+            "expression": js,
+            "awaitPromise": True,
+            "returnByValue": True,
+        })
+        value = (result or {}).get("result", {}).get("value")
+        if not isinstance(value, str):
+            return None
+        if value.startswith("ERROR:"):
+            return None
+        if value.startswith("OK:"):
+            return base64.b64decode(value[3:])
+    except Exception:
+        pass
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════
+# ★★★ v42: التحميل من داخل المتصفح (Blob أولاً)
+# ═══════════════════════════════════════════════════════════════
+def _download_via_browser(sb, m3u8_url, out_path, referer):
+    print(f"      🎯 التحميل عبر المتصفح...", flush=True)
+
     m3u8_text = _fetch_text_cdp(sb, m3u8_url, referer)
     if not m3u8_text:
         print(f"      ❌ فشل جلب m3u8", flush=True)
@@ -417,7 +536,6 @@ def _download_via_browser(sb, m3u8_url, out_path, referer):
 
     print(f"      ✅ m3u8: {len(m3u8_text)} حرف", flush=True)
 
-    # 2) master playlist؟ اختر أفضل variant
     if "#EXT-X-STREAM-INF" in m3u8_text:
         best = _pick_best_variant(m3u8_text, m3u8_url)
         if best:
@@ -427,94 +545,65 @@ def _download_via_browser(sb, m3u8_url, out_path, referer):
                 return None
             print(f"      ✅ m3u8 (variant): {len(m3u8_text)} حرف", flush=True)
 
-    # 3) استخرج المقاطع + مفتاح AES
     base = m3u8_url.rsplit("/", 1)[0]
-    key_url = None
-    key_data = None
     seg_urls = []
-    has_aes = False
-
     for line in m3u8_text.splitlines():
         l = line.strip()
-        if not l:
+        if not l or l.startswith("#"):
             continue
-        if l.startswith("#EXT-X-KEY"):
-            m = re.search(r'URI="([^"]+)"', l)
-            if m:
-                has_aes = True
-                key_uri = m.group(1)
-                key_url = key_uri if key_uri.startswith("http") else urljoin(base + "/", key_uri)
-        elif not l.startswith("#"):
-            full = l if l.startswith("http") else urljoin(base + "/", l)
-            seg_urls.append(full)
+        full = l if l.startswith("http") else urljoin(base + "/", l)
+        seg_urls.append(full)
 
     if not seg_urls:
-        print(f"      ❌ لا مقاطع في m3u8", flush=True)
+        print(f"      ❌ لا مقاطع", flush=True)
         return None
 
-    print(f"      📋 {len(seg_urls)} مقطع | AES: {has_aes}", flush=True)
+    print(f"      📋 {len(seg_urls)} مقطع", flush=True)
 
-    # 4) جلب مفتاح AES
-    if key_url:
-        key_data = _fetch_binary_cdp(sb, key_url, referer, max_size_mb=1)
-        if not key_data or len(key_data) != 16:
-            print(f"      ⚠️ فشل مفتاح AES", flush=True)
-            key_data = None
-            has_aes = False
+    # ★★★ الطريقة 1: Blob download (الأسرع بكثير)
+    if len(seg_urls) >= 20:
+        download_dir = Path(tempfile.mkdtemp(prefix="blob_dl_"))
+        result = _blob_download(sb, seg_urls, referer, download_dir)
+        if result and result.exists() and result.stat().st_size > MIN_SIZE:
+            shutil.move(str(result), str(out_path))
+            shutil.rmtree(download_dir, ignore_errors=True)
+            if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+                print(f"      ✅ Blob: {os.path.getsize(out_path)/1048576:.1f}MB",
+                      flush=True)
+                return (os.path.getsize(out_path), True)
+        shutil.rmtree(download_dir, ignore_errors=True)
 
-    # 5) جلب المقاطع
-    tmp_dir = tempfile.mkdtemp(prefix="br_hls_")
-    ok_count = 0
+    # ★★★ الطريقة 2: base64 fetch (للحجم الصغير فقط)
+    print(f"      🔄 fetch segments (base64)...", flush=True)
+    tmp_dir = tempfile.mkdtemp(prefix="br_segs_")
+    ok = 0
     failed = 0
 
     for i, seg_url in enumerate(seg_urls, 1):
-        if i % 10 == 0 or i == len(seg_urls):
-            print(f"      📦 {i}/{len(seg_urls)} | نجح: {ok_count} | فشل: {failed}",
+        if i % 20 == 0 or i == len(seg_urls):
+            print(f"      📦 {i}/{len(seg_urls)} | نجح: {ok} | فشل: {failed}",
                   flush=True)
-
-        data = _fetch_binary_cdp(sb, seg_url, referer, max_size_mb=30)
+        data = _fetch_binary_cdp(sb, seg_url, referer, max_size_mb=10)
         if not data:
             failed += 1
             continue
-
-        # فك AES-128
-        if has_aes and key_data:
-            try:
-                from Crypto.Cipher import AES
-                iv = b'\x00' * 16
-                m = re.search(r'#EXT-X-MEDIA-SEQUENCE:(\d+)', m3u8_text)
-                if m:
-                    seq = int(m.group(1)) + (i - 1)
-                    iv = seq.to_bytes(16, 'big')
-                cipher = AES.new(key_data, AES.MODE_CBC, iv)
-                data = cipher.decrypt(data)
-                pad_len = data[-1]
-                if 1 <= pad_len <= 16:
-                    data = data[:-pad_len]
-            except Exception as e:
-                print(f"      ⚠️ AES: {str(e)[:60]}", flush=True)
-
         seg_path = os.path.join(tmp_dir, f"seg_{i:06d}.ts")
         with open(seg_path, "wb") as f:
             f.write(data)
-        ok_count += 1
+        ok += 1
 
-    if ok_count == 0:
+    if ok == 0:
         shutil.rmtree(tmp_dir, ignore_errors=True)
-        print(f"      ❌ لا مقاطع محمّلة", flush=True)
         return None
 
-    # 6) دمج
     seg_paths = sorted([
         os.path.join(tmp_dir, f) for f in os.listdir(tmp_dir)
         if f.endswith(".ts")
     ])
-
-    ok = _concat_segments(seg_paths, str(out_path), tmp_dir)
+    success = _concat_segments(seg_paths, str(out_path), tmp_dir)
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    if ok and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-        print(f"      ✅ fetch: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
+    if success and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
         return (os.path.getsize(out_path), True)
     return None
 
@@ -560,15 +649,13 @@ def _concat_segments(seg_paths, out_path, seg_dir):
         "-y", out_path,
     ]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
         if (r.returncode == 0 and os.path.exists(out_path)
                 and os.path.getsize(out_path) > MIN_SIZE):
             return True
-        print(f"      ⚠️ concat: {(r.stderr or '')[-150:]}", flush=True)
-    except Exception as e:
-        print(f"      ⚠️ concat: {str(e)[:100]}", flush=True)
+    except Exception:
+        pass
 
-    # دمج ثنائي
     try:
         bin_path = os.path.join(seg_dir, "binary.ts")
         with open(bin_path, "wb") as out:
@@ -584,7 +671,7 @@ def _concat_segments(seg_paths, out_path, seg_dir):
             "-movflags", "+faststart",
             "-y", remux,
         ]
-        r2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=600)
+        r2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=900)
         if (r2.returncode == 0 and os.path.exists(remux)
                 and os.path.getsize(remux) > MIN_SIZE):
             shutil.move(remux, out_path)
@@ -595,31 +682,26 @@ def _concat_segments(seg_paths, out_path, seg_dir):
 
 
 # ═══════════════════════════════════════════════════════════════
-# fallback: yt-dlp مع cookies file
+# fallback: yt-dlp + ffmpeg-HLS
 # ═══════════════════════════════════════════════════════════════
 def _ytdlp_with_cookies(url, out_path, referer, cookies_dict):
     print(f"      [yt-dlp]", flush=True)
-
-    # حوّل الكوكيز لملف Netscape
     tmp_cookie = tempfile.mktemp(suffix=".txt")
     try:
         with open(tmp_cookie, "w", encoding="utf-8") as f:
             f.write("# Netscape HTTP Cookie File\n")
+            domain = _origin(url).replace("https://", "").replace("http://", "")
             for k, v in cookies_dict.items():
-                f.write(f".cdn-vids.xyz\tTRUE\t/\tFALSE\t0\t{k}\t{v}\n")
+                f.write(f".{domain}\tTRUE\t/\tTRUE\t0\t{k}\t{v}\n")
     except Exception:
         pass
 
     cmd = [
-        "yt-dlp",
-        "--no-warnings", "--no-playlist", "--no-part",
+        "yt-dlp", "--no-warnings", "--no-playlist", "--no-part",
         "--retries", "3", "--fragment-retries", "5",
-        "--socket-timeout", "30",
-        "--concurrent-fragments", "16",
-        "--no-check-certificate",
-        "--hls-prefer-native",
-        "--user-agent", UA,
-        "--referer", referer,
+        "--socket-timeout", "30", "--concurrent-fragments", "16",
+        "--no-check-certificate", "--hls-prefer-native",
+        "--user-agent", UA, "--referer", referer,
         "--add-header", "Origin:" + _origin(referer),
         "--add-header", "Accept:*/*",
         "-o", out_path, url,
@@ -628,32 +710,28 @@ def _ytdlp_with_cookies(url, out_path, referer, cookies_dict):
         cmd += ["--cookies", tmp_cookie]
 
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=400)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-            print(f"      ✅ yt-dlp: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
-            os.unlink(tmp_cookie)
+            print(f"      ✅ yt-dlp: {os.path.getsize(out_path)/1048576:.1f}MB",
+                  flush=True)
+            try: os.unlink(tmp_cookie)
+            except Exception: pass
             return True
         err = (r.stderr or "")[-200:]
         print(f"      ⚠️ yt-dlp: {err}", flush=True)
     except Exception as e:
         print(f"      ⚠️ yt-dlp: {str(e)[:100]}", flush=True)
-    try:
-        os.unlink(tmp_cookie)
-    except Exception:
-        pass
+    try: os.unlink(tmp_cookie)
+    except Exception: pass
     return False
 
 
 def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
     print(f"      [ffmpeg-hls]", flush=True)
     headers = (
-        f"Referer: {referer}\r\n"
-        f"Origin: {_origin(referer)}\r\n"
-        f"User-Agent: {UA}\r\n"
-        "Accept: */*\r\n"
-        "Sec-Fetch-Dest: empty\r\n"
-        "Sec-Fetch-Mode: cors\r\n"
-        "Sec-Fetch-Site: cross-site\r\n"
+        f"Referer: {referer}\r\nOrigin: {_origin(referer)}\r\n"
+        f"User-Agent: {UA}\r\nAccept: */*\r\n"
+        "Sec-Fetch-Dest: empty\r\nSec-Fetch-Mode: cors\r\nSec-Fetch-Site: cross-site\r\n"
     )
     if ck:
         headers += f"Cookie: {'; '.join(f'{k}={v}' for k,v in ck.items())[:8000]}\r\n"
@@ -661,16 +739,13 @@ def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
     cmd = [
         _ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "warning",
         "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
-        "-headers", headers,
-        "-user_agent", UA,
+        "-headers", headers, "-user_agent", UA,
         "-reconnect", "1", "-reconnect_streamed", "1",
-        "-i", m3u8_url,
-        "-c", "copy", "-bsf:a", "aac_adtstoasc",
-        "-movflags", "+faststart",
-        "-y", out_path,
+        "-i", m3u8_url, "-c", "copy", "-bsf:a", "aac_adtstoasc",
+        "-movflags", "+faststart", "-y", out_path,
     ]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
         if r.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
             print(f"      ✅ ffmpeg: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
             return True
@@ -721,7 +796,6 @@ def _extract_from_iframe(sb, iframe_url, out_path):
         return 2
     m3u8s.sort(key=_priority)
 
-    # إزالة المكرر
     unique = []
     seen = set()
     for u in m3u8s:
@@ -737,20 +811,20 @@ def _extract_from_iframe(sb, iframe_url, out_path):
     ref = iframe_url
     ck = _cookies(sb)
 
-    # ★★★ المحاولة 1: fetch عبر CDP (الإصلاح الرئيسي)
+    # 1) المتصفح (Blob + base64)
     for m in m3u8s[:2]:
         res = _download_via_browser(sb, m, str(out_path), ref)
         if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
             return res
 
-    # fallback: yt-dlp
+    # 2) yt-dlp
     print(f"      🎯 [fallback] yt-dlp...", flush=True)
     for m in m3u8s[:2]:
         if _ytdlp_with_cookies(m, str(out_path), ref, ck):
             if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
                 return (os.path.getsize(out_path), True)
 
-    # fallback: ffmpeg-HLS
+    # 3) ffmpeg-HLS
     print(f"      🎯 [fallback] ffmpeg-HLS...", flush=True)
     for m in m3u8s[:2]:
         if _ffmpeg_hls(m, str(out_path), ref, ck):
@@ -855,7 +929,7 @@ def _run_browser(url, out_path):
                 chromium_arg="--disable-web-security,--disable-site-isolation-trials") as sb:
             try:
                 sb.activate_cdp_mode()
-                try: sb.driver.set_page_load_timeout(15)
+                try: sb.driver.set_page_load_timeout(20)
                 except Exception: pass
                 _install_js(sb)
                 u_low = url.lower()
@@ -945,10 +1019,10 @@ def download_episode(series_name, episode_num, url,
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
-    t.join(timeout=config.EPISODE_TIMEOUT)
+    t.join(timeout=max(config.EPISODE_TIMEOUT, 1800))
 
     if t.is_alive():
-        print(f"    ⏰ تجاوز {config.EPISODE_TIMEOUT}s — إيقاف", flush=True)
+        print(f"    ⏰ تجاوز {max(config.EPISODE_TIMEOUT, 1800)}s — إيقاف", flush=True)
         for p in ["yt-dlp", "chrome", "ffmpeg"]:
             try:
                 subprocess.run(["pkill", "-9", "-f", p], capture_output=True, timeout=3)
