@@ -1,4 +1,4 @@
-"""egybest source — egybesstt.baby"""
+"""yam source — yam.ahwaktv.net"""
 import os
 import re
 from urllib.parse import urljoin
@@ -7,8 +7,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from curl_cffi import requests as cffi
 from bs4 import BeautifulSoup
 
-BASE = os.environ.get("EGYBEST_BASE_URL", "https://egybesstt.baby").rstrip("/")
-SERIES_PATH = os.environ.get("EGYBEST_SERIES_PATH", "/all-series.php")
+BASE = os.environ.get("YAM_BASE_URL", "https://yam.ahwaktv.net").rstrip("/")
+SERIES_PATH = os.environ.get("YAM_SERIES_PATH", "/moslslat.php")
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -33,42 +33,46 @@ def _fetch_series_list():
     links = []
     seen = set()
 
+    # كل الروابط الداخلية التي تشبه صفحة مسلسل
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
         if (not href or href.startswith("#")
-                or href.startswith("javascript:")):
+                or href.startswith("javascript:") or href.startswith("mailto:")):
             continue
         full = urljoin(BASE, href)
         if BASE not in full:
             continue
-        # استثناء الصفحات الإدارية
-        if any(x in full for x in ["all-series.php", "?page=",
-                                    "/category/", "/tag/"]):
+        # تجاهل الصفحات الإدارية
+        if any(x in full for x in ["moslslat.php", "topvideos.php",
+                                    "?page=", "?cat=", "/category/"]):
             continue
         if full in seen:
             continue
         seen.add(full)
-
-        text = a.get_text(strip=True)
-        if text or "/series/" in full or "/watch/" in full or "/مسلسل" in full:
-            links.append({"url": full, "name": text})
+        links.append({
+            "url": full,
+            "name": a.get_text(strip=True),
+        })
 
     print(f"   ✅ وُجد {len(links)} رابط")
     return links
 
 
 def _extract_episodes(series_url):
+    """استخراج الحلقات والبوستر من صفحة المسلسل."""
     r = _get(series_url)
     if not r or r.status_code != 200:
         return [], ""
 
     soup = BeautifulSoup(r.text, "html.parser")
 
+    # البوستر
     poster = ""
     og = soup.find("meta", property="og:image")
     if og and og.get("content"):
         poster = og["content"]
 
+    # الحلقات
     episodes = {}
     for a in soup.find_all("a", href=True):
         href = a["href"]
@@ -99,9 +103,16 @@ def fetch():
 
     def _enrich(item):
         episodes, poster = _extract_episodes(item["url"])
+        name = item.get("name", "").strip()
+        if not name or len(name) < 3:
+            r = _get(item["url"])
+            if r:
+                soup = BeautifulSoup(r.text, "html.parser")
+                t = soup.find("title")
+                if t:
+                    name = t.get_text(strip=True).split("|")[0].strip()
         return {
-            "name": item.get("name", "").strip()
-                    or item["url"].rstrip("/").split("/")[-1],
+            "name": name or item["url"].rstrip("/").split("/")[-1],
             "poster": poster,
             "genre": "",
             "episodes": episodes,
