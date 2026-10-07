@@ -1,11 +1,7 @@
 """
-fetch_posters.py — جلب صور المسلسلات من u.3seq.com
+fetch_posters.py — جلب صور المسلسلات من u.3seq.com (WordPress)
 
-★ الوظيفة:
-  - يجلب featured_media لكل منشور في التصنيف.
-  - يجلب source_url لكل صورة.
-  - يحفظها في data/posters.json (map: series_name → image_url)
-  - idempotent: لا يعيد جلب صور موجودة.
+★ يجلب featured_media لكل منشور ويحفظ source_url.
 """
 
 import json
@@ -34,10 +30,10 @@ def _get_scraper():
 
 
 def _api_get(path, params=None, retries=3):
-    url = config.SOURCE_BASE_URL + path
+    url = config.U3SEQ_BASE_URL + path
     headers = {
         "Accept": "application/json",
-        "Referer": config.SOURCE_BASE_URL + "/",
+        "Referer": config.U3SEQ_BASE_URL + "/",
     }
     scraper = _get_scraper()
     for attempt in range(1, retries + 1):
@@ -66,7 +62,8 @@ def _clean_series_name(title):
 def _load_posters():
     if POSTERS_FILE.exists():
         try:
-            return json.loads(POSTERS_FILE.read_text(encoding="utf-8"))
+            data = json.loads(POSTERS_FILE.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
         except Exception:
             pass
     return {}
@@ -80,18 +77,18 @@ def _save_posters(posters):
 
 
 def fetch_posters():
-    """يجلب صور كل المسلسلات ويحفظها."""
-    print("🖼️  جلب صور المسلسلات...")
+    """يجلب صور كل المسلسلات من WordPress media API."""
+    print("🖼️  جلب صور المسلسلات من u3seq...")
     posters = _load_posters()
-    print(f"   💾 صور موجودة مسبقاً: {len(posters)}")
+    print(f"   💾 صور موجودة مسبقاً: {len([k for k in posters if k.startswith('__series__')])}")
 
-    # 1) اجلب كل المنشورات مع featured_media
+    # 1) اجلب كل المنشورات
     all_posts = []
-    for page in range(1, config.SOURCE_MAX_PAGES + 1):
+    for page in range(1, config.U3SEQ_MAX_PAGES + 1):
         posts = _api_get(
             "/wp-json/wp/v2/posts",
             params={
-                "categories": config.SOURCE_CATEGORY,
+                "categories": config.U3SEQ_CATEGORY,
                 "per_page": 100,
                 "page": page,
                 "_fields": "id,title,featured_media,link",
@@ -123,49 +120,34 @@ def fetch_posters():
     print(f"   🎬 مسلسلات بصور: {len(series_media)}")
     print(f"   📸 صور فريدة: {len(media_ids)}")
 
-    # 3) فلترة الصور المطلوبة فقط
-    needed = {mid for mid in media_ids
-              if str(mid) not in posters or not posters.get(str(mid))}
+    # 3) فلترة الصور المطلوبة
+    needed = {
+        mid for mid in media_ids
+        if not posters.get(f"__media__{mid}")
+    }
 
-    if not needed:
-        print("   ✅ كل الصور موجودة مسبقاً — لا شيء جديد")
-        # لكن حدّث الربط بين الأسماء والصور
-        updated = _update_mapping(series_media, posters)
-        if updated:
-            _save_posters(posters)
-        return posters
+    if needed:
+        print(f"   🔄 جلب {len(needed)} صورة جديدة...")
+        for i, mid in enumerate(needed, 1):
+            data = _api_get(f"/wp-json/wp/v2/media/{mid}")
+            if not data:
+                continue
+            src = (data.get("source_url") or "").strip()
+            if src:
+                posters[f"__media__{mid}"] = src
+            time.sleep(0.2)
 
-    print(f"   🔄 جلب {len(needed)} صورة جديدة...")
-
-    # 4) اجلب كل صورة على حدة
-    for i, mid in enumerate(needed, 1):
-        data = _api_get(f"/wp-json/wp/v2/media/{mid}")
-        if not data:
-            continue
-        src = (data.get("source_url") or "").strip()
+    # 4) اربط الأسماء بالصور
+    for name, mid in series_media.items():
+        src = posters.get(f"__media__{mid}")
         if src:
-            posters[str(mid)] = src
-            if i % 20 == 0 or i == len(needed):
-                print(f"   · {i}/{len(needed)} — {src[:80]}")
-        time.sleep(0.3)
-
-    # 5) اربط الأسماء بالصور
-    _update_mapping(series_media, posters)
+            posters[f"__series__{name}"] = src
 
     _save_posters(posters)
-    print(f"   ✅ حُفظت {len(posters)} صورة في {POSTERS_FILE}")
+
+    total = len([k for k in posters if k.startswith("__series__")])
+    print(f"   ✅ إجمالي الصور: {total}")
     return posters
-
-
-def _update_mapping(series_media, posters):
-    """يربط اسم المسلسل بالصورة في posters."""
-    changed = False
-    for name, mid in series_media.items():
-        src = posters.get(str(mid))
-        if src and posters.get(f"__series__{name}") != src:
-            posters[f"__series__{name}"] = src
-            changed = True
-    return changed
 
 
 def get_poster_map():

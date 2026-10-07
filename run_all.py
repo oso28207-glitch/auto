@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-run_all.py — المنسق الموحد مع مصادر متعددة ومنع التكرار
+run_all.py — المنسق الموحد مع حفظ الصور تلقائياً
 """
 
 import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -13,11 +14,14 @@ from pathlib import Path
 from config import config, DATA_DIR, MEDIA_DIR
 
 
-# ═══ القفل الذكي ═══
 LOCK_FILE = DATA_DIR / ".run.lock"
 LOCK_TTL = 3600 * 3
+POSTERS_FILE = DATA_DIR / "posters.json"
 
 
+# ═══════════════════════════════════════════════════════════════
+# القفل الذكي
+# ═══════════════════════════════════════════════════════════════
 def _is_github_actions():
     return os.environ.get("GITHUB_ACTIONS") == "true"
 
@@ -46,7 +50,6 @@ def acquire_lock():
             age = time.time() - old_ts
 
             if age > LOCK_TTL:
-                print(f"⚠️ قفل قديم — حذفه")
                 LOCK_FILE.unlink()
             else:
                 if _is_process_alive(old_pid) and old_pid != os.getpid():
@@ -72,6 +75,9 @@ def release_lock():
         pass
 
 
+# ═══════════════════════════════════════════════════════════════
+# Git
+# ═══════════════════════════════════════════════════════════════
 def git_sync():
     if not _is_github_actions():
         return
@@ -118,6 +124,65 @@ def git_push_docs(force=False):
 
 
 # ═══════════════════════════════════════════════════════════════
+# ★★★ حفظ الصور من كل المصادر
+# ═══════════════════════════════════════════════════════════════
+def _load_posters() -> dict:
+    """يحمّل posters.json أو ينشئ قاموساً فارغاً."""
+    if POSTERS_FILE.exists():
+        try:
+            data = json.loads(POSTERS_FILE.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except Exception as e:
+            print(f"⚠️ فشل تحميل posters.json: {e}")
+    return {}
+
+
+def _save_posters(posters: dict):
+    """يحفظ posters.json."""
+    POSTERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    POSTERS_FILE.write_text(
+        json.dumps(posters, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _collect_and_save_posters(all_items: list):
+    """
+    ★ يجمع الصور من كل عناصر المصادر ويحفظها في posters.json.
+    يخزّنها بصيغة: {"__series__{name}": poster_url}
+    """
+    posters = _load_posters()
+    added = 0
+    updated = 0
+
+    for item in all_items:
+        if not item.poster:
+            continue
+
+        key = f"__series__{item.name}"
+        old = posters.get(key)
+
+        if not old:
+            posters[key] = item.poster
+            added += 1
+        elif old != item.poster:
+            posters[key] = item.poster
+            updated += 1
+
+    if added or updated:
+        _save_posters(posters)
+        print(f"   📸 صور محفوظة: {added} جديدة، {updated} مُحدّثة")
+    else:
+        print(f"   📸 لا صور جديدة")
+
+    total = len([k for k in posters if k.startswith("__series__")])
+    print(f"   📊 إجمالي الصور: {total}")
+    return posters
+
+
+# ═══════════════════════════════════════════════════════════════
+# المنسق الرئيسي
+# ═══════════════════════════════════════════════════════════════
 async def main():
     if not acquire_lock():
         print("⏭️ الخروج بسبب القفل")
@@ -130,7 +195,7 @@ async def main():
         print("""
 ╔══════════════════════════════════════════════════════╗
 ║           شوف — Shoof Automation                     ║
-║   مصادر متعددة • تصنيفات • ضغط ذكي • 45MB           ║
+║   مصادر متعددة • صور • تصنيفات • ضغط ذكي            ║
 ╚══════════════════════════════════════════════════════╝
 """)
 
@@ -145,7 +210,7 @@ async def main():
         print(f"   الفيديوهات: {s['videos']}")
         print(f"   فاشلة: {s.get('failed_series', 0)}")
 
-        # ★★★ تحميل المصادر المفعّلة
+        # ═══ 1) تحميل المصادر ═══
         sources = []
         enabled = [x.strip() for x in config.ENABLED_SOURCES.split(",") if x.strip()]
 
@@ -161,7 +226,7 @@ async def main():
 
         print(f"\n📡 المصادر: {', '.join(s.name for s in sources)}")
 
-        # ★★★ جلب العناصر من كل المصادر
+        # ═══ 2) جلب العناصر ═══
         all_items = []
         for src in sources:
             try:
@@ -179,11 +244,19 @@ async def main():
         print(f"   • مسلسلات: {series_count}")
         print(f"   • أفلام: {movie_count}")
 
-        if not all_items:
-            print("\n✅ لا عناصر — الخروج")
-            return 0
+        # ═══ 3) ★★★ جلب صور u3seq من WordPress API ═══
+        try:
+            from fetch_posters import fetch_posters
+            print(f"\n🖼️  جلب صور u3seq...")
+            fetch_posters()
+        except Exception as e:
+            print(f"⚠️ فشل fetch_posters: {str(e)[:150]}")
 
-        # ★★★ فحص القنوات
+        # ═══ 4) ★★★ حفظ صور من كل المصادر ═══
+        print(f"\n📸 جمع صور المصادر...")
+        _collect_and_save_posters(all_items)
+
+        # ═══ 5) فحص Telegram ═══
         existing_eps = {}
         try:
             from telegram_checker import (
@@ -195,7 +268,7 @@ async def main():
         except Exception as e:
             print(f"\n⚠️ فشل فحص Telegram: {str(e)[:150]}")
 
-        # ★★★ تحميل ورفع
+        # ═══ 6) تحميل ورفع ═══
         from downloader import download_episode
         from uploader import uploader
         from builder import build_incremental
@@ -217,12 +290,10 @@ async def main():
                         and uploaded_count >= config.MAX_EPISODES_PER_RUN):
                     break
 
-                # ★★★ منع التكرار: ابحث عن اسم مشابه في قاعدة البيانات
+                # ★★★ منع التكرار
                 existing_name = db.find_series_by_name(item.name)
-                if existing_name:
-                    # استخدم الاسم الموجود
-                    if existing_name != item.name:
-                        print(f"   🔄 دمج: '{item.name}' → '{existing_name}'")
+                if existing_name and existing_name != item.name:
+                    print(f"   🔄 دمج: '{item.name}' → '{existing_name}'")
                     target_name = existing_name
                 else:
                     target_name = item.name
@@ -233,13 +304,11 @@ async def main():
                     pnum = part.get("number", 0)
                     purl = part.get("url", "")
 
-                    # فحص 1: state.json
                     status = db.episode_status(target_name, pnum)
                     if status == "uploaded":
                         skipped_count += 1
                         continue
 
-                    # فحص 2: Telegram
                     if existing_eps and is_episode_uploaded(existing_eps, target_name, pnum):
                         db.set_episode(target_name, pnum,
                                        status="uploaded",
@@ -247,7 +316,6 @@ async def main():
                         skipped_count += 1
                         continue
 
-                    # فحص 3: الرابط
                     if not purl or not purl.startswith("http"):
                         continue
 
@@ -373,6 +441,7 @@ async def main():
         print(f"❌ فشلت: {failed_count}")
         print(f"{'═' * 60}")
 
+        # ═══ 7) بناء نهائي ═══
         if config.AUTO_BUILD:
             try:
                 build_incremental()
