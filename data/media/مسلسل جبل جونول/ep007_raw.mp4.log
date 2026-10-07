@@ -1,0 +1,4 @@
+Deprecated Feature: Passing cookies as a header is a potential security risk; they will be scoped to the domain of the downloaded urls. Please consider loading cookies from a file or browser instead.
+[generic] Extracting URL: https://s28.cdn-vids.xyz/hls2/01/00008/61kzgaqqm5iv_o/master.m3u8?t=g9c0NcuepeYecq8FFGIPbKZ8ohguQ...178925984&i=0.3&sp=1
+[generic] master.m3u8?t=g9c0NcuepeYecq8FFGIPbKZ8ohguQXRGDlGHvirGjqs&s=1791377270&e=43200&v=178925984&i=0: Downloading webpage
+ERROR: [generic] Unable to download webpage: HTTP Error 403: Forbidden (caused by <HTTPError 403: Forbidden>)
