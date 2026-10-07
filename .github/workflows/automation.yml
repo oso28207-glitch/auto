@@ -1,423 +1,105 @@
 name: 🎬 Shoof Automation
-
 on:
-  # ⏰ جدولة تلقائية — كل 3 ساعات
   schedule:
     - cron: '0 */3 * * *'
-  
-  # 🖱️ تشغيل يدوي من GitHub
   workflow_dispatch:
-    inputs:
-      max_runtime:
-        description: '⏱️ أقصى مدة تشغيل (دقيقة)'
-        required: false
-        default: '165'
-        type: string
-      max_episodes:
-        description: '📺 أقصى عدد حلقات (0 = بلا حد)'
-        required: false
-        default: '0'
-        type: string
-      enabled_sources:
-        description: '📡 المصادر (u3seq,yam,egybest)'
-        required: false
-        default: 'u3seq,yam,egybest'
-        type: string
-      skip_compress:
-        description: '🗜️ تخطي الضغط (أسرع لكن ملفات أكبر)'
-        required: false
-        default: 'false'
-        type: choice
-        options:
-          - 'false'
-          - 'true'
-  
-  # 📥 تشغيل عند دفع تغييرات على الملفات الأساسية
   push:
     branches: [main]
-    paths:
-      - 'downloader.py'
-      - 'run_all.py'
-      - 'build_site.py'
-      - 'config.py'
-      - 'sources/**'
-      - 'requirements.txt'
-      - '.github/workflows/automate.yml'
+    paths: ['downloader.py', 'run_all.py', 'sources/**']
 
-# 🔒 صلاحيات
 permissions:
   contents: write
-  actions: read
 
-# ♻️ منع التشغيل المتزامن
 concurrency:
-  group: shoof-automation
+  group: shoof
   cancel-in-progress: false
 
-# 🌍 متغيرات البيئة العامة — ✅ مصلح: أزلنا PIP_NO_CACHE_DIR
 env:
   PYTHON_VERSION: '3.11'
   TZ: 'Africa/Cairo'
   PYTHONUNBUFFERED: '1'
-  PIP_DISABLE_PIP_VERSION_CHECK: '1'
   DISPLAY: ':99'
 
 jobs:
   automate:
-    name: 🚀 تشغيل الأتمتة
     runs-on: ubuntu-24.04
     timeout-minutes: 340
-    
     steps:
-      # ═══════════════════════════════════════════════════════════
-      # 1️⃣ التحقق من المستودع
-      # ═══════════════════════════════════════════════════════════
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 1}
 
-      # ═══════════════════════════════════════════════════════════
-      # 2️⃣ إعداد Python + تفعيل cache (بدون تعارض)
-      # ═══════════════════════════════════════════════════════════
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: 'requirements.txt'
+          cache: pip
+          cache-dependency-path: requirements.txt
 
-      # ═══════════════════════════════════════════════════════════
-      # 3️⃣ تثبيت ffmpeg
-      # ═══════════════════════════════════════════════════════════
-      - name: 🎬 Install ffmpeg
+      - name: ffmpeg
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
-          ffmpeg -version | head -1
 
-      # ═══════════════════════════════════════════════════════════
-      # 4️⃣ تثبيت Xvfb + Chrome
-      # ═══════════════════════════════════════════════════════════
-      - name: 🌐 Setup Chrome + Xvfb
+      - name: Chrome + Xvfb
         run: |
-          sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb wget
-          
-          wget -q -O /tmp/chrome.deb \
-            "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb"
+          wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo apt-get install -y -qq /tmp/chrome.deb
           rm -f /tmp/chrome.deb
-          
           sudo Xvfb :99 -screen 0 1920x1080x24 &
           echo "DISPLAY=:99" >> $GITHUB_ENV
           sleep 2
-          
-          google-chrome --version
 
-      # ═══════════════════════════════════════════════════════════
-      # 5️⃣ تثبيت متطلبات Python
-      # ═══════════════════════════════════════════════════════════
-      - name: 📦 Install Python packages
+      - name: pip
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          else
-            pip install \
-              pyrogram==2.0.106 \
-              tgcrypto==1.2.5 \
-              python-dotenv==1.0.1 \
-              "yt-dlp[default,curl-cffi]==2025.1.26" \
-              seleniumbase==4.52.0 \
-              cloudscraper \
-              imageio-ffmpeg \
-              beautifulsoup4 \
-              lxml
-          fi
+          pip install -r requirements.txt
           pip check || true
 
-      # ═══════════════════════════════════════════════════════════
-      # 6️⃣ التحقق من السيكرتس
-      # ═══════════════════════════════════════════════════════════
-      - name: 🔐 Verify secrets
+      - name: .env
         env:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
           SESSION_STRING: ${{ secrets.SESSION_STRING }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
         run: |
-          missing=0
-          [ -z "$API_ID" ] && echo "❌ API_ID مفقود" && missing=1
-          [ -z "$API_HASH" ] && echo "❌ API_HASH مفقود" && missing=1
-          [ -z "$SESSION_STRING" ] && echo "❌ SESSION_STRING مفقود" && missing=1
-          [ -z "$CHANNEL_ID" ] && echo "❌ CHANNEL_ID مفقود" && missing=1
-          if [ $missing -eq 1 ]; then
-            echo "⚠️ بعض السيكرتس مفقودة — تحقق من Settings → Secrets"
-            exit 1
-          fi
-          echo "✅ جميع السيكرتس موجودة"
-
-      # ═══════════════════════════════════════════════════════════
-      # 7️⃣ إنشاء ملف .env
-      # ═══════════════════════════════════════════════════════════
-      - name: ⚙️ Create .env
-        env:
-          API_ID: ${{ secrets.API_ID }}
-          API_HASH: ${{ secrets.API_HASH }}
-          SESSION_STRING: ${{ secrets.SESSION_STRING }}
-          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
-          CHECK_CHANNELS: ${{ secrets.CHECK_CHANNELS }}
-        run: |
-          MAX_MIN="${{ github.event.inputs.max_runtime || '165' }}"
-          MAX_SEC=$(( MAX_MIN * 60 ))
-          MAX_EPS="${{ github.event.inputs.max_episodes || '0' }}"
-          SOURCES="${{ github.event.inputs.enabled_sources || 'u3seq,yam,egybest' }}"
-          SKIP_COMP="${{ github.event.inputs.skip_compress || 'false' }}"
-          
           cat > .env << EOF
-          # ═══ Telegram ═══
           API_ID=${API_ID}
           API_HASH=${API_HASH}
           SESSION_STRING=${SESSION_STRING}
           CHANNEL_ID=${CHANNEL_ID}
-          
-          # ═══ المصادر المتعددة ═══
-          ENABLED_SOURCES=${SOURCES}
+          ENABLED_SOURCES=u3seq,yam,egybest
+          SOURCE_BASE_URL=https://u.3seq.cam
+          SOURCE_CATEGORY=712
+          SOURCE_MAX_PAGES=10
           YAM_BASE_URL=https://yam.ahwaktv.net
           YAM_SERIES_PATH=/moslslat.php
           EGYBEST_BASE_URL=https://egybesstt.baby
           EGYBEST_SERIES_PATH=/all-series.php
-          SOURCE_BASE_URL=https://u.3seq.cam
-          SOURCE_CATEGORY=712
-          SOURCE_MAX_PAGES=20
-          
-          # ═══ API للبث ═══
-          API_BASE=${API_BASE:-}
-          
-          # ═══ سلوك ═══
-          MAX_EPISODES_PER_RUN=${MAX_EPS}
-          MAX_RUNTIME_SECONDS=${MAX_SEC}
-          IMPERSONATE_TARGET=chrome120
-          AUTO_BUILD=true
-          SKIP_COMPRESS=${SKIP_COMP}
-          KEEP_MEDIA=false
-          
-          # ═══ الضغط — 144p خفيف ═══
-          COMPRESS_SCALE=144
-          COMPRESS_CRF=28
+          MAX_EPISODES_PER_RUN=0
+          MAX_RUNTIME_SECONDS=9900
+          SKIP_COMPRESS=false
+          COMPRESS_SCALE=240
+          COMPRESS_CRF=32
           COMPRESS_PRESET=veryfast
-          COMPRESS_AUDIO_BITRATE=64k
+          COMPRESS_AUDIO_BITRATE=32k
           COMPRESS_MAX_SIZE_MB=45
-          COMPRESS_USE_TWOPASS=false
-          COMPRESS_THREADS=2
-          
-          # ═══ فحص القنوات ═══
-          CHECK_CHANNELS=${CHECK_CHANNELS}
-          CHECK_CHANNEL_LIMIT=3000
-          CHECK_CACHE_TTL=1800
-          
-          # ═══ التحديث الفوري ═══
-          REALTIME_PUSH=true
-          REALTIME_PUSH_INTERVAL=60
-          
-          # ═══ yt-dlp ═══
-          YTDLP_CONCURRENT=16
-          YTDLP_THROTTLED_RATE=2M
-          YTDLP_MIN_SPEED_KB=800
-          YTDLP_MAX_STALL=20
-          
-          # ═══ Timeouts ═══
-          YTDLP_TIMEOUT=900
-          CF_TIMEOUT=30
-          BROWSER_TIMEOUT=180
-          SERVER_TIMEOUT=180
-          OPEN_TIMEOUT=25
-          M3U8_SEARCH_TIMEOUT=40
-          
-          # ═══ cffi ═══
-          CURL_CFFI_WORKERS=12
-          BROWSER_BATCH=16
+          M3U8_SEARCH_TIMEOUT=25
+          OPEN_TIMEOUT=10
+          EPISODE_TIMEOUT=240
           EOF
-          
-          echo "── .env (القيم الحساسة محجوبة) ──"
-          grep -v -E "API_HASH|SESSION_STRING|BOT_TOKEN|API_ID" .env
+          grep -v -E "API_HASH|SESSION_STRING|API_ID" .env
 
-      # ═══════════════════════════════════════════════════════════
-      # 8️⃣ التحقق من صحة البنية
-      # ═══════════════════════════════════════════════════════════
-      - name: 🔍 Validate structure
-        run: |
-          echo "── التحقق من الملفات الأساسية ──"
-          for f in config.py downloader.py run_all.py build_site.py; do
-            if [ -f "$f" ]; then
-              echo "✅ $f"
-            else
-              echo "⚠️ $f مفقود"
-            fi
-          done
-          
-          echo ""
-          echo "── التحقق من Python syntax ──"
-          python -m py_compile config.py 2>&1 || echo "⚠️ خطأ في config.py"
-          python -m py_compile downloader.py 2>&1 || echo "⚠️ خطأ في downloader.py"
-          python -m py_compile run_all.py 2>&1 || echo "⚠️ خطأ في run_all.py"
-          python -m py_compile build_site.py 2>&1 || echo "⚠️ خطأ في build_site.py"
-          
-          echo ""
-          echo "── البيانات الحالية ──"
-          ls -lh data/ 2>/dev/null || echo "data/ فارغ"
-          ls -lh docs/ 2>/dev/null || echo "docs/ فارغ"
+      - name: 🚀 Run
+        run: python run_all.py 2>&1 || true
 
-      # ═══════════════════════════════════════════════════════════
-      # 9️⃣ 🚀 تشغيل الأتمتة الرئيسي
-      # ═══════════════════════════════════════════════════════════
-      - name: 🚀 Run automation
-        id: run
-        continue-on-error: true
-        env:
-          PYTHONUNBUFFERED: '1'
-          DISPLAY: ':99'
-        run: |
-          echo "════════════════════════════════════════════════"
-          echo "🚀 بدء التشغيل"
-          echo "   الوقت: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-          echo "   المهلة: ${{ github.event.inputs.max_runtime || '165' }} دقيقة"
-          echo "════════════════════════════════════════════════"
-          
-          python run_all.py 2>&1 || {
-            EXIT_CODE=$?
-            echo "⚠️ run_all.py خرج بكود $EXIT_CODE"
-            exit 0
-          }
-
-      # ═══════════════════════════════════════════════════════════
-      # 🔟 بناء الموقع (احتياطي)
-      # ═══════════════════════════════════════════════════════════
-      - name: 🏗️ Build site (fallback)
-        if: always()
-        continue-on-error: true
-        run: |
-          if [ -f build_site.py ]; then
-            echo "🏗️ إعادة بناء الموقع..."
-            python build_site.py 2>&1 || echo "⚠️ build_site فشل"
-          fi
-          
-          echo ""
-          echo "── محتوى docs/ ──"
-          ls -lh docs/ 2>/dev/null | head -20
-          echo ""
-          echo "── عدد الصور ──"
-          find docs/posters -type f 2>/dev/null | wc -l
-
-      # ═══════════════════════════════════════════════════════════
-      # 1️⃣1️⃣ تنظيف
-      # ═══════════════════════════════════════════════════════════
-      - name: 🧹 Cleanup temp files
-        if: always()
-        run: |
-          pkill -9 -f "yt-dlp" 2>/dev/null || true
-          pkill -9 -f "chrome" 2>/dev/null || true
-          pkill -9 -f "ffmpeg" 2>/dev/null || true
-          pkill -9 -f "Xvfb" 2>/dev/null || true
-          
-          rm -rf data/media/* 2>/dev/null || true
-          rm -rf downloads_* 2>/dev/null || true
-          rm -f /tmp/tmp*.txt /tmp/tmp*.log /tmp/tmp*.mp4 /tmp/tmp*.ts 2>/dev/null || true
-          rm -f /tmp/hls_* 2>/dev/null || true
-          
-          echo "── المساحة ──"
-          df -h | head -3
-
-      # ═══════════════════════════════════════════════════════════
-      # 1️⃣2️⃣ Commit + Push
-      # ═══════════════════════════════════════════════════════════
-      - name: 💾 Commit and push
+      - name: 💾 Push
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
           git add -f data/ docs/ 2>/dev/null || true
-          
-          if git diff --staged --quiet; then
-            echo "ℹ️ لا تغييرات"
-            exit 0
-          fi
-          
-          echo "── التغييرات ──"
-          git diff --staged --stat | tail -20
-          
-          git commit -m "🤖 تحديث تلقائي: $(date -u +'%Y-%m-%d %H:%M')" || true
-          
+          if git diff --staged --quiet; then exit 0; fi
+          git commit -m "🤖 تحديث: $(date -u +'%Y-%m-%d %H:%M')" || true
           for i in 1 2 3; do
-            if git push; then
-              echo "✅ push نجح (محاولة $i)"
-              exit 0
-            fi
-            echo "⚠️ push محاولة $i فشل — إعادة محاولة..."
-            git pull --rebase --autostash 2>/dev/null || true
-            sleep 5
+            git push && break || (git pull --rebase --autostash || true; sleep 5)
           done
-          
-          echo "❌ فشل push بعد 3 محاولات"
-          exit 0
-
-      # ═══════════════════════════════════════════════════════════
-      # 1️⃣3️⃣ ملخص التشغيل
-      # ═══════════════════════════════════════════════════════════
-      - name: 📊 Summary
-        if: always()
-        run: |
-          {
-            echo "# 🎬 Shoof Automation — ملخص التشغيل"
-            echo ""
-            echo "## ⏱️ التوقيت"
-            echo "- **البدء**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-            echo "- **المهلة**: ${{ github.event.inputs.max_runtime || '165' }} دقيقة"
-            echo "- **المصادر**: ${{ github.event.inputs.enabled_sources || 'u3seq,yam,egybest' }}"
-            echo ""
-            echo "## 📊 الحالة"
-            
-            if [ -f data/series.json ]; then
-              SERIES=$(python -c "import json; print(len(json.load(open('data/series.json')).get('series',[])))" 2>/dev/null || echo "?")
-              EPISODES=$(python -c "import json; print(sum(len(s.get('episodes',[])) for s in json.load(open('data/series.json')).get('series',[])))" 2>/dev/null || echo "?")
-              echo "- **المسلسلات**: $SERIES"
-              echo "- **الحلقات**: $EPISODES"
-            fi
-            
-            if [ -f data/uploaded.json ]; then
-              UPLOADED=$(python -c "import json; print(len(json.load(open('data/uploaded.json'))))" 2>/dev/null || echo "?")
-              echo "- **المرفوع**: $UPLOADED حلقة"
-            fi
-            
-            POSTERS=$(find docs/posters -type f 2>/dev/null | wc -l)
-            echo "- **البوسترات**: $POSTERS صورة"
-            
-            WATCH_PAGES=$(find docs/watch -name "*.html" 2>/dev/null | wc -l)
-            echo "- **صفحات المشاهدة**: $WATCH_PAGES"
-            
-            echo ""
-            echo "## 🌐 الموقع"
-            echo "- [عرض الموقع](https://oso28207-glitch.github.io/auto/)"
-            echo ""
-            echo "## 📡 القناة"
-            echo "- [قناة Telegram](https://t.me/${{ secrets.CHANNEL_ID }})"
-          } >> $GITHUB_STEP_SUMMARY
-
-      # ═══════════════════════════════════════════════════════════
-      # 1️⃣4️⃣ فحص نهائي
-      # ═══════════════════════════════════════════════════════════
-      - name: ⚠️ Check run status
-        if: always()
-        run: |
-          if [ ! -f data/series.json ]; then
-            echo "⚠️ data/series.json غير موجود — تحقق من السجلات"
-          fi
-          
-          if [ ! -f docs/index.html ]; then
-            echo "⚠️ docs/index.html غير موجود — لم يُبنَ الموقع"
-          fi
-          
-          echo "✅ التشغيل انتهى"

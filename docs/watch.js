@@ -1,151 +1,219 @@
-/* watch.js — مشغل HLS + autoplay + انتقال تلقائي */
-(function() {
+/* ═══════════════════════════════════════════════════════════════
+   watch.js — مشغل HLS + Autoplay + انتقال تلقائي
+   ═══════════════════════════════════════════════════════════════ */
+
+(function () {
     'use strict';
 
-    const video = document.getElementById('video-player');
+    // عناصر الصفحة
+    const v = document.getElementById('v') || document.getElementById('video-player');
+    const grid = document.getElementById('grid') || document.getElementById('episodes-grid');
+    const cn = document.getElementById('cn') || document.getElementById('countdown-num');
+    const count = document.getElementById('count') || document.getElementById('autoplay-countdown');
     const loading = document.getElementById('player-loading');
-    const countdown = document.getElementById('autoplay-countdown');
-    const countdownNum = document.getElementById('countdown-num');
     const epBadge = document.getElementById('current-ep-badge');
-    const grid = document.getElementById('episodes-grid');
     const epSearch = document.getElementById('ep-search');
     const btnPrev = document.getElementById('btn-prev');
     const btnNext = document.getElementById('btn-next');
     const btnAutoplay = document.getElementById('btn-autoplay');
 
-    let hls = null;
-    let currentEp = 0;
-    let autoplayEnabled = true;
-    let countdownTimer = null;
-    let countdownValue = 10;
-
-    // watched episodes (localStorage)
-    const WATCHED_KEY = 'shoof_watched_' + (SERIES?.slug || 'unknown');
-    const watched = new Set(JSON.parse(localStorage.getItem(WATCHED_KEY) || '[]'));
-    function saveWatched() {
-        try { localStorage.setItem(WATCHED_KEY, JSON.stringify([...watched])); } catch(e) {}
+    if (!v || typeof S === 'undefined' || !Array.isArray(S)) {
+        console.warn('watch.js: لا توجد بيانات حلقات');
+        return;
     }
 
-    // ═══ بناء شبكة الحلقات ═══
-    function buildGrid(filter = '') {
+    // الحالة
+    let hls = null;
+    let cur = 0;
+    let auto = true;
+    let timer = null;
+    let autoplayEnabled = true;
+
+    // watched (localStorage)
+    const WATCHED_KEY = 'shoof_watched_' + (S[0] && S[0].num ? S[0].num : 'x') + '_' + S.length;
+    let watched = new Set();
+    try {
+        watched = new Set(JSON.parse(localStorage.getItem(WATCHED_KEY) || '[]'));
+    } catch (e) {
+        watched = new Set();
+    }
+
+    function saveWatched() {
+        try {
+            localStorage.setItem(WATCHED_KEY, JSON.stringify([...watched]));
+        } catch (e) {}
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // بناء شبكة الحلقات
+    // ═══════════════════════════════════════════════════════════
+    function buildGrid(filter) {
         if (!grid) return;
+        filter = (filter || '').trim();
         grid.innerHTML = '';
-        const f = filter.trim();
-        SERIES.episodes.forEach((ep, i) => {
+
+        S.forEach(function (ep, i) {
             const num = ep.num || (i + 1);
-            if (f && !String(num).includes(f)) return;
-            const btn = document.createElement('button');
-            btn.className = 'ep-btn';
-            if (watched.has(num)) btn.classList.add('watched');
-            if (i === currentEp) btn.classList.add('active');
-            btn.textContent = num;
-            btn.onclick = () => playEpisode(i);
-            grid.appendChild(btn);
+            if (filter && String(num).indexOf(filter) === -1) return;
+
+            const b = document.createElement('button');
+            b.textContent = num;
+            b.className = 'ep-btn';
+            if (watched.has(num)) b.classList.add('watched');
+            if (i === cur) b.classList.add('active');
+            b.onclick = function () { play(i); };
+            grid.appendChild(b);
         });
     }
 
-    epSearch?.addEventListener('input', (e) => buildGrid(e.target.value));
+    if (epSearch) {
+        epSearch.addEventListener('input', function (e) {
+            buildGrid(e.target.value);
+        });
+    }
 
-    // ═══ تشغيل حلقة ═══
-    function playEpisode(index) {
-        if (index < 0 || index >= SERIES.episodes.length) return;
-        currentEp = index;
-        const ep = SERIES.episodes[index];
+    // ═══════════════════════════════════════════════════════════
+    // تشغيل حلقة
+    // ═══════════════════════════════════════════════════════════
+    function play(i) {
+        if (i < 0 || i >= S.length) return;
+        cur = i;
+
+        const ep = S[i];
         const url = ep.url || ep;
+        const num = ep.num || (i + 1);
 
-        epBadge.textContent = `الحلقة ${ep.num || (index + 1)}`;
-        document.title = `${SERIES.name} — الحلقة ${ep.num || (index + 1)}`;
-        history.replaceState(null, '', `?ep=${ep.num || (index + 1)}`);
+        // تحديث العنوان + URL
+        document.title = 'الحلقة ' + num;
+        try {
+            history.replaceState(null, '', '?ep=' + num);
+        } catch (e) {}
 
-        // تحديث الحالة
-        watched.add(ep.num || (index + 1));
+        // شارة الحلقة الحالية
+        if (epBadge) epBadge.textContent = 'الحلقة ' + num;
+
+        // تسجيل مشاهدة
+        watched.add(num);
         saveWatched();
-        buildGrid(epSearch?.value || '');
 
-        // تحديث الأزرار
-        btnPrev.disabled = index === 0;
-        btnNext.disabled = index === SERIES.episodes.length - 1;
+        // تحديث الشبكة
+        buildGrid(epSearch ? epSearch.value : '');
 
-        // تحميل الفيديو
-        loading.classList.remove('hidden');
+        // أزرار السابق/التالي
+        if (btnPrev) btnPrev.disabled = (i === 0);
+        if (btnNext) btnNext.disabled = (i === S.length - 1);
+
+        // إخفاء العد التنازلي
         cancelCountdown();
 
-        if (hls) { hls.destroy(); hls = null; }
+        // إظهار التحميل
+        if (loading) loading.classList.remove('hidden');
 
+        // إلغاء HLS القديم
+        if (hls) {
+            try { hls.destroy(); } catch (e) {}
+            hls = null;
+        }
+
+        // تحميل الفيديو
         if (window.Hls && Hls.isSupported()) {
             hls = new Hls({
                 maxBufferLength: 30,
                 maxMaxBufferLength: 60,
                 enableWorker: true,
                 lowLatencyMode: false,
-                backBufferLength: 30,
+                backBufferLength: 30
             });
             hls.loadSource(url);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                loading.classList.add('hidden');
-                video.play().catch(e => console.log('autoplay blocked:', e));
+            hls.attachMedia(v);
+
+            hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                if (loading) loading.classList.add('hidden');
+                v.play().catch(function (err) {
+                    console.log('autoplay blocked:', err);
+                });
             });
-            hls.on(Hls.Events.ERROR, (e, data) => {
-                if (data.fatal) {
-                    console.error('HLS error:', data);
-                    loading.classList.add('hidden');
+
+            hls.on(Hls.Events.ERROR, function (event, data) {
+                if (data && data.fatal) {
+                    console.error('HLS fatal error:', data);
+                    if (loading) loading.classList.add('hidden');
                 }
             });
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = url;
-            video.addEventListener('loadedmetadata', () => {
-                loading.classList.add('hidden');
-                video.play().catch(() => {});
-            }, { once: true });
+        } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
+            v.src = url;
+            v.addEventListener('loadedmetadata', function onMeta() {
+                v.removeEventListener('loadedmetadata', onMeta);
+                if (loading) loading.classList.add('hidden');
+                v.play().catch(function () {});
+            });
         } else {
-            // fallback: yt-dlp/ffmpeg سيعالجها
-            video.src = url;
-            video.addEventListener('loadedmetadata', () => {
-                loading.classList.add('hidden');
-                video.play().catch(() => {});
-            }, { once: true });
+            v.src = url;
+            v.addEventListener('loadedmetadata', function onMeta() {
+                v.removeEventListener('loadedmetadata', onMeta);
+                if (loading) loading.classList.add('hidden');
+                v.play().catch(function () {});
+            });
         }
     }
 
-    // ═══ التالي/السابق ═══
-    window.playNext = function() {
+    // ═══════════════════════════════════════════════════════════
+    // التالي/السابق
+    // ═══════════════════════════════════════════════════════════
+    function playNext() {
         cancelCountdown();
-        if (currentEp < SERIES.episodes.length - 1) {
-            playEpisode(currentEp + 1);
+        if (cur < S.length - 1) {
+            play(cur + 1);
         }
-    };
+    }
 
-    window.playPrev = function() {
+    function playPrev() {
         cancelCountdown();
-        if (currentEp > 0) playEpisode(currentEp - 1);
-    };
+        if (cur > 0) {
+            play(cur - 1);
+        }
+    }
 
-    btnPrev?.addEventListener('click', window.playPrev);
-    btnNext?.addEventListener('click', window.playNext);
+    window.playNext = playNext;
+    window.playPrev = playPrev;
 
-    // ═══ Autoplay toggle ═══
-    window.toggleAutoplay = function() {
+    if (btnPrev) btnPrev.addEventListener('click', playPrev);
+    if (btnNext) btnNext.addEventListener('click', playNext);
+
+    // ═══════════════════════════════════════════════════════════
+    // Autoplay toggle
+    // ═══════════════════════════════════════════════════════════
+    function toggleAutoplay() {
         autoplayEnabled = !autoplayEnabled;
-        if (autoplayEnabled) {
-            btnAutoplay.classList.add('active');
-            btnAutoplay.textContent = '🔁 تشغيل تلقائي: مفعّل';
-        } else {
-            btnAutoplay.classList.remove('active');
-            btnAutoplay.textContent = '⏸ تشغيل تلقائي: متوقف';
-            cancelCountdown();
+        if (btnAutoplay) {
+            if (autoplayEnabled) {
+                btnAutoplay.classList.add('active');
+                btnAutoplay.textContent = '🔁 تشغيل تلقائي: مفعّل';
+            } else {
+                btnAutoplay.classList.remove('active');
+                btnAutoplay.textContent = '⏸ تشغيل تلقائي: متوقف';
+                cancelCountdown();
+            }
         }
-    };
+    }
 
-    // ═══ العد التنازلي ═══
+    window.toggleAutoplay = toggleAutoplay;
+    if (btnAutoplay) btnAutoplay.addEventListener('click', toggleAutoplay);
+
+    // ═══════════════════════════════════════════════════════════
+    // العد التنازلي
+    // ═══════════════════════════════════════════════════════════
     function startCountdown(seconds) {
-        countdownValue = seconds;
-        countdownNum.textContent = seconds;
-        countdown.classList.remove('hidden');
-        countdownTimer = setInterval(() => {
-            countdownValue--;
-            countdownNum.textContent = Math.max(0, countdownValue);
-            if (countdownValue <= 0) {
+        if (!count || !cn) return;
+        let s = seconds;
+        cn.textContent = s;
+        count.classList.remove('hidden');
+
+        if (timer) clearInterval(timer);
+        timer = setInterval(function () {
+            s--;
+            cn.textContent = Math.max(0, s);
+            if (s <= 0) {
                 cancelCountdown();
                 playNext();
             }
@@ -153,62 +221,79 @@
     }
 
     function cancelCountdown() {
-        if (countdownTimer) {
-            clearInterval(countdownTimer);
-            countdownTimer = null;
+        if (timer) {
+            clearInterval(timer);
+            timer = null;
         }
-        countdown.classList.add('hidden');
+        if (count) count.classList.add('hidden');
     }
 
     window.cancelAutoplay = cancelCountdown;
 
-    // ═══ تتبع التقدم ═══
-    video?.addEventListener('timeupdate', () => {
-        if (!video.duration) return;
-        const remaining = video.duration - video.currentTime;
+    // ═══════════════════════════════════════════════════════════
+    // تتبع التقدم → عرض العد التنازلي
+    // ═══════════════════════════════════════════════════════════
+    v.addEventListener('timeupdate', function () {
+        if (!v.duration) return;
+        const remaining = v.duration - v.currentTime;
         if (autoplayEnabled && remaining <= 10 && remaining > 0
-            && currentEp < SERIES.episodes.length - 1) {
-            if (countdown.classList.contains('hidden')) {
-                startCountdown(Math.floor(remaining));
-            }
+            && cur < S.length - 1 && !timer) {
+            startCountdown(Math.floor(remaining));
         }
     });
 
-    // ═══ عند انتهاء الحلقة ═══
-    video?.addEventListener('ended', () => {
-        if (autoplayEnabled && currentEp < SERIES.episodes.length - 1) {
+    // عند انتهاء الحلقة
+    v.addEventListener('ended', function () {
+        if (autoplayEnabled && cur < S.length - 1) {
             playNext();
         }
     });
 
-    // ═══ تحميل الحلقة الأولى ═══
+    // ═══════════════════════════════════════════════════════════
+    // التهيئة — ابدأ من حلقة معينة أو الأولى
+    // ═══════════════════════════════════════════════════════════
     function init() {
-        if (!SERIES?.episodes?.length) {
-            epBadge.textContent = 'لا توجد حلقات';
+        if (!S || !S.length) {
+            console.warn('watch.js: لا حلقات');
             return;
         }
 
-        // تحقق من ?ep=X في الرابط
-        const params = new URLSearchParams(location.search);
-        const epParam = parseInt(params.get('ep'));
+        // ?ep=XX في الرابط
         let startIdx = 0;
-        if (epParam) {
-            const idx = SERIES.episodes.findIndex(e => (e.num || 0) === epParam);
-            if (idx >= 0) startIdx = idx;
-        } else {
-            // ابدأ من آخر حلقة غير مشاهدة
-            for (let i = 0; i < SERIES.episodes.length; i++) {
-                if (!watched.has(SERIES.episodes[i].num)) {
-                    startIdx = i;
-                    break;
+        try {
+            const params = new URLSearchParams(location.search);
+            const epParam = parseInt(params.get('ep'), 10);
+            if (epParam) {
+                const idx = S.findIndex(function (e) { return (e.num || 0) === epParam; });
+                if (idx >= 0) startIdx = idx;
+            } else {
+                // ابدأ من أول حلقة غير مشاهدة
+                for (let i = 0; i < S.length; i++) {
+                    if (!watched.has(S[i].num)) {
+                        startIdx = i;
+                        break;
+                    }
                 }
             }
-        }
+        } catch (e) {}
 
         buildGrid();
-        playEpisode(startIdx);
+        play(startIdx);
     }
 
-    init();
-    console.log('Shoof watch.js loaded');
+    // انتظر Hls.js إن لم يكن محمّل بعد
+    if (typeof Hls === 'undefined') {
+        let tries = 0;
+        const iv = setInterval(function () {
+            tries++;
+            if (typeof Hls !== 'undefined' || tries > 20) {
+                clearInterval(iv);
+                init();
+            }
+        }, 200);
+    } else {
+        init();
+    }
+
+    console.log('watch.js loaded — ' + S.length + ' حلقة');
 })();
