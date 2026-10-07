@@ -1,12 +1,12 @@
 """
-downloader.py v42 — FINAL
+downloader.py v43 — FINAL
 ═══════════════════════════════════════════════════════════
-v42: حل مشكلة الوقت لمقاطع كبيرة (834+ مقطع)
-     - Blob download: المقاطع تُدمج في المتصفح ثم تُحفظ مباشرة على القرص
-     - تجاوز حدود CDP/base64 تماماً
-     - جلب متوازٍ (10 مقاطع معاً) عبر Promise.all
-     - fallback إلى base64 للحجم الصغير
-     - رفع EPISODE_TIMEOUT إلى 1800s
+v43: حل مشكلة Read timeout في Blob
+     - Blob بدون awaitPromise (fire-and-forget)
+     - polling لمتغير window.__hls_status
+     - تجاوز حدود 120s في CDP
+     - 10 مقاطع متوازية
+     - fallback base64 للحجم الصغير
 """
 
 import os
@@ -317,7 +317,7 @@ def _scan(sb):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v42: fetch CDP (للـ m3u8 فقط)
+# fetch text (m3u8)
 # ═══════════════════════════════════════════════════════════════
 def _fetch_text_cdp(sb, url, referer):
     js = f"""
@@ -352,132 +352,152 @@ def _fetch_text_cdp(sb, url, referer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v42: Blob download — الأسرع للمقاطع الكبيرة
+# ★★★ v43: Blob download بدون انتظار + polling
 # ═══════════════════════════════════════════════════════════════
-def _blob_download(sb, seg_urls, referer, download_dir):
+def _blob_download_async(sb, seg_urls, referer, download_dir, timeout=900):
     """
-    يحمّل المقاطع في المتصفح، يدمجها في Blob، ثم يحفظها عبر Chrome download.
-    - لا يمر عبر CDP/base64 → سريع جداً
-    - يستخدم fetch متوازي (10 مقاطع معاً)
+    يحمّل المقاطع في المتصفح بدون انتظار الـ Promise (fire-and-forget)،
+    ثم يراقب window.__hls_status حتى ينتهي أو ينتهي الوقت.
     """
     download_dir = Path(download_dir).absolute()
     download_dir.mkdir(parents=True, exist_ok=True)
 
-    # مسح أي ملف سابق
     for f in download_dir.glob("hls_download*"):
-        try:
-            f.unlink()
-        except Exception:
-            pass
+        try: f.unlink()
+        except Exception: pass
 
-    # تعيين سلوك التحميل
     _cdp(sb, "Page.setDownloadBehavior", {
         "behavior": "allow",
         "downloadPath": str(download_dir),
     })
 
     urls_json = json.dumps(seg_urls)
+    total = len(seg_urls)
 
-    # الكود: يجلب المقاطع بـ Promise.all (10 معاً)، يدمجها في Blob، ثم يحفظها
+    # كود async يبدأ العملية ويحفظ الحالة في window
     js = f"""
-    (async function(){{
-        const urls = {urls_json};
-        const referer = {repr(referer or '')};
-        const CONCURRENT = 10;
-        const buffers = [];
-        let failed = 0;
+    (function(){{
+        window.__hls_status = 'running';
+        window.__hls_ok = 0;
+        window.__hls_failed = 0;
+        window.__hls_total = {total};
 
-        for (let i = 0; i < urls.length; i += CONCURRENT) {{
-            const batch = urls.slice(i, i + CONCURRENT);
-            const results = await Promise.all(batch.map(async (u) => {{
-                try {{
-                    const r = await fetch(u, {{
-                        method: 'GET',
-                        credentials: 'include',
-                        cache: 'no-store',
-                        referrer: referer,
-                        headers: {{ 'Accept': '*/*' }}
-                    }});
-                    if (!r.ok) return null;
-                    return await r.arrayBuffer();
-                }} catch(e) {{ return null; }}
-            }}));
-            for (const b of results) {{
-                if (b) buffers.push(b);
-                else failed++;
+        (async function(){{
+            const urls = {urls_json};
+            const referer = {repr(referer or '')};
+            const CONCURRENT = 15;
+            const buffers = [];
+
+            for (let i = 0; i < urls.length; i += CONCURRENT) {{
+                const batch = urls.slice(i, i + CONCURRENT);
+                const results = await Promise.all(batch.map(async (u) => {{
+                    try {{
+                        const r = await fetch(u, {{
+                            method: 'GET',
+                            credentials: 'include',
+                            cache: 'no-store',
+                            referrer: referer,
+                            headers: {{ 'Accept': '*/*' }}
+                        }});
+                        if (!r.ok) return null;
+                        return await r.arrayBuffer();
+                    }} catch(e) {{ return null; }}
+                }}));
+                for (const b of results) {{
+                    if (b) {{ buffers.push(b); window.__hls_ok++; }}
+                    else {{ window.__hls_failed++; }}
+                }}
+                window.__hls_progress = buffers.length;
             }}
-        }}
 
-        if (buffers.length === 0) return 'ERROR: no segments';
+            if (buffers.length === 0) {{
+                window.__hls_status = 'error:no_segments';
+                return;
+            }}
 
-        // دمج في Blob
-        const blob = new Blob(buffers, {{type: 'video/mp2t'}});
-        const blobUrl = URL.createObjectURL(blob);
+            const blob = new Blob(buffers, {{type: 'video/mp2t'}});
+            const blobUrl = URL.createObjectURL(blob);
 
-        // إنشاء رابط تحميل
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = 'hls_download_' + Date.now() + '.ts';
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = 'hls_download_' + Date.now() + '.ts';
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
 
-        // تنظيف لاحق
-        setTimeout(() => {{
-            URL.revokeObjectURL(blobUrl);
-            a.remove();
-        }}, 10000);
+            setTimeout(() => {{
+                URL.revokeObjectURL(blobUrl);
+                a.remove();
+            }}, 60000);
 
-        return 'OK:' + buffers.length + ':' + failed;
+            window.__hls_status = 'done:' + buffers.length + ':' + window.__hls_failed;
+        }})();
+
+        return 'STARTED:' + {total};
     }})();
     """
 
+    # 1) شغّل بدون awaitPromise
     try:
         result = sb.driver.execute_cdp_cmd("Runtime.evaluate", {
             "expression": js,
-            "awaitPromise": True,
+            "awaitPromise": False,
             "returnByValue": True,
         })
         value = (result or {}).get("result", {}).get("value")
-        print(f"      📥 Blob: {value}", flush=True)
-
-        if not value or not value.startswith("OK:"):
-            return None
-
-        # انتظار ظهور الملف
-        start = time.time()
-        downloaded = None
-        while time.time() - start < 300:  # 5 دقائق max
-            candidates = list(download_dir.glob("hls_download_*.ts"))
-            # استبعد الملفات .crdownload (قيد التحميل)
-            complete = [c for c in candidates if not c.name.endswith(".crdownload")]
-            if complete:
-                # تحقق من أن الحجم مستقر
-                f = complete[0]
-                size1 = f.stat().st_size
-                time.sleep(3)
-                size2 = f.stat().st_size
-                if size1 == size2 and size1 > MIN_SIZE:
-                    downloaded = f
-                    break
-            time.sleep(2)
-
-        if downloaded:
-            print(f"      ✅ Blob download: {downloaded.stat().st_size/1048576:.1f}MB",
-                  flush=True)
-            return downloaded
-
-        print(f"      ⚠️ Blob: لم يظهر الملف في الوقت المحدد", flush=True)
-        return None
+        print(f"      🚀 Blob async: {value}", flush=True)
     except Exception as e:
-        print(f"      ⚠️ Blob exc: {str(e)[:150]}", flush=True)
+        print(f"      ⚠️ Blob start exc: {str(e)[:120]}", flush=True)
+        return None
+
+    # 2) راقب الحالة
+    start = time.time()
+    last_progress = 0
+    last_print = time.time()
+    while time.time() - start < timeout:
+        sb.cdp.sleep(3)
+        try:
+            status_result = sb.driver.execute_cdp_cmd("Runtime.evaluate", {
+                "expression": "window.__hls_status + '|' + (window.__hls_progress||0) + '/' + (window.__hls_total||0)",
+                "awaitPromise": False,
+                "returnByValue": True,
+            })
+            status = (status_result or {}).get("result", {}).get("value") or ""
+        except Exception:
+            status = ""
+
+        # اطبع التقدم كل 20 ثانية
+        if time.time() - last_print > 20:
+            print(f"      📦 {status}", flush=True)
+            last_print = time.time()
+
+        if status.startswith("done:") or status.startswith("error:"):
+            print(f"      🏁 Blob: {status}", flush=True)
+            break
+
+    # 3) ابحث عن الملف
+    find_start = time.time()
+    while time.time() - find_start < 120:
+        candidates = list(download_dir.glob("hls_download_*.ts"))
+        complete = [c for c in candidates if not c.name.endswith(".crdownload")]
+        if complete:
+            f = complete[0]
+            size1 = f.stat().st_size
+            sb.cdp.sleep(2)
+            size2 = f.stat().st_size
+            if size1 == size2 and size1 > MIN_SIZE:
+                print(f"      ✅ Blob: {f.stat().st_size/1048576:.1f}MB", flush=True)
+                return f
+        sb.cdp.sleep(3)
+
+    print(f"      ⚠️ Blob: لم يظهر الملف", flush=True)
     return None
 
 
 # ═══════════════════════════════════════════════════════════════
-# base64 fetch (fallback للحجم الصغير)
+# base64 fetch (fallback)
 # ═══════════════════════════════════════════════════════════════
-def _fetch_binary_cdp(sb, url, referer, max_size_mb=30):
+def _fetch_binary_cdp(sb, url, referer, max_size_mb=10):
     max_bytes = max_size_mb * 1024 * 1024
     js = f"""
     (function(){{
@@ -524,7 +544,7 @@ def _fetch_binary_cdp(sb, url, referer, max_size_mb=30):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v42: التحميل من داخل المتصفح (Blob أولاً)
+# downloader الرئيسي
 # ═══════════════════════════════════════════════════════════════
 def _download_via_browser(sb, m3u8_url, out_path, referer):
     print(f"      🎯 التحميل عبر المتصفح...", flush=True)
@@ -560,20 +580,20 @@ def _download_via_browser(sb, m3u8_url, out_path, referer):
 
     print(f"      📋 {len(seg_urls)} مقطع", flush=True)
 
-    # ★★★ الطريقة 1: Blob download (الأسرع بكثير)
-    if len(seg_urls) >= 20:
-        download_dir = Path(tempfile.mkdtemp(prefix="blob_dl_"))
-        result = _blob_download(sb, seg_urls, referer, download_dir)
-        if result and result.exists() and result.stat().st_size > MIN_SIZE:
-            shutil.move(str(result), str(out_path))
-            shutil.rmtree(download_dir, ignore_errors=True)
-            if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-                print(f"      ✅ Blob: {os.path.getsize(out_path)/1048576:.1f}MB",
-                      flush=True)
-                return (os.path.getsize(out_path), True)
+    # ★★★ الطريقة 1: Blob async (الأسرع والأكثر موثوقية للمقاطع الكبيرة)
+    download_dir = Path(tempfile.mkdtemp(prefix="blob_dl_"))
+    result = _blob_download_async(sb, seg_urls, referer, download_dir,
+                                   timeout=max(300, len(seg_urls) * 2))
+    if result and result.exists() and result.stat().st_size > MIN_SIZE:
+        shutil.move(str(result), str(out_path))
         shutil.rmtree(download_dir, ignore_errors=True)
+        if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+            print(f"      ✅ Blob: {os.path.getsize(out_path)/1048576:.1f}MB",
+                  flush=True)
+            return (os.path.getsize(out_path), True)
+    shutil.rmtree(download_dir, ignore_errors=True)
 
-    # ★★★ الطريقة 2: base64 fetch (للحجم الصغير فقط)
+    # ★★★ الطريقة 2: base64 fetch (fallback)
     print(f"      🔄 fetch segments (base64)...", flush=True)
     tmp_dir = tempfile.mkdtemp(prefix="br_segs_")
     ok = 0
@@ -811,20 +831,17 @@ def _extract_from_iframe(sb, iframe_url, out_path):
     ref = iframe_url
     ck = _cookies(sb)
 
-    # 1) المتصفح (Blob + base64)
     for m in m3u8s[:2]:
         res = _download_via_browser(sb, m, str(out_path), ref)
         if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
             return res
 
-    # 2) yt-dlp
     print(f"      🎯 [fallback] yt-dlp...", flush=True)
     for m in m3u8s[:2]:
         if _ytdlp_with_cookies(m, str(out_path), ref, ck):
             if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
                 return (os.path.getsize(out_path), True)
 
-    # 3) ffmpeg-HLS
     print(f"      🎯 [fallback] ffmpeg-HLS...", flush=True)
     for m in m3u8s[:2]:
         if _ffmpeg_hls(m, str(out_path), ref, ck):
@@ -1017,12 +1034,14 @@ def download_episode(series_name, episode_num, url,
         try: result[0] = _run_browser(url, raw)
         except Exception as e: exc[0] = e
 
+    # رفع الوقت للسماح بتحميل 800+ مقطع
+    episode_timeout = max(config.EPISODE_TIMEOUT, 2400)
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
-    t.join(timeout=max(config.EPISODE_TIMEOUT, 1800))
+    t.join(timeout=episode_timeout)
 
     if t.is_alive():
-        print(f"    ⏰ تجاوز {max(config.EPISODE_TIMEOUT, 1800)}s — إيقاف", flush=True)
+        print(f"    ⏰ تجاوز {episode_timeout}s — إيقاف", flush=True)
         for p in ["yt-dlp", "chrome", "ffmpeg"]:
             try:
                 subprocess.run(["pkill", "-9", "-f", p], capture_output=True, timeout=3)
