@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-run_all.py — Shoof Automation v3.1
+run_all.py — Shoof Automation v3.2
 
-★ الميزات الجديدة (v3.1):
-    1) ترتيب الأولوية: مسلسلات مدبلجة → أفلام مدبلجة → الباقي
-    2) عند الخطأ الحرج: يتوقف فوراً (exit 1)
-    3) عند النجاح: يكمل بالترتيب
-    4) استئناف من آخر حلقة على Telegram
-    5) خيار --clean لتنظيف الموقع والسجلات
+★ الميزات:
+    1) ترتيب الأولوية: مسلسلات تركية مدبلجة → مسلسلات مدبلجة → أفلام مدبلجة → الباقي
+    2) عند الخطأ الحرج: يتوقف فوراً
+    3) تحميل الحلقات بالترتيب (1، 2، 3، ...)
+    4) تسجيل الحلقات المُتخطاة (URL مفقود)
+    5) استئناف من آخر حلقة على Telegram
+    6) خيار --clean لتنظيف كل شيء
 """
 import argparse
 import asyncio
@@ -32,15 +33,15 @@ from uploader import uploader
 STATE = DATA_DIR / "series.json"
 UPLOADED = DATA_DIR / "uploaded.json"
 MISSING_REPORT = DATA_DIR / "missing_report.json"
+SKIPPED_LOG = DATA_DIR / "skipped_episodes.json"
 
 SOURCE_ORDER = {"u3seq": 0, "yam": 1, "egybest": 2}
 
 
 # ═══════════════════════════════════════════════════════════════
-# تنظيف شاملة
+# تنظيف شامل
 # ═══════════════════════════════════════════════════════════════
 def _clean_all():
-    """يمسح كل شيء: media، docs، state، logs."""
     print("\n" + "═" * 60, flush=True)
     print("🧹 تنظيف شامل...", flush=True)
     print("═" * 60, flush=True)
@@ -52,6 +53,7 @@ def _clean_all():
         DATA_DIR / "series.json",
         DATA_DIR / "uploaded.json",
         DATA_DIR / "missing_report.json",
+        DATA_DIR / "skipped_episodes.json",
         config.DOCS_DIR / "watch",
         config.DOCS_DIR / "posters",
         config.DOCS_DIR / "index.html",
@@ -71,7 +73,6 @@ def _clean_all():
         except Exception as e:
             print(f"   ⚠️  فشل حذف {t}: {str(e)[:80]}", flush=True)
 
-    # أعد إنشاء المجلدات الأساسية
     for d in (MEDIA_DIR, config.DOCS_DIR / "watch", config.DOCS_DIR / "posters"):
         d.mkdir(parents=True, exist_ok=True)
 
@@ -123,12 +124,7 @@ async def _scan_telegram():
     print("📡 [الخطوة 1] فحص قنوات Telegram أولاً...", flush=True)
     print("═" * 60, flush=True)
 
-    try:
-        existing = await fetch_existing_episodes()
-    except Exception as e:
-        print(f"   ❌ فشل فحص Telegram: {str(e)[:200]}", flush=True)
-        raise
-
+    existing = await fetch_existing_episodes()
     stats = tg_stats(existing)
     print(f"   📊 Telegram: {stats['series']} مسلسل | "
           f"{stats['episodes']} حلقة", flush=True)
@@ -136,7 +132,7 @@ async def _scan_telegram():
 
 
 # ═══════════════════════════════════════════════════════════════
-# الخطوة 2: زحف + ترتيب بالأولوية
+# الخطوة 2: زحف + ترتيب
 # ═══════════════════════════════════════════════════════════════
 def _scrape_and_sort():
     print("\n" + "═" * 60, flush=True)
@@ -152,34 +148,42 @@ def _scrape_and_sort():
         print(f"      ✅ {len(items)} مسلسل", flush=True)
         all_series.extend(items)
 
-    # ترتيب حسب الأولوية
     def sort_key(s):
         name = s.get("name", "")
-        prio = config.priority_of(name)
-        src_order = SOURCE_ORDER.get(s.get("_src", "z"), 9)
-        return (prio, src_order, name)
+        return (config.priority_of(name),
+                SOURCE_ORDER.get(s.get("_src", "z"), 9),
+                name)
 
     all_series.sort(key=sort_key)
 
-    # إحصائيات
-    prio_counts = {1: 0, 2: 0, 3: 0, 4: 0}
+    prio_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
     for s in all_series:
         prio_counts[config.priority_of(s.get("name", ""))] += 1
 
     print(f"\n📊 إجمالي: {len(all_series)} مسلسل", flush=True)
-    print(f"   1️⃣ مسلسلات مدبلجة: {prio_counts[1]}", flush=True)
-    print(f"   2️⃣ أفلام مدبلجة:    {prio_counts[2]}", flush=True)
-    print(f"   3️⃣ مسلسلات عادية:   {prio_counts[3]}", flush=True)
-    print(f"   4️⃣ أفلام عادية:      {prio_counts[4]}", flush=True)
+    print(f"   1️⃣ مسلسلات تركية مدبلجة: {prio_counts[1]}", flush=True)
+    print(f"   2️⃣ مسلسلات مدبلجة أخرى:  {prio_counts[2]}", flush=True)
+    print(f"   3️⃣ أفلام مدبلجة:          {prio_counts[3]}", flush=True)
+    print(f"   4️⃣ مسلسلات عادية:         {prio_counts[4]}", flush=True)
+    print(f"   5️⃣ أفلام عادية:            {prio_counts[5]}", flush=True)
     print(flush=True)
+
+    # اطبع أول 5 مسلسلات لكل أولوية
+    for prio in [1, 2]:
+        top = [s for s in all_series if config.priority_of(s.get("name", "")) == prio][:5]
+        if top:
+            print(f"   🔝 أولوية {prio} (أول 5):", flush=True)
+            for s in top:
+                print(f"      · {s.get('name')}", flush=True)
+            print(flush=True)
 
     return all_series
 
 
 # ═══════════════════════════════════════════════════════════════
-# فلترة الحلقات
+# فلترة الحلقات + تسجيل المُتخطاة
 # ═══════════════════════════════════════════════════════════════
-def _filter_new_episodes(series, existing_tg, uploaded):
+def _filter_new_episodes(series, existing_tg, uploaded, skipped_log):
     name = series.get("name", "")
     eps = series.get("episodes", [])
     new_eps = []
@@ -203,6 +207,14 @@ def _filter_new_episodes(series, existing_tg, uploaded):
             newly_marked.append(local_key)
             continue
 
+        # ★ تسجيل الحلقات بدون URL
+        if not e.get("url"):
+            skipped_log.setdefault(name, []).append({
+                "episode": n,
+                "reason": "no_url",
+            })
+            continue
+
         new_eps.append(e)
 
     all_eps = [
@@ -221,14 +233,14 @@ def _filter_new_episodes(series, existing_tg, uploaded):
 # ═══════════════════════════════════════════════════════════════
 # معالجة مسلسل واحد
 # ═══════════════════════════════════════════════════════════════
-async def _process_series(series, existing_tg, uploaded):
+async def _process_series(series, existing_tg, uploaded, skipped_log):
     name = series.get("name", "")
     src = series.get("_src", "?")
     poster = series.get("poster", "")
     genre = series.get("genre", "")
 
     new_eps, all_eps, newly_marked = _filter_new_episodes(
-        series, existing_tg, uploaded
+        series, existing_tg, uploaded, skipped_log
     )
 
     if newly_marked:
@@ -245,25 +257,31 @@ async def _process_series(series, existing_tg, uploaded):
             "episodes_count": len(all_eps),
         }
 
+    # ★ ترتيب الحلقات تصاعدياً (1، 2، 3، ...)
+    new_eps.sort(key=lambda e: int(e.get("num", 0)))
+
+    nums = [e.get("num") for e in new_eps]
     print(f"\n{'═' * 60}", flush=True)
     print(f"📺 [{src}] {name}", flush=True)
     print(f"   🆕 {len(new_eps)}/{len(all_eps)} حلقة جديدة", flush=True)
+    print(f"   🔢 الأرقام: {nums[:20]}{'...' if len(nums) > 20 else ''}",
+          flush=True)
     print(f"{'═' * 60}", flush=True)
 
-    ok_count = 0
+    # اطبع الحلقات المُتخطاة
+    if name in skipped_log and skipped_log[name]:
+        skipped_nums = [s["episode"] for s in skipped_log[name]]
+        print(f"   ⚠️  حلقات بدون URL: {skipped_nums}", flush=True)
 
-    # ★ ترتيب الحلقات تصاعدياً
-    new_eps.sort(key=lambda e: int(e.get("num", 0)))
+    ok_count = 0
 
     for ep in new_eps:
         n = ep.get("num", 0)
         u = ep.get("url", "")
-        if not u:
-            continue
 
         print(f"\n   ── الحلقة {n} ──", flush=True)
 
-        # ★ عند الخطأ: رفع استثناء لإيقاف السكربت
+        # ★ عند الفشل: توقف فوراً
         r = download_episode(name, n, u)
         if not r or not Path(r).exists():
             raise RuntimeError(f"فشل تحميل {name} حلقة {n}")
@@ -302,7 +320,7 @@ async def _process_series(series, existing_tg, uploaded):
 # ═══════════════════════════════════════════════════════════════
 async def _main_async(clean=False):
     print("╔" + "═" * 58 + "╗")
-    print("║" + " " * 10 + "شوف — Shoof Automation v3.1" + " " * 18 + "║")
+    print("║" + " " * 9 + "شوف — Shoof Automation v3.2" + " " * 17 + "║")
     print("╚" + "═" * 58 + "╝", flush=True)
 
     try:
@@ -321,6 +339,8 @@ async def _main_async(clean=False):
     # ─── تحميل الحالة ───
     state = _load(STATE, {"series": []})
     uploaded = _load(UPLOADED, {})
+    skipped_log = _load(SKIPPED_LOG, {})
+
     print(
         f"\n💾 محلي: {len(state.get('series', []))} مسلسل | "
         f"📤 {len(uploaded)} حلقة مُسجّلة",
@@ -352,37 +372,33 @@ async def _main_async(clean=False):
                 break
 
             try:
-                item = await _process_series(series, existing_tg, uploaded)
+                item = await _process_series(
+                    series, existing_tg, uploaded, skipped_log
+                )
                 if item:
                     out_series.append(item)
                     if item.get("is_new"):
                         ok_total += 1
             except Exception as e:
-                # ★ عند الخطأ: احفظ الحالة ثم ارفع الاستثناء
                 print(f"\n❌ خطأ في [{series.get('name','?')}]: "
                       f"{str(e)[:200]}", flush=True)
                 traceback.print_exc()
 
-                _save(
-                    STATE,
-                    {
-                        "series": out_series,
-                        "last_update": datetime.now(timezone.utc).isoformat(),
-                    },
-                )
-                _save(UPLOADED, uploaded)
-
-                raise
-
-            # حفظ تدريجي بعد كل مسلسل
-            _save(
-                STATE,
-                {
+                _save(STATE, {
                     "series": out_series,
                     "last_update": datetime.now(timezone.utc).isoformat(),
-                },
-            )
+                })
+                _save(UPLOADED, uploaded)
+                _save(SKIPPED_LOG, skipped_log)
+                raise
+
+            # حفظ تدريجي
+            _save(STATE, {
+                "series": out_series,
+                "last_update": datetime.now(timezone.utc).isoformat(),
+            })
             _save(UPLOADED, uploaded)
+            _save(SKIPPED_LOG, skipped_log)
 
     finally:
         try:
@@ -391,14 +407,21 @@ async def _main_async(clean=False):
             pass
 
     # حفظ نهائي
-    _save(
-        STATE,
-        {
-            "series": out_series,
-            "last_update": datetime.now(timezone.utc).isoformat(),
-        },
-    )
+    _save(STATE, {
+        "series": out_series,
+        "last_update": datetime.now(timezone.utc).isoformat(),
+    })
     _save(UPLOADED, uploaded)
+    _save(SKIPPED_LOG, skipped_log)
+
+    # اطبع ملخص الحلقات المُتخطاة
+    total_skipped = sum(len(v) for v in skipped_log.values())
+    if total_skipped > 0:
+        print(f"\n⚠️  إجمالي الحلقات بدون URL: {total_skipped} "
+              f"({len(skipped_log)} مسلسل)", flush=True)
+        for sname, items in list(skipped_log.items())[:5]:
+            nums = [i["episode"] for i in items]
+            print(f"   · {sname}: {nums}", flush=True)
 
     # بناء الموقع
     try:

@@ -1,11 +1,11 @@
 """
-downloader.py v55 — FINAL
+downloader.py v56 — FINAL
 ═══════════════════════════════════════════════════════════
-v55: yt-dlp أولاً (يتجاوز حجب IPs) + إيقاف سريع
-     - _ytdlp_simple: بدون cookies، مع referer
-     - إيقاف فوري بعد أول دفعتين فاشلتين
-     - v54: binary concat (سريع 100x)
-     - v50: ضغط ذكي حسب المدة + حد 90MB
+v56: إعدادات ضغط ثابتة (144p / CRF=28 / veryfast / threads=2)
+     - حد الملف المضغوط 100MB
+     - binary concat (سريع 100x)
+     - yt-dlp أولاً → ffmpeg-hls → browser-fetch
+     - عرض variants واختيار الأدنى بجودة >= 360p
 """
 
 import os
@@ -462,7 +462,7 @@ def _fetch_batch_in_browser(sb, urls_batch, referer,
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v55: تحميل بدفعات مع إيقاف سريع عند الفشل الكامل
+# تحميل بدفعات
 # ═══════════════════════════════════════════════════════════════
 def _download_all_segments(sb, seg_urls, referer, tmp_dir,
                             batch_size=BATCH_SIZE):
@@ -473,13 +473,9 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
     paths = {}
     failed_indices = []
     start = time.time()
-
-    # ★ v55: عداد فشل صارم
-    total_batches = 0
     empty_batches = 0
 
     for i in range(0, total, batch_size):
-        total_batches += 1
         batch = seg_urls[i:i + batch_size]
         batch_end = min(i + batch_size, total)
         results = _fetch_batch_in_browser(sb, batch, referer)
@@ -509,7 +505,6 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
             else:
                 empty_batches = 0
 
-        # ★ v55: إيقاف فوري بعد 2 دفعات فارغة متتالية (بدل 3-5)
         if empty_batches >= 2:
             print(f"      ❌ دفعتان فارغتان — إيقاف التحميل فوراً", flush=True)
             break
@@ -530,10 +525,9 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v55: yt-dlp بسيط (بدون cookies)
+# yt-dlp
 # ═══════════════════════════════════════════════════════════════
 def _ytdlp_simple(url, out_path, referer):
-    """yt-dlp مع referer فقط — يتجاوز حجب IPs."""
     print(f"      [yt-dlp simple]", flush=True)
 
     cmd = [
@@ -562,49 +556,6 @@ def _ytdlp_simple(url, out_path, referer):
         print(f"      ⚠️ yt-dlp: {err}", flush=True)
     except Exception as e:
         print(f"      ⚠️ yt-dlp: {str(e)[:100]}", flush=True)
-    return False
-
-
-def _ytdlp_with_cookies(url, out_path, referer, cookies_dict):
-    """yt-dlp مع cookies (fallback)."""
-    print(f"      [yt-dlp cookies]", flush=True)
-    tmp_cookie = tempfile.mktemp(suffix=".txt")
-    try:
-        with open(tmp_cookie, "w", encoding="utf-8") as f:
-            f.write("# Netscape HTTP Cookie File\n")
-            domain = _origin(url).replace("https://", "").replace("http://", "")
-            for k, v in cookies_dict.items():
-                f.write(f".{domain}\tTRUE\t/\tTRUE\t0\t{k}\t{v}\n")
-    except Exception:
-        pass
-
-    cmd = [
-        "yt-dlp", "--no-warnings", "--no-playlist", "--no-part",
-        "--retries", "3", "--fragment-retries", "5",
-        "--socket-timeout", "30", "--concurrent-fragments", "16",
-        "--no-check-certificate", "--hls-prefer-native",
-        "--user-agent", UA, "--referer", referer,
-        "--add-header", "Origin:" + _origin(referer),
-        "--add-header", "Accept:*/*",
-        "-o", out_path, url,
-    ]
-    if os.path.exists(tmp_cookie):
-        cmd += ["--cookies", tmp_cookie]
-
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
-        if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-            print(f"      ✅ yt-dlp: {os.path.getsize(out_path)/1048576:.1f}MB",
-                  flush=True)
-            try: os.unlink(tmp_cookie)
-            except Exception: pass
-            return True
-        err = (r.stderr or "")[-200:]
-        print(f"      ⚠️ yt-dlp: {err}", flush=True)
-    except Exception as e:
-        print(f"      ⚠️ yt-dlp: {str(e)[:100]}", flush=True)
-    try: os.unlink(tmp_cookie)
-    except Exception: pass
     return False
 
 
@@ -639,7 +590,7 @@ def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v55: downloader مع ترتيب جديد
+# downloader الرئيسي
 # ═══════════════════════════════════════════════════════════════
 def _download_via_browser(sb, m3u8_url, out_path, referer):
     print(f"      🎯 التحميل عبر المتصفح...", flush=True)
@@ -676,20 +627,20 @@ def _download_via_browser(sb, m3u8_url, out_path, referer):
 
     print(f"      📋 {len(seg_urls)} مقطع", flush=True)
 
-    # ★★★ v55: yt-dlp أولاً (الأكثر موثوقية)
+    # 1) yt-dlp
     print(f"      🎯 [1/3] yt-dlp simple...", flush=True)
     if _ytdlp_simple(m3u8_url, str(out_path), referer):
         if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
             return (os.path.getsize(out_path), True)
 
-    # ★★★ ثم ffmpeg-hls
+    # 2) ffmpeg-hls
     print(f"      🎯 [2/3] ffmpeg-hls...", flush=True)
     ck = _cookies(sb)
     if _ffmpeg_hls(m3u8_url, str(out_path), referer, ck):
         if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
             return (os.path.getsize(out_path), True)
 
-    # ★★★ أخيراً: browser-fetch (بطيء لكن يعمل أحياناً)
+    # 3) browser-fetch
     print(f"      🎯 [3/3] browser-fetch...", flush=True)
     tmp_dir = tempfile.mkdtemp(prefix="br_segs_")
     start = time.time()
@@ -716,9 +667,6 @@ def _download_via_browser(sb, m3u8_url, out_path, referer):
     return None
 
 
-# ═══════════════════════════════════════════════════════════════
-# اختيار variant
-# ═══════════════════════════════════════════════════════════════
 def _pick_smallest_variant(m3u8_text, base_url, min_height=360):
     variants = []
     lines = m3u8_text.splitlines()
@@ -766,7 +714,7 @@ _pick_best_variant = _pick_smallest_variant
 
 
 # ═══════════════════════════════════════════════════════════════
-# binary concat (v54)
+# binary concat
 # ═══════════════════════════════════════════════════════════════
 def _concat_segments(seg_paths, out_path, seg_dir):
     if not seg_paths:
@@ -818,8 +766,6 @@ def _concat_segments(seg_paths, out_path, seg_dir):
             except Exception:
                 pass
             return True
-        err = (r.stderr or "").strip().split("\n")[-1] if r.stderr else "?"
-        print(f"      ⚠️ remux: {err[:150]}", flush=True)
     except subprocess.TimeoutExpired:
         print(f"      ❌ remux timeout (300s)", flush=True)
         try:
@@ -834,8 +780,8 @@ def _concat_segments(seg_paths, out_path, seg_dir):
     try:
         shutil.move(raw_ts, out_path)
         if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-            size_mb = os.path.getsize(out_path) / 1048576
-            print(f"      ✅ TS مباشر: {size_mb:.1f}MB", flush=True)
+            print(f"      ✅ TS مباشر: {os.path.getsize(out_path)/1048576:.1f}MB",
+                  flush=True)
             return True
     except Exception as e:
         print(f"      ❌ fallback: {str(e)[:100]}", flush=True)
@@ -869,7 +815,8 @@ def _extract_from_iframe(sb, iframe_url, out_path):
             found = _scan(sb)
             if found:
                 m3u8s = found
-                print(f"      ✨ {len(found)} m3u8 بعد {time.time()-start:.0f}s", flush=True)
+                print(f"      ✨ {len(found)} m3u8 بعد {time.time()-start:.0f}s",
+                      flush=True)
                 break
 
     if not m3u8s:
@@ -1022,7 +969,7 @@ def _run_browser(url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ضغط ذكي
+# ★★★ v56: ضغط بإعدادات ثابتة
 # ═══════════════════════════════════════════════════════════════
 def _get_duration(path):
     try:
@@ -1038,17 +985,25 @@ def _get_duration(path):
 
 
 def _compress_once(inp, out, scale, crf):
+    """v56: preset=veryfast, threads=2."""
     try:
-        cmd = [_ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "error",
-               "-err_detect", "ignore_err", "-i", str(inp),
-               "-vf", f"scale=-2:{scale}",
-               "-c:v", "libx264", "-preset", config.COMPRESS_PRESET,
-               "-crf", str(crf),
-               "-profile:v", "main", "-level", "3.1", "-pix_fmt", "yuv420p",
-               "-c:a", "aac", "-b:a", config.COMPRESS_AUDIO_BITRATE,
-               "-ac", "2", "-ar", "44100",
-               "-movflags", "+faststart", "-threads", "2",
-               "-y", str(out)]
+        cmd = [
+            _ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "error",
+            "-err_detect", "ignore_err",
+            "-i", str(inp),
+            "-vf", f"scale=-2:{scale}",
+            "-c:v", "libx264",
+            "-preset", config.COMPRESS_PRESET,
+            "-crf", str(crf),
+            "-profile:v", "main", "-level", "3.1",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", config.COMPRESS_AUDIO_BITRATE,
+            "-ac", "2", "-ar", "44100",
+            "-movflags", "+faststart",
+            "-threads", str(config.COMPRESS_THREADS),
+            "-y", str(out),
+        ]
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
         if r.returncode == 0 and Path(out).exists():
             return Path(out).stat().st_size / 1048576
@@ -1058,6 +1013,10 @@ def _compress_once(inp, out, scale, crf):
 
 
 def _compress(inp, out):
+    """
+    v56: إعدادات ثابتة 144p / CRF=28 / veryfast / threads=2
+    عند تجاوز 100MB: نرفع CRF (بنفس الجودة 144p)
+    """
     max_mb = config.COMPRESS_MAX_SIZE_MB
     im = Path(inp).stat().st_size / 1048576
 
@@ -1068,24 +1027,20 @@ def _compress(inp, out):
         print(f"   ⏱️  المدة: {int(dur_min)} دقيقة | الحجم: {im:.1f}MB | "
               f"الحد: {max_mb}MB", flush=True)
 
+    base_scale = config.COMPRESS_SCALE
     base_crf = config.COMPRESS_CRF
-    if dur_min >= 120:
-        base_crf += 8
-    elif dur_min >= 90:
-        base_crf += 6
-    elif dur_min >= 60:
-        base_crf += 4
-    elif dur_min >= 30:
-        base_crf += 2
 
     attempts = [
-        (config.COMPRESS_SCALE, base_crf),
-        (config.COMPRESS_SCALE, base_crf + 4),
-        (240, base_crf + 8),
-        (180, base_crf + 12),
+        (base_scale, base_crf),
+        (base_scale, base_crf + 4),
+        (base_scale, base_crf + 8),
+        (base_scale, base_crf + 12),
+        (120, base_crf + 6),
     ]
 
-    print(f"   🎬 CRF البداية: {base_crf}", flush=True)
+    print(f"   🎬 {base_scale}p CRF={base_crf} "
+          f"({config.COMPRESS_PRESET}, threads={config.COMPRESS_THREADS})",
+          flush=True)
 
     for i, (scale, crf) in enumerate(attempts, 1):
         print(f"   🗜️  [{i}/{len(attempts)}] {scale}p CRF={crf} "
@@ -1128,7 +1083,7 @@ def _thumb(v, o):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ الواجهة العامة (v55)
+# الواجهة العامة
 # ═══════════════════════════════════════════════════════════════
 def download_episode(series_name, episode_num, url,
                      media_type="series", item_name=None):

@@ -52,38 +52,45 @@ class Config:
     SKIP_COMPRESS = os.environ.get("SKIP_COMPRESS", "false").lower() == "true"
     KEEP_MEDIA = os.environ.get("KEEP_MEDIA", "false").lower() == "true"
 
-    # ★★★ v56: حد الرفع 100MB (بدل 45)
-    COMPRESS_MAX_SIZE_MB = int(os.environ.get("COMPRESS_MAX_SIZE_MB", "100"))
-
-    # الضغط
-    COMPRESS_SCALE = int(os.environ.get("COMPRESS_SCALE", "240"))
-    COMPRESS_CRF = int(os.environ.get("COMPRESS_CRF", "32"))
+    # ═══════════════════════════════════════════════════════════
+    # ★★★ إعدادات الضغط — ثابتة دائماً (يمكن تجاوزها من .env)
+    # ═══════════════════════════════════════════════════════════
     COMPRESS_PRESET = os.environ.get("COMPRESS_PRESET", "veryfast")
+    COMPRESS_CRF = int(os.environ.get("COMPRESS_CRF", "28"))
+    COMPRESS_THREADS = int(os.environ.get("COMPRESS_THREADS", "2"))
+    COMPRESS_SCALE = int(os.environ.get("COMPRESS_SCALE", "144"))
     COMPRESS_AUDIO_BITRATE = os.environ.get("COMPRESS_AUDIO_BITRATE", "32k")
+
+    # ★★★ الحد الأقصى للملف المضغوط = 100MB
+    COMPRESS_MAX_SIZE_MB = int(os.environ.get("COMPRESS_MAX_SIZE_MB", "100"))
 
     # المهل
     M3U8_SEARCH_TIMEOUT = int(os.environ.get("M3U8_SEARCH_TIMEOUT", "25"))
     OPEN_TIMEOUT = int(os.environ.get("OPEN_TIMEOUT", "10"))
     EPISODE_TIMEOUT = int(os.environ.get("EPISODE_TIMEOUT", "2400"))
 
-    # ★★★ v56: أولويات التحميل
-    # 1 = مسلسلات مدبلجة | 2 = أفلام مدبلجة | 3 = الباقي
+    # ═══════════════════════════════════════════════════════════
+    # ترتيب الأولوية:
+    #   1 = مسلسلات مدبلجة (أولاً)
+    #   2 = أفلام مدبلجة
+    #   3 = مسلسلات عادية
+    #   4 = أفلام عادية (أخيراً)
+    # ═══════════════════════════════════════════════════════════
     @classmethod
     def priority_of(cls, name: str) -> int:
         n = (name or "").strip()
 
-        # هل مدبلج؟
-        is_dubbed = ("مدبلج" in n) or ("مدبلجة" in n) or ("مدبلج" in n)
-        # هل فيلم؟
-        is_movie = n.startswith("فيلم") or n.startswith("افلام") or ("افلام" in n[:10])
+        is_dubbed = ("مدبلج" in n)
+        is_movie = (n.startswith("فيلم") or n.startswith("افلام")
+                    or "افلام" in n[:10] or "أفلام" in n[:10])
 
         if is_dubbed and not is_movie:
-            return 1   # مسلسل مدبلج — الأولوية القصوى
+            return 1
         if is_dubbed and is_movie:
-            return 2   # فيلم مدبلج
+            return 2
         if not is_dubbed and not is_movie:
-            return 3   # مسلسل عادي
-        return 4       # فيلم عادي — الأخير
+            return 3
+        return 4
 
     @classmethod
     def validate(cls):
