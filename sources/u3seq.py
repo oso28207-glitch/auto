@@ -2,16 +2,19 @@
 sources/u3seq.py — جلب المسلسلات من u.3seq.cam
 ═══════════════════════════════════════════════════════════
 يعتمد على WordPress REST API:
-  GET /wp-json/wp/v2/posts?categories={SOURCE_CATEGORY}&per_page=100&page=N
+  GET /wp-json/wp/v2/posts?per_page=100&page=N
 
-يستخدم cloudscraper لتجاوز Cloudflare.
+★ لا نرسل categories عندما تكون 0 (WordPress يفسّرها كتصنيف غير موجود).
+★ عند فشل wp-json، يحاول scrape HTML مباشرة كخطة بديلة.
 """
 
 import re
 import time
 from typing import List, Dict, Any, Optional
+from urllib.parse import urljoin
 
 import cloudscraper
+from bs4 import BeautifulSoup
 
 from config import config
 from errors import SourceError
@@ -23,7 +26,6 @@ _scraper = None
 
 
 def _get_scraper():
-    """يُنشئ scraper يتجاوز Cloudflare (chrome windows)."""
     global _scraper
     if _scraper is None:
         _scraper = cloudscraper.create_scraper(
@@ -38,7 +40,7 @@ def _get_scraper():
 
 
 # ═══════════════════════════════════════════════════════════════
-# استخراج البيانات من العنوان
+# استخراج
 # ═══════════════════════════════════════════════════════════════
 def _extract_ep(text: str) -> int:
     """يستخرج رقم الحلقة من النص."""
@@ -49,7 +51,6 @@ def _extract_ep(text: str) -> int:
         r"[Ee]pisode\s*(\d+)",
         r"حلقة\s*(\d+)",
         r"Ep\.?\s*(\d+)",
-        r"(\d+)",
     ]:
         m = re.search(p, text)
         if m:
@@ -58,7 +59,6 @@ def _extract_ep(text: str) -> int:
 
 
 def _clean_series_name(title: str) -> str:
-    """ينظّف اسم المسلسل من العنوان."""
     t = re.sub(r"\s*الحلقة\s*\d+.*$", "", title or "").strip()
     t = re.sub(r"\s*[Ee]pisode\s*\d+.*$", "", t).strip()
     t = re.sub(r"\s*مدبلجة?\s*$", "", t).strip()
@@ -68,13 +68,9 @@ def _clean_series_name(title: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════
-# جلب البيانات من API
+# API helper
 # ═══════════════════════════════════════════════════════════════
 def _api_get(path: str, params: Optional[Dict] = None, retries: int = 3) -> Optional[Any]:
-    """
-    يطلب JSON من WordPress REST API.
-    يتعامل مع 403 (Cloudflare) بإعادة المحاولة.
-    """
     if not config.SOURCE_BASE_URL:
         raise SourceError("SOURCE_BASE_URL فارغ")
 
@@ -83,6 +79,11 @@ def _api_get(path: str, params: Optional[Dict] = None, retries: int = 3) -> Opti
         "Accept": "application/json",
         "Accept-Language": "ar,en;q=0.9",
         "Referer": config.SOURCE_BASE_URL + "/",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
     }
     scraper = _get_scraper()
     last_err = None
@@ -97,6 +98,12 @@ def _api_get(path: str, params: Optional[Dict] = None, retries: int = 3) -> Opti
                 except Exception as e:
                     raise SourceError(f"فشل تحليل JSON: {e}")
 
+            if r.status_code == 400:
+                # 400 = bad request، غالباً categories غير صحيح
+                # نرجع None ليجرّب المسار البديل
+                print(f"   ⚠️ 400 — لا نستمر مع هذه المعطيات")
+                return None
+
             if r.status_code == 403:
                 last_err = f"403 Cloudflare (محاولة {attempt})"
                 print(f"   ⚠️ {last_err}")
@@ -104,7 +111,7 @@ def _api_get(path: str, params: Optional[Dict] = None, retries: int = 3) -> Opti
                 continue
 
             if r.status_code == 404:
-                raise SourceError(f"404: {url}")
+                return None
 
             last_err = f"HTTP {r.status_code}"
             time.sleep(3)
@@ -119,49 +126,42 @@ def _api_get(path: str, params: Optional[Dict] = None, retries: int = 3) -> Opti
 
 
 # ═══════════════════════════════════════════════════════════════
-# الدالة الرئيسية
+# المحاولة 1: WordPress REST API
 # ═══════════════════════════════════════════════════════════════
-def fetch() -> List[Dict]:
-    """
-    يجلب المسلسلات من u.3seq.cam.
-
-    يعيد قائمة بالشكل:
-    [
-        {
-            "name": "اسم المسلسل",
-            "url": "https://u.3seq.cam/...",
-            "poster": "",
-            "genre": "",
-            "episodes": [
-                {"num": 1, "url": "https://u.3seq.cam/..."},
-                ...
-            ],
-        },
-        ...
-    ]
-    """
-    print(f"📋 جلب قائمة المسلسلات (تصنيف {config.SOURCE_CATEGORY})...")
-
+def _fetch_via_api() -> List[Dict]:
+    """يجلب من wp-json. لا يرسل categories إذا كانت 0."""
+    print(f"   📡 محاولة WordPress REST API...")
     all_posts = []
     per_page = 100
     max_pages = config.SOURCE_MAX_PAGES
 
     for page in range(1, max_pages + 1):
+        params = {
+            "per_page": per_page,
+            "page": page,
+            "_fields": "id,link,title,date,slug",
+        }
+        # ★ لا نرسل categories إذا كانت 0
+        if config.SOURCE_CATEGORY and config.SOURCE_CATEGORY > 0:
+            params["categories"] = config.SOURCE_CATEGORY
+
         try:
-            posts = _api_get(
-                "/wp-json/wp/v2/posts",
-                params={
-                    "categories": config.SOURCE_CATEGORY,
-                    "per_page": per_page,
-                    "page": page,
-                    "_fields": "id,link,title,date,slug",
-                },
-            )
+            posts = _api_get("/wp-json/wp/v2/posts", params=params)
         except SourceError as e:
-            if "404" in str(e) and page > 1:
-                # لا مزيد من الصفحات
-                break
-            raise
+            print(f"   ⚠️ فشل: {str(e)[:120]}")
+            return []
+
+        if posts is None:
+            # قد تكون 400 لأن categories غير صحيح
+            if config.SOURCE_CATEGORY and config.SOURCE_CATEGORY > 0:
+                print(f"   🔄 إعادة محاولة بدون تصنيف...")
+                params.pop("categories", None)
+                try:
+                    posts = _api_get("/wp-json/wp/v2/posts", params=params)
+                except SourceError:
+                    return []
+            if posts is None:
+                return []
 
         if not isinstance(posts, list) or not posts:
             break
@@ -174,21 +174,104 @@ def fetch() -> List[Dict]:
 
         time.sleep(0.8)
 
-    if not all_posts:
-        print(f"   ⚠️ لا منشورات في التصنيف {config.SOURCE_CATEGORY}")
+    return _group_into_series(all_posts)
+
+
+# ═══════════════════════════════════════════════════════════════
+# المحاولة 2: زحف HTML
+# ═══════════════════════════════════════════════════════════════
+def _fetch_via_html() -> List[Dict]:
+    """يقرأ الصفحة الرئيسية ويستخرج المسلسلات."""
+    print(f"   📡 محاولة زحف HTML...")
+    base = config.SOURCE_BASE_URL.rstrip("/")
+    urls_to_try = [
+        base + "/",
+        base + "/series/",
+        base + "/moslslat/",
+        base + "/tv/",
+    ]
+
+    scraper = _get_scraper()
+    all_links = []
+
+    for url in urls_to_try:
+        try:
+            r = scraper.get(url, timeout=30)
+            if r.status_code != 200:
+                continue
+
+            soup = BeautifulSoup(r.text, "html.parser")
+            # ابحث عن روابط تحتوي على كلمات مفتاحية
+            for a in soup.find_all("a", href=True):
+                href = a.get("href", "")
+                text = a.get_text(strip=True)
+                if not text or len(text) < 3:
+                    continue
+                # علامات: video/series/watch/episode
+                low = href.lower()
+                if any(k in low for k in [
+                    "/video/", "/series/", "/watch/", "/episode/",
+                    "modablaj-", "/moslslat/",
+                ]):
+                    full = href if href.startswith("http") else urljoin(base + "/", href)
+                    all_links.append({"link": full, "title": text})
+
+            if all_links:
+                print(f"   ✅ عُثر على {len(all_links)} رابط من {url}")
+                break
+        except Exception as e:
+            print(f"   ⚠️ {url}: {str(e)[:80]}")
+            continue
+
+    if not all_links:
+        print(f"   ❌ لم يُعثر على روابط")
         return []
 
-    # ═══ تجميع المنشورات في مسلسلات ═══
+    # نحوّل الروابط لصيغة منشورات
+    posts = []
+    seen = set()
+    for item in all_links:
+        link = item["link"]
+        title = item["title"]
+        if link in seen:
+            continue
+        seen.add(link)
+        posts.append({
+            "link": link,
+            "title": {"rendered": title},
+            "slug": link.rstrip("/").split("/")[-1],
+        })
+
+    return _group_into_series(posts)
+
+
+# ═══════════════════════════════════════════════════════════════
+# تجميع المنشورات في مسلسلات
+# ═══════════════════════════════════════════════════════════════
+def _group_into_series(posts: List[Dict]) -> List[Dict]:
+    if not posts:
+        return []
+
     series_map: Dict[str, Dict] = {}
 
-    for post in all_posts:
+    for post in posts:
         link = post.get("link", "")
-        title = (post.get("title") or {}).get("rendered", "")
+        title_obj = post.get("title", "")
+        if isinstance(title_obj, dict):
+            title = title_obj.get("rendered", "")
+        else:
+            title = title_obj or ""
+
         if not link or not title:
             continue
 
         name = _clean_series_name(title)
         ep_num = _extract_ep(title)
+
+        # إذا لم نجد رقم حلقة، اعتبرها منشوراً منفصلاً
+        if not ep_num:
+            # جرّب من الرابط
+            ep_num = _extract_ep(link)
         if not ep_num:
             continue
 
@@ -207,10 +290,8 @@ def fetch() -> List[Dict]:
             "url": link,
         })
 
-    # ═══ ترتيب الحلقات + إزالة التكرار ═══
     result = []
     for s in series_map.values():
-        # ترتيب حسب رقم الحلقة
         seen = set()
         unique_eps = []
         for ep in sorted(s["episodes"], key=lambda x: x["num"]):
@@ -218,19 +299,37 @@ def fetch() -> List[Dict]:
                 seen.add(ep["num"])
                 unique_eps.append(ep)
         s["episodes"] = unique_eps
-
         if s["episodes"]:
             result.append(s)
 
-    print(f"✅ {len(result)} مسلسل، {len(all_posts)} منشور")
     return result
 
 
 # ═══════════════════════════════════════════════════════════════
-# اختبار سريع
+# الواجهة الرئيسية
 # ═══════════════════════════════════════════════════════════════
+def fetch() -> List[Dict]:
+    """يجلب المسلسلات من u.3seq.cam."""
+    cat = config.SOURCE_CATEGORY
+    print(f"📋 جلب قائمة المسلسلات (تصنيف {cat if cat > 0 else 'الكل'})...")
+
+    # المحاولة 1: REST API
+    result = _fetch_via_api()
+    if result:
+        print(f"✅ {len(result)} مسلسل (API)")
+        return result
+
+    # المحاولة 2: HTML
+    result = _fetch_via_html()
+    if result:
+        print(f"✅ {len(result)} مسلسل (HTML)")
+        return result
+
+    print(f"   ⚠️ لا مسلسلات من u3seq")
+    return []
+
+
 if __name__ == "__main__":
-    from config import config
     config.validate()
     series = fetch()
     print(f"\n📊 النتيجة: {len(series)} مسلسل")

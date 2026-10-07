@@ -1,11 +1,16 @@
 """
-downloader.py v34 — FINAL
+downloader.py v35 — FINAL
 ═══════════════════════════════════════════════════════════
-v34: إصلاح جذري لمشكلة ffmpeg concat:
-     - قبول أي صيغة فيديو (mp4 / mpegts / mov) وليس mpegts فقط
-     - استخدام concat: protocol كخيار أول (بدون ملف نصي)
-     - fallback: concat demuxer → binary concat → ffmpeg HLS مباشر
-     - إضافة تحقق صامت لا يمنع الدمج
+v35: إصلاح جذري لمشكلة ffmpeg concat:
+     - ترتيب المحاولات الجديد: ffmpeg-HLS → yt-dlp → cffi+concat
+     - السبب: مقاطع 1vid.online مشفّرة AES-128، وffmpeg يفك التشفير
+       تلقائياً من m3u8 URL، بينما concat يفشل مع المقاطع المشفّرة.
+     - ترتيب m3u8: master.m3u8 أولاً (أعلى جودة)
+
+محاولات التحميل (3 مراحل بالترتيب الجديد):
+  1. ffmpeg-HLS مباشرة (يقرأ m3u8 ويفك التشفير ويدمج)
+  2. yt-dlp (fallback موثوق)
+  3. cffi+concat (فقط إذا كان m3u8 غير مشفّر)
 """
 
 import os
@@ -80,10 +85,7 @@ def _is_valid_url(url):
 
 
 def _is_valid_video(path):
-    """
-    ★ v34: قبول أي صيغة فيديو (mp4, mpegts, mov, matroska, ...)
-    بدل حصرها على mpegts فقط.
-    """
+    """يقبل أي صيغة فيديو صالحة (mp4, mpegts, ...)."""
     if not path or not os.path.exists(path) or os.path.getsize(path) < 100:
         return False
     try:
@@ -95,14 +97,13 @@ def _is_valid_video(path):
         )
         if r.returncode != 0:
             return False
-        # يكفي وجود stream واحد على الأقل
         return "video" in (r.stdout or "").lower()
     except Exception:
         return False
 
 
 # ═══════════════════════════════════════════════════════════════
-# JS interceptor (كما هو)
+# JS interceptor — يلتقط m3u8 من كل المصادر
 # ═══════════════════════════════════════════════════════════════
 _JS = r"""
 (function(){
@@ -140,6 +141,7 @@ _JS = r"""
             window.__vp=true;
         }
     }catch(e){}
+
     window.__patch=function(){
         try{
             if(typeof jwplayer!=='undefined' && !window.__jp){
@@ -185,6 +187,28 @@ _JS = r"""
                     return o.apply(this,arguments);
                 };
                 window.__hp=true;
+            }
+            if(typeof videojs!=='undefined' && !window.__vp2){
+                var origReg=videojs.registerComponent;
+                if(origReg){
+                    videojs.registerComponent=function(name,comp){
+                        if(comp&&comp.prototype&&!comp.prototype.__vjs_p){
+                            var os=comp.prototype.src;
+                            if(os){
+                                comp.prototype.src=function(source){
+                                    try{
+                                        if(typeof source==='string')rec(source);
+                                        if(source&&source.src)rec(source.src);
+                                    }catch(e){}
+                                    return os.apply(this,arguments);
+                                };
+                            }
+                            comp.prototype.__vjs_p=true;
+                        }
+                        return origReg.apply(this,arguments);
+                    };
+                }
+                window.__vp2=true;
             }
         }catch(e){}
     };
@@ -241,6 +265,7 @@ def _open(sb, url, wait=1.5):
 # ═══════════════════════════════════════════════════════════════
 def _scan(sb):
     found = set()
+
     try:
         urls = _eval(sb, "return window.__m3u8||[]", [])
         if isinstance(urls, list):
@@ -249,6 +274,7 @@ def _scan(sb):
                     found.add(u)
     except Exception:
         pass
+
     try:
         perf = _eval(sb, "try{return performance.getEntriesByType('resource').map(e=>e.name)}catch(e){return[]}", [])
         if isinstance(perf, list):
@@ -257,12 +283,14 @@ def _scan(sb):
                     found.add(u)
     except Exception:
         pass
+
     try:
         html = sb.cdp.get_page_source() or ""
         for m in re.finditer(r'(https?:[^\s"\'<>\\]+\.m3u8[^\s"\'<>\\]*)', html):
             found.add(m.group(1).replace("\\/", "/"))
     except Exception:
         pass
+
     try:
         apis = _eval(sb, """
             (function(){
@@ -283,6 +311,19 @@ def _scan(sb):
                         Hls.instances.forEach(function(h){try{if(h.url)o.push(h.url);}catch(e){}});
                     }
                     if(window.hls&&window.hls.url)o.push(window.hls.url);
+                    if(typeof videojs!=='undefined'){
+                        try{
+                            var p2=videojs.getPlayers();
+                            for(var k in p2){
+                                try{
+                                    var s=p2[k].currentSrc&&p2[k].currentSrc();
+                                    if(s)o.push(s);
+                                    var t=p2[k].tech&&p2[k].tech(true);
+                                    if(t&&t.hls&&t.hls.url)o.push(t.hls.url);
+                                }catch(e){}
+                            }
+                        }catch(e){}
+                    }
                     var v=document.querySelector('video');
                     if(v){
                         if(v.currentSrc)o.push(v.currentSrc);
@@ -299,15 +340,20 @@ def _scan(sb):
                     found.add(u)
     except Exception:
         pass
+
     return [u for u in found if "ping.gif" not in u and "jwpltx" not in u]
 
 
+# ═══════════════════════════════════════════════════════════════
+# تشغيل الفيديو
+# ═══════════════════════════════════════════════════════════════
 def _play(sb):
     _eval(sb, """
         (function(){try{
             var v=document.querySelector('video');
             if(v){v.muted=true;if(v.play)v.play().catch(function(){});}
             if(typeof jwplayer!=='undefined'){var p=jwplayer();if(p){if(p.play)p.play(true);if(p.setMute)p.setMute(true);}}
+            if(typeof videojs!=='undefined'){var p2=videojs.getPlayers();for(var k in p2){try{p2[k].play();p2[k].muted(true);}catch(e){}}}
             ['video','button','.vjs-big-play-button','.jw-icon-playback','.jw-display-icon-container','[class*=play]'].forEach(function(s){
                 document.querySelectorAll(s).forEach(function(el){try{el.click();}catch(e){}});
             });
@@ -339,7 +385,7 @@ def _play(sb):
 
 
 # ═══════════════════════════════════════════════════════════════
-# m3u8 parser + resolve
+# m3u8 parser + deep resolution
 # ═══════════════════════════════════════════════════════════════
 def _parse_m3u8(text, base):
     segs, variants = [], []
@@ -358,8 +404,10 @@ def _parse_m3u8(text, base):
 def _resolve_m3u8(url, headers, depth=0, max_depth=4):
     if depth > max_depth:
         return None, []
+
     r = None
     last_error = "unknown"
+
     for imp in IMPERSONATES:
         try:
             r = cffi_requests.get(
@@ -372,32 +420,34 @@ def _resolve_m3u8(url, headers, depth=0, max_depth=4):
             last_error = f"HTTP {r.status_code}"
         except Exception as e:
             last_error = str(e)[:80]
+
     if last_error:
         print(f"      ⚠️ resolve[{depth}]: {last_error}", flush=True)
         return None, []
+
     base = url.rsplit("/", 1)[0]
     segs, variants = _parse_m3u8(r.text, base)
+
     if segs:
         print(f"      ✅ resolve[{depth}]: {len(segs)} seg", flush=True)
         return url, segs
+
     if variants:
         print(f"      📋 resolve[{depth}]: {len(variants)} variant", flush=True)
         for v in variants[:2]:
             f, s = _resolve_m3u8(v, headers, depth + 1, max_depth)
             if s:
                 return f, s
+
     print(f"      ⚠️ resolve[{depth}]: لا segments", flush=True)
     return None, []
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v34: دمج محسّن (concat protocol أولاً)
+# cffi download (كخطة ثالثة فقط)
 # ═══════════════════════════════════════════════════════════════
 def _try_concat_protocol(seg_paths, out_path):
-    """
-    الطريقة الأسرع: concat: protocol مباشرة بدون ملف نصي.
-    تعمل مع MPEG-TS و fMP4.
-    """
+    """concat: protocol — سريع، يعمل مع MPEG-TS غير المشفّر."""
     concat_input = "concat:" + "|".join(seg_paths)
     cmd = [
         _ffmpeg(), "-hide_banner", "-loglevel", "warning",
@@ -423,7 +473,6 @@ def _try_concat_protocol(seg_paths, out_path):
 
 
 def _try_concat_demuxer(seg_paths, out_path, seg_dir):
-    """طريقة concat demuxer عبر ملف نصي."""
     concat_file = os.path.join(seg_dir, "concat.txt")
     with open(concat_file, "w", encoding="utf-8") as f:
         for p in seg_paths:
@@ -454,7 +503,6 @@ def _try_concat_demuxer(seg_paths, out_path, seg_dir):
 
 
 def _try_binary_concat(seg_paths, out_path, seg_dir):
-    """دمج ثنائي + remux — الحل الأخير."""
     print(f"      🔄 محاولة دمج ثنائي (binary concat)...", flush=True)
     try:
         bin_path = os.path.join(seg_dir, "binary.ts")
@@ -489,12 +537,6 @@ def _try_binary_concat(seg_paths, out_path, seg_dir):
 
 
 def _cffi_download(segments, out_path, referer, ck):
-    """
-    ★ v34: ترتيب الدمج الجديد
-       1. concat: protocol (الأسرع، بدون ملف نصي)
-       2. concat demuxer (مع -f concat -safe 0)
-       3. binary concat + remux (الحل الأخير)
-    """
     if not segments:
         return None
 
@@ -511,7 +553,6 @@ def _cffi_download(segments, out_path, referer, ck):
     if ck:
         headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in ck.items())[:8000]
 
-    # اختبار
     test_ok = False
     last_err = "?"
     for imp in IMPERSONATES:
@@ -573,18 +614,12 @@ def _cffi_download(segments, out_path, referer, ck):
 
     sorted_s = [paths[k] for k in sorted(paths)]
 
-    # ★★★ v34: دمج بدون استبعاد مسبق
+    # الترتيب: concat protocol → demuxer → binary
     ok = False
-
-    # 1) concat protocol
     if not ok:
         ok = _try_concat_protocol(sorted_s, out_path)
-
-    # 2) concat demuxer
     if not ok:
         ok = _try_concat_demuxer(sorted_s, out_path, seg_dir)
-
-    # 3) binary concat
     if not ok:
         ok = _try_binary_concat(sorted_s, out_path, seg_dir)
 
@@ -599,11 +634,12 @@ def _cffi_download(segments, out_path, referer, ck):
 
 
 # ═══════════════════════════════════════════════════════════════
-# yt-dlp + ffmpeg HLS (كما هما)
+# yt-dlp
 # ═══════════════════════════════════════════════════════════════
 def _ytdlp(url, out_path, referer, ck):
     print(f"      [yt-dlp]", flush=True)
     ck_s = "; ".join(f"{k}={v}" for k, v in ck.items())[:8000]
+
     cmd = ["yt-dlp",
            "--no-warnings", "--no-playlist", "--no-part",
            "--retries", "3", "--fragment-retries", "5",
@@ -619,6 +655,7 @@ def _ytdlp(url, out_path, referer, ck):
            "-o", out_path, url]
     if ck_s:
         cmd += ["--add-header", f"Cookie:{ck_s}"]
+
     log_path = out_path + ".log"
     try:
         log = open(log_path, "w", encoding="utf-8", errors="replace")
@@ -626,6 +663,7 @@ def _ytdlp(url, out_path, referer, ck):
     except Exception as e:
         print(f"      ⚠️ spawn: {str(e)[:80]}", flush=True)
         return False
+
     start = time.time()
     while proc.poll() is None:
         time.sleep(2)
@@ -639,9 +677,11 @@ def _ytdlp(url, out_path, referer, ck):
         log.close()
     except Exception:
         pass
+
     if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
         print(f"      ✅ yt-dlp: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
         return True
+
     try:
         with open(log_path, encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
@@ -652,8 +692,12 @@ def _ytdlp(url, out_path, referer, ck):
     return False
 
 
+# ═══════════════════════════════════════════════════════════════
+# ffmpeg HLS مباشرة — ★ الأفضل للمواقع المشفّرة AES-128
+# ═══════════════════════════════════════════════════════════════
 def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
     print(f"      [ffmpeg-hls]", flush=True)
+
     headers = (
         f"Referer: {referer}\r\n"
         f"Origin: {_origin(referer)}\r\n"
@@ -666,15 +710,21 @@ def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
     if ck:
         ck_s = "; ".join(f"{k}={v}" for k, v in ck.items())[:8000]
         headers += f"Cookie: {ck_s}\r\n"
-    cmd = [_ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "warning",
-           "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
-           "-headers", headers,
-           "-user_agent", UA,
-           "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
-           "-i", m3u8_url,
-           "-c", "copy", "-bsf:a", "aac_adtstoasc",
-           "-movflags", "+faststart",
-           "-y", out_path]
+
+    cmd = [
+        _ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "warning",
+        "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+        "-headers", headers,
+        "-user_agent", UA,
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_delay_max", "5",
+        "-i", m3u8_url,
+        "-c", "copy",
+        "-bsf:a", "aac_adtstoasc",
+        "-movflags", "+faststart",
+        "-y", out_path,
+    ]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
         if r.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
@@ -688,11 +738,18 @@ def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
 
 
 # ═══════════════════════════════════════════════════════════════
-# استخراج m3u8
+# ★★★ v35: استخراج m3u8 — الترتيب الجديد
 # ═══════════════════════════════════════════════════════════════
 def _extract_from_iframe(sb, iframe_url, out_path):
+    """
+    ★ v35: الترتيب الجديد — ffmpeg-HLS أولاً
+    (لأن مقاطع 1vid.online مشفّرة AES-128، وffmpeg يفك التشفير
+     تلقائياً من خلال m3u8 URL مباشرة، بينما concat يفشل).
+    """
     print(f"      🌐 iframe: {iframe_url[:80]}", flush=True)
     _open(sb, iframe_url, wait=2.5)
+
+    # ── البحث عن m3u8 ──
     m3u8s = []
     for cycle in range(6):
         _play(sb)
@@ -702,6 +759,7 @@ def _extract_from_iframe(sb, iframe_url, out_path):
             m3u8s = found
             print(f"      ✨ {len(found)} m3u8 بعد {cycle+1} دورة", flush=True)
             break
+
     if not m3u8s:
         print(f"      🔍 بحث {config.M3U8_SEARCH_TIMEOUT}s...", flush=True)
         start = time.time()
@@ -713,14 +771,42 @@ def _extract_from_iframe(sb, iframe_url, out_path):
                 m3u8s = found
                 print(f"      ✨ {len(found)} m3u8 بعد {time.time()-start:.0f}s", flush=True)
                 break
+
     if not m3u8s:
         print(f"      ❌ لا m3u8", flush=True)
         return None
+
+    # ترتيب: master.m3u8 أولاً
+    def _priority(u):
+        lu = u.lower()
+        if "master" in lu: return 0
+        if "index" in lu: return 1
+        return 2
+
+    m3u8s.sort(key=_priority)
+
     for u in m3u8s[:3]:
         print(f"         · {u[:100]}", flush=True)
+
     ck = _cookies(sb)
     ref = sb.cdp.get_current_url() or iframe_url
-    # 1) cffi
+
+    # ═══ محاولة 1: ffmpeg-HLS (الأفضل للمواقع المشفّرة) ═══
+    print(f"      🎯 محاولة ffmpeg-HLS (يفك التشفير تلقائياً)...", flush=True)
+    for m in m3u8s[:2]:
+        if _ffmpeg_hls(m, str(out_path), ref, ck):
+            if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+                return (os.path.getsize(out_path), True)
+
+    # ═══ محاولة 2: yt-dlp (fallback موثوق) ═══
+    print(f"      🎯 محاولة yt-dlp...", flush=True)
+    for m in m3u8s[:2]:
+        if _ytdlp(m, str(out_path), ref, ck):
+            if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+                return (os.path.getsize(out_path), True)
+
+    # ═══ محاولة 3: cffi+concat (فقط إذا كان m3u8 غير مشفّر) ═══
+    print(f"      🎯 محاولة cffi+concat...", flush=True)
     for m in m3u8s[:3]:
         headers = {
             "Referer": ref,
@@ -738,21 +824,12 @@ def _extract_from_iframe(sb, iframe_url, out_path):
             res = _cffi_download(segs, str(out_path), ref, ck)
             if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
                 return res
-    # 2) yt-dlp
-    for m in m3u8s[:2]:
-        if _ytdlp(m, str(out_path), ref, ck):
-            if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-                return (os.path.getsize(out_path), True)
-    # 3) ffmpeg HLS
-    for m in m3u8s[:2]:
-        if _ffmpeg_hls(m, str(out_path), ref, ck):
-            if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-                return (os.path.getsize(out_path), True)
+
     return None
 
 
 # ═══════════════════════════════════════════════════════════════
-# u3seq + yam
+# u3seq (عشق)
 # ═══════════════════════════════════════════════════════════════
 def _u3seq(sb, url, out_path):
     if "?do=watch" not in url:
@@ -762,8 +839,10 @@ def _u3seq(sb, url, out_path):
         watch = cur + "?do=watch"
     else:
         watch = url
+
     print(f"🖥️  فتح: {watch[:90]}", flush=True)
     _open(sb, watch, wait=2)
+
     servers = []
     for i in range(8):
         sb.cdp.sleep(0.6)
@@ -778,10 +857,13 @@ def _u3seq(sb, url, out_path):
         """, []) or []
         if servers:
             break
+
     if not servers:
         print(f"   ⚠️ لا سيرفرات", flush=True)
         return None
+
     print(f"   ✅ {len(servers)} سيرفر", flush=True)
+
     iframe_url = _eval(sb, """
         (function(){
             var f=document.querySelector('.watch iframe');
@@ -789,6 +871,7 @@ def _u3seq(sb, url, out_path):
             return null;
         })();
     """)
+
     if not iframe_url:
         print(f"   ⚠️ لا iframe مباشر — ننتظر", flush=True)
         for _ in range(6):
@@ -802,17 +885,24 @@ def _u3seq(sb, url, out_path):
             """)
             if iframe_url:
                 break
+
     if not iframe_url:
         print(f"   ❌ لا iframe", flush=True)
         return None
+
     iframe_url = iframe_url.replace("&amp;", "&")
     print(f"   🎯 iframe: {iframe_url[:80]}", flush=True)
+
     return _extract_from_iframe(sb, iframe_url, out_path)
 
 
+# ═══════════════════════════════════════════════════════════════
+# yam (اهواك)
+# ═══════════════════════════════════════════════════════════════
 def _yam(sb, url, out_path):
     print(f"🖥️  فتح: {url[:90]}", flush=True)
     _open(sb, url, wait=2)
+
     iframe_url = _eval(sb, """
         (function(){
             var f=document.querySelector('iframe');
@@ -823,6 +913,7 @@ def _yam(sb, url, out_path):
             return null;
         })();
     """)
+
     if not iframe_url:
         print(f"   ⚠️ لا iframe — انتظار", flush=True)
         for _ in range(6):
@@ -836,16 +927,18 @@ def _yam(sb, url, out_path):
             """)
             if iframe_url:
                 break
+
     if not iframe_url:
         print(f"   ❌ لا iframe", flush=True)
         return None
+
     print(f"   🎯 iframe: {iframe_url[:80]}", flush=True)
     return _extract_from_iframe(sb, iframe_url, out_path)
 
 
 # ═══════════════════════════════════════════════════════════════
 # نقطة الدخول
-# ═══════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════
 def _run_browser(url, out_path):
     from seleniumbase import SB
     try:
@@ -859,6 +952,7 @@ def _run_browser(url, out_path):
                 except Exception:
                     pass
                 _install_js(sb)
+
                 u_low = url.lower()
                 if "modablaj-" in u_low or "/video/" in u_low:
                     print(f"   🎯 u3seq (عشق)", flush=True)
@@ -881,11 +975,12 @@ def _run_browser(url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# الضغط + thumbnail (بدون تغيير)
+# الضغط + thumbnail (بدون أي تغيير)
 # ═══════════════════════════════════════════════════════════════
 def _compress(inp, out):
     im = Path(inp).stat().st_size / 1048576
     print(f"   🗜️  {im:.2f}MB → {config.COMPRESS_SCALE}p", flush=True)
+
     cmd = [_ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "error",
            "-err_detect", "ignore_err",
            "-i", str(inp),
@@ -934,23 +1029,30 @@ def download_episode(series_name, episode_num, url,
     out_dir.mkdir(parents=True, exist_ok=True)
     raw = out_dir / f"{prefix}_raw.mp4"
     final = out_dir / f"{prefix}.mp4"
+
     if final.exists() and final.stat().st_size > MIN_SIZE:
         print(f"    ↳ موجودة", flush=True)
         return final
+
     if not _is_valid_url(url):
         print(f"    ⏭️  رابط غير مدعوم", flush=True)
         return None
+
     print(f"    ↳ تحميل {prefix}...", flush=True)
+
     result = [None]
     exc = [None]
+
     def _worker():
         try:
             result[0] = _run_browser(url, raw)
         except Exception as e:
             exc[0] = e
+
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
     t.join(timeout=config.EPISODE_TIMEOUT)
+
     if t.is_alive():
         print(f"    ⏰ تجاوز {config.EPISODE_TIMEOUT}s — إيقاف", flush=True)
         for p in ["yt-dlp", "chrome", "ffmpeg"]:
@@ -958,9 +1060,11 @@ def download_episode(series_name, episode_num, url,
                 subprocess.run(["pkill", "-9", "-f", p], capture_output=True, timeout=3)
             except Exception:
                 pass
+
     if exc[0]:
         print(f"    ⚠️ {str(exc[0])[:150]}", flush=True)
         result[0] = None
+
     if not result[0] or not raw.exists():
         print(f"    ⚠️ فشل", flush=True)
         try:
@@ -969,20 +1073,25 @@ def download_episode(series_name, episode_num, url,
         except Exception:
             pass
         return None
+
     print(f"    📦 {raw.stat().st_size/1048576:.1f}MB", flush=True)
+
     if config.SKIP_COMPRESS:
         shutil.move(str(raw), str(final))
     else:
         if not _compress(raw, final):
             print("    ⚠️ فشل الضغط — الأصلي", flush=True)
             shutil.move(str(raw), str(final))
+
     if raw.exists():
         raw.unlink()
     if not final.exists():
         return None
+
     try:
         _thumb(final, out_dir / f"{prefix}.jpg")
     except Exception:
         pass
+
     print(f"    ✅ {final.name} ({final.stat().st_size/1048576:.1f}MB)", flush=True)
     return final
