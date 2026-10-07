@@ -1,10 +1,12 @@
 """
-downloader.py v49 — FINAL
+downloader.py v50 — FINAL
 ═══════════════════════════════════════════════════════════
-v49: ضغط تكيفي + منع رفع الأصلي عند الفشل
-     - _compress يحاول عدة إعدادات (240p CRF=32 → 180p CRF=42 → 144p ...)
-     - عند فشل كل المحاولات: حذف الحلقة بالكامل (لا رفع للأصلي)
-     - v48: توازي حقيقي داخل المتصفح (Promise.all مع 20 مقطع/دفعة)
+v50: ضغط ذكي حسب المدة + رفع الحد إلى 90MB
+     - يقرأ مدة الفيديو بـ ffprobe
+     - يبدأ CRF أعلى للحلقات الطويلة (2h → CRF=40 مباشرة)
+     - محاولات أقل (4) لكن أذكى
+     - v49: عند الفشل الكامل، احذف الحلقة (لا رفع للأصلي)
+     - v48: توازي داخل المتصفح (Promise.all مع 20 مقطع/دفعة)
 """
 
 import os
@@ -353,7 +355,7 @@ def _fetch_text_cdp(sb, url, referer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# fetch دفعة داخل المتصفح (Promise.all)
+# fetch دفعة داخل المتصفح
 # ═══════════════════════════════════════════════════════════════
 def _fetch_batch_in_browser(sb, urls_batch, referer, timeout_s=90):
     urls_json = json.dumps(urls_batch)
@@ -477,7 +479,6 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
               f"فشل: {len(failed_indices)} | {mb:.1f}MB | "
               f"{rate:.1f}/s | ETA: {eta:.0f}s", flush=True)
 
-    # إعادة محاولة الفاشلة
     if failed_indices:
         print(f"      🔁 إعادة محاولة {len(failed_indices)} مقطع فاشل...",
               flush=True)
@@ -943,10 +944,24 @@ def _run_browser(url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v49: ضغط تكيفي
+# ★★★ v50: ضغط ذكي حسب المدة
 # ═══════════════════════════════════════════════════════════════
+def _get_duration(path):
+    """يعيد مدة الفيديو بالثواني أو 0."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error",
+             "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, timeout=15,
+        )
+        return float((r.stdout or "0").strip())
+    except Exception:
+        return 0
+
+
 def _compress_once(inp, out, scale, crf):
-    """محاولة ضغط واحدة بإعدادات محددة. تعيد الحجم بالميغا أو 0."""
+    """محاولة ضغط واحدة."""
     try:
         cmd = [_ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "error",
                "-err_detect", "ignore_err", "-i", str(inp),
@@ -968,37 +983,50 @@ def _compress_once(inp, out, scale, crf):
 
 def _compress(inp, out):
     """
-    ★ v49: ضغط تكيفي.
-    يحاول عدة إعدادات حتى الوصول <= MAX_SIZE_MB.
-    إذا فشل كل شيء، يعيد False (المستدعي يحذف الملفات).
+    ★ v50: ضغط ذكي حسب مدة الفيديو.
+    - 15min: CRF=32 (سريع، جودة عالية)
+    - 30min: CRF=34
+    - 1h:    CRF=36
+    - 1.5h:  CRF=38
+    - 2h+:   CRF=40 (يبدأ قوياً لتجنب محاولات فاشلة)
     """
     max_mb = config.COMPRESS_MAX_SIZE_MB
     im = Path(inp).stat().st_size / 1048576
 
-    # قائمة المحاولات (scale, CRF) — تتدرج في القوة
-    attempts = [
-        (config.COMPRESS_SCALE, config.COMPRESS_CRF),
-        (config.COMPRESS_SCALE, config.COMPRESS_CRF + 4),
-        (config.COMPRESS_SCALE, config.COMPRESS_CRF + 8),
-        (240, config.COMPRESS_CRF + 10),
-        (180, config.COMPRESS_CRF + 8),
-        (144, config.COMPRESS_CRF + 6),
-        (120, config.COMPRESS_CRF + 4),
-    ]
-    # إزالة التكرار
-    seen = set()
-    unique_attempts = []
-    for s, c in attempts:
-        key = (s, c)
-        if key not in seen:
-            seen.add(key)
-            unique_attempts.append((s, c))
+    # احسب مدة الفيديو
+    dur = _get_duration(inp)
+    dur_min = dur / 60 if dur > 0 else 0
 
-    for i, (scale, crf) in enumerate(unique_attempts, 1):
-        print(f"   🗜️  [{i}/{len(unique_attempts)}] {scale}p CRF={crf} "
+    if dur_min > 0:
+        print(f"   ⏱️  المدة: {int(dur_min)} دقيقة | الحجم: {im:.1f}MB | "
+              f"الحد: {max_mb}MB", flush=True)
+
+    # ★ CRF البداية حسب المدة
+    base_crf = config.COMPRESS_CRF
+    if dur_min >= 120:      # 2h+
+        base_crf += 8
+    elif dur_min >= 90:     # 1.5h+
+        base_crf += 6
+    elif dur_min >= 60:     # 1h+
+        base_crf += 4
+    elif dur_min >= 30:     # 30min+
+        base_crf += 2
+    # أقل من 30min: base_crf كما هو (32)
+
+    # ★ محاولات أذكى: 4 فقط
+    attempts = [
+        (config.COMPRESS_SCALE, base_crf),        # الأساسية
+        (config.COMPRESS_SCALE, base_crf + 4),    # أقوى قليلاً
+        (240, base_crf + 8),                       # 240p
+        (180, base_crf + 12),                      # 180p كملاذ أخير
+    ]
+
+    print(f"   🎬 CRF البداية: {base_crf}", flush=True)
+
+    for i, (scale, crf) in enumerate(attempts, 1):
+        print(f"   🗜️  [{i}/{len(attempts)}] {scale}p CRF={crf} "
               f"({im:.1f}MB → ?)", flush=True)
 
-        # امسح أي ملف سابق
         try:
             if Path(out).exists():
                 Path(out).unlink()
@@ -1018,8 +1046,7 @@ def _compress(inp, out):
         else:
             print(f"   ❌ فشل الترميز — المحاولة التالية", flush=True)
 
-    print(f"   ❌ فشلت كل محاولات الضغط ({len(unique_attempts)} محاولة)",
-          flush=True)
+    print(f"   ❌ فشلت كل محاولات الضغط ({len(attempts)} محاولة)", flush=True)
     return False
 
 
@@ -1094,7 +1121,7 @@ def download_episode(series_name, episode_num, url,
         shutil.move(str(raw), str(final))
     else:
         if not _compress(raw, final):
-            # ★ v49: لا ترفع الأصلي — احذف الحلقة بالكامل
+            # v49/v50: لا ترفع الأصلي — احذف الحلقة
             print("    ❌ فشل الضغط — حذف الحلقة (لن تُرفع)", flush=True)
             try:
                 if raw.exists():
