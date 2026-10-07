@@ -1,12 +1,13 @@
 """
-downloader.py v50 — FINAL
+downloader.py v51 — FINAL
 ═══════════════════════════════════════════════════════════
-v50: ضغط ذكي حسب المدة + رفع الحد إلى 90MB
-     - يقرأ مدة الفيديو بـ ffprobe
-     - يبدأ CRF أعلى للحلقات الطويلة (2h → CRF=40 مباشرة)
-     - محاولات أقل (4) لكن أذكى
-     - v49: عند الفشل الكامل، احذف الحلقة (لا رفع للأصلي)
-     - v48: توازي داخل المتصفح (Promise.all مع 20 مقطع/دفعة)
+v51: hard timeout على fetch + arrayBuffer
+     - Promise.race مع 50s timeout لكل مقطع
+     - BATCH_SIZE = 10 (بدل 20)
+     - تخطي التحميل بعد 3 دفعات فاشلة متتالية
+     - v50: ضغط ذكي حسب المدة + حد 90MB
+     - v49: عند فشل الضغط — حذف الحلقة (لا رفع للأصلي)
+     - v48: توازي داخل المتصفح (Promise.all)
 """
 
 import os
@@ -28,7 +29,7 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
 MIN_HEIGHT = 360
-BATCH_SIZE = 20
+BATCH_SIZE = 10  # ★ v51: كان 20
 
 
 def _safe(n):
@@ -355,9 +356,13 @@ def _fetch_text_cdp(sb, url, referer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# fetch دفعة داخل المتصفح
+# ★★★ v51: fetch دفعة مع hard timeout على arrayBuffer
 # ═══════════════════════════════════════════════════════════════
-def _fetch_batch_in_browser(sb, urls_batch, referer, timeout_s=90):
+def _fetch_batch_in_browser(sb, urls_batch, referer, timeout_s=50):
+    """
+    v51: Promise.race على fetch + arrayBuffer.
+    كل مقطع له hard timeout مستقل.
+    """
     urls_json = json.dumps(urls_batch)
 
     js = f"""
@@ -365,39 +370,49 @@ def _fetch_batch_in_browser(sb, urls_batch, referer, timeout_s=90):
         const urls = {urls_json};
         const referer = {repr(referer or '')};
 
-        const results = await Promise.all(urls.map(async (u) => {{
-            try {{
-                const controller = new AbortController();
-                const t = setTimeout(() => {{
-                    try {{ controller.abort(); }} catch(e) {{}}
-                }}, {timeout_s * 1000});
+        function withTimeout(promise, ms, label) {{
+            return Promise.race([
+                promise,
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('TIMEOUT:' + label)), ms)
+                )
+            ]);
+        }}
 
-                const r = await fetch(u, {{
+        const results = await Promise.all(urls.map(async (u, i) => {{
+            try {{
+                const fetchPromise = fetch(u, {{
                     method: 'GET',
                     credentials: 'include',
                     cache: 'no-store',
                     referrer: referer,
-                    signal: controller.signal,
                     headers: {{ 'Accept': '*/*' }}
                 }});
-                clearTimeout(t);
 
+                const r = await withTimeout(fetchPromise, {timeout_s * 1000},
+                                             'fetch-' + i);
                 if (!r.ok) return {{ ok: false, error: 'HTTP ' + r.status }};
-                const buf = await r.arrayBuffer();
+
+                const buf = await withTimeout(r.arrayBuffer(),
+                                               {timeout_s * 1000},
+                                               'buffer-' + i);
                 const bytes = new Uint8Array(buf);
+                if (bytes.length === 0) return {{ ok: false, error: 'EMPTY' }};
 
                 let binary = '';
                 const CHUNK = 8192;
-                for (let i = 0; i < bytes.length; i += CHUNK) {{
-                    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+                for (let j = 0; j < bytes.length; j += CHUNK) {{
+                    binary += String.fromCharCode.apply(
+                        null, bytes.subarray(j, j + CHUNK));
                 }}
                 try {{
                     return {{ ok: true, data: btoa(binary) }};
                 }} catch(e) {{
-                    return {{ ok: false, error: 'btoa: ' + e.message }};
+                    return {{ ok: false, error: 'btoa:' + e.message }};
                 }}
             }} catch(e) {{
-                return {{ ok: false, error: e.name + ': ' + (e.message || '') }};
+                const msg = (e.message || e.name || 'unknown').substring(0, 60);
+                return {{ ok: false, error: msg }};
             }}
         }}));
 
@@ -413,7 +428,7 @@ def _fetch_batch_in_browser(sb, urls_batch, referer, timeout_s=90):
         })
         value = (result or {}).get("result", {}).get("value")
         if not isinstance(value, str):
-            print(f"      ⚠️ batch: لا نتيجة", flush=True)
+            print(f"      ⚠️ batch: no result", flush=True)
             return None
 
         parsed = json.loads(value)
@@ -428,12 +443,12 @@ def _fetch_batch_in_browser(sb, urls_batch, referer, timeout_s=90):
                 decoded.append(None)
         return decoded
     except Exception as e:
-        print(f"      ⚠️ batch exc: {str(e)[:120]}", flush=True)
+        print(f"      ⚠️ batch exc: {str(e)[:100]}", flush=True)
         return None
 
 
 # ═══════════════════════════════════════════════════════════════
-# تحميل كل المقاطع بدفعات
+# ★★★ v51: تحميل كل المقاطع بدفعات (مع تخطي عند الفشل المتكرر)
 # ═══════════════════════════════════════════════════════════════
 def _download_all_segments(sb, seg_urls, referer, tmp_dir,
                             batch_size=BATCH_SIZE):
@@ -443,17 +458,25 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
 
     paths = {}
     failed_indices = []
+    consecutive_fails = 0
     start = time.time()
 
     for i in range(0, total, batch_size):
         batch = seg_urls[i:i + batch_size]
         batch_end = min(i + batch_size, total)
-        results = _fetch_batch_in_browser(sb, batch, referer, timeout_s=90)
+        results = _fetch_batch_in_browser(sb, batch, referer, timeout_s=50)
 
         if results is None:
+            # فشل كامل للدفعة (timeout أو exception)
             for j in range(len(batch)):
                 failed_indices.append(i + j)
+            consecutive_fails += 1
+            if consecutive_fails >= 3:
+                print(f"      ❌ 3 دفعات فاشلة متتالية — إيقاف التحميل",
+                      flush=True)
+                break
         else:
+            consecutive_fails = 0
             for j, data in enumerate(results):
                 idx = i + j
                 if data:
@@ -467,7 +490,7 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
                 else:
                     failed_indices.append(idx)
 
-        done = batch_end
+        done = min(batch_end, total)
         elapsed = time.time() - start
         rate = done / elapsed if elapsed > 0 else 0
         eta = (total - done) / rate if rate > 0 else 0
@@ -479,15 +502,16 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
               f"فشل: {len(failed_indices)} | {mb:.1f}MB | "
               f"{rate:.1f}/s | ETA: {eta:.0f}s", flush=True)
 
-    if failed_indices:
+    # إعادة محاولة الفاشلة (بحذر)
+    if failed_indices and len(failed_indices) < total * 0.5:
         print(f"      🔁 إعادة محاولة {len(failed_indices)} مقطع فاشل...",
               flush=True)
         retry_urls = [seg_urls[idx] for idx in failed_indices]
         still_failed = []
-        for k in range(0, len(retry_urls), 10):
-            sub = retry_urls[k:k + 10]
-            sub_idx = failed_indices[k:k + 10]
-            results = _fetch_batch_in_browser(sb, sub, referer, timeout_s=60)
+        for k in range(0, len(retry_urls), 5):
+            sub = retry_urls[k:k + 5]
+            sub_idx = failed_indices[k:k + 5]
+            results = _fetch_batch_in_browser(sb, sub, referer, timeout_s=40)
             if results:
                 for j, data in enumerate(results):
                     idx = sub_idx[j]
@@ -944,7 +968,7 @@ def _run_browser(url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v50: ضغط ذكي حسب المدة
+# ضغط ذكي حسب المدة
 # ═══════════════════════════════════════════════════════════════
 def _get_duration(path):
     """يعيد مدة الفيديو بالثواني أو 0."""
@@ -983,17 +1007,11 @@ def _compress_once(inp, out, scale, crf):
 
 def _compress(inp, out):
     """
-    ★ v50: ضغط ذكي حسب مدة الفيديو.
-    - 15min: CRF=32 (سريع، جودة عالية)
-    - 30min: CRF=34
-    - 1h:    CRF=36
-    - 1.5h:  CRF=38
-    - 2h+:   CRF=40 (يبدأ قوياً لتجنب محاولات فاشلة)
+    ضغط ذكي حسب مدة الفيديو.
     """
     max_mb = config.COMPRESS_MAX_SIZE_MB
     im = Path(inp).stat().st_size / 1048576
 
-    # احسب مدة الفيديو
     dur = _get_duration(inp)
     dur_min = dur / 60 if dur > 0 else 0
 
@@ -1001,24 +1019,21 @@ def _compress(inp, out):
         print(f"   ⏱️  المدة: {int(dur_min)} دقيقة | الحجم: {im:.1f}MB | "
               f"الحد: {max_mb}MB", flush=True)
 
-    # ★ CRF البداية حسب المدة
     base_crf = config.COMPRESS_CRF
-    if dur_min >= 120:      # 2h+
+    if dur_min >= 120:
         base_crf += 8
-    elif dur_min >= 90:     # 1.5h+
+    elif dur_min >= 90:
         base_crf += 6
-    elif dur_min >= 60:     # 1h+
+    elif dur_min >= 60:
         base_crf += 4
-    elif dur_min >= 30:     # 30min+
+    elif dur_min >= 30:
         base_crf += 2
-    # أقل من 30min: base_crf كما هو (32)
 
-    # ★ محاولات أذكى: 4 فقط
     attempts = [
-        (config.COMPRESS_SCALE, base_crf),        # الأساسية
-        (config.COMPRESS_SCALE, base_crf + 4),    # أقوى قليلاً
-        (240, base_crf + 8),                       # 240p
-        (180, base_crf + 12),                      # 180p كملاذ أخير
+        (config.COMPRESS_SCALE, base_crf),
+        (config.COMPRESS_SCALE, base_crf + 4),
+        (240, base_crf + 8),
+        (180, base_crf + 12),
     ]
 
     print(f"   🎬 CRF البداية: {base_crf}", flush=True)
@@ -1121,7 +1136,6 @@ def download_episode(series_name, episode_num, url,
         shutil.move(str(raw), str(final))
     else:
         if not _compress(raw, final):
-            # v49/v50: لا ترفع الأصلي — احذف الحلقة
             print("    ❌ فشل الضغط — حذف الحلقة (لن تُرفع)", flush=True)
             try:
                 if raw.exists():
