@@ -28,12 +28,14 @@ class Config:
     CHECK_CACHE_TTL = int(os.environ.get("CHECK_CACHE_TTL", "3600"))
 
     # المصادر
-    ENABLED_SOURCES = os.environ.get("ENABLED_SOURCES", "u3seq,yam").strip()
+    ENABLED_SOURCES = os.environ.get("ENABLED_SOURCES", "yam,u3seq").strip()
 
-    # u3seq (عشق)
-    U3SEQ_BASE_URL = os.environ.get("SOURCE_BASE_URL", "https://u.3seq.cam").rstrip("/")
-    U3SEQ_CATEGORY = int(os.environ.get("SOURCE_CATEGORY", "712"))
-    U3SEQ_MAX_PAGES = int(os.environ.get("SOURCE_MAX_PAGES", "10"))
+    # ★★★ u3seq (عشق) — النطاق الفعلي المحتوى
+    U3SEQ_BASE_URL = os.environ.get(
+        "SOURCE_BASE_URL", "https://o.3seq.cam"
+    ).rstrip("/")
+    U3SEQ_CATEGORY = int(os.environ.get("SOURCE_CATEGORY", "0"))
+    U3SEQ_MAX_PAGES = int(os.environ.get("SOURCE_MAX_PAGES", "20"))
     # أسماء بديلة
     SOURCE_BASE_URL = U3SEQ_BASE_URL
     SOURCE_CATEGORY = U3SEQ_CATEGORY
@@ -53,7 +55,7 @@ class Config:
     SKIP_COMPRESS = os.environ.get("SKIP_COMPRESS", "false").lower() == "true"
     KEEP_MEDIA = os.environ.get("KEEP_MEDIA", "false").lower() == "true"
 
-    # الضغط (بدون أي تغيير)
+    # الضغط — بدون أي تغيير
     COMPRESS_SCALE = int(os.environ.get("COMPRESS_SCALE", "240"))
     COMPRESS_CRF = int(os.environ.get("COMPRESS_CRF", "32"))
     COMPRESS_PRESET = os.environ.get("COMPRESS_PRESET", "veryfast")

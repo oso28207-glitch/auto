@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-run_all.py — Shoof Automation v2
+run_all.py — Shoof Automation v3
 
-★ ترتيب العمل الجديد:
-    1) فحص قنوات Telegram أولاً لمعرفة المرفوع مسبقاً
-    2) زحف المصادر (u3seq, yam, egybest)
-    3) تنزيل + ضغط + رفع الحلقات الجديدة فقط
+★ الميزات الجديدة:
+    1) فحص قنوات Telegram أولاً وحفظ النتائج
+    2) تقرير واضح بالحلقات الناقصة لكل مسلسل
+    3) إكمال الناقص بالترتيب (1، 2، 3...) قبل الجديد
+    4) تنزيل + ضغط + رفع
 """
 import asyncio
 import os
@@ -26,13 +27,11 @@ from uploader import uploader
 
 STATE = DATA_DIR / "series.json"
 UPLOADED = DATA_DIR / "uploaded.json"
+MISSING_REPORT = DATA_DIR / "missing_report.json"
 
 SOURCE_ORDER = {"u3seq": 0, "yam": 1, "egybest": 2}
 
 
-# ═══════════════════════════════════════════════════════════════
-# أدوات
-# ═══════════════════════════════════════════════════════════════
 def _load(p, default):
     if p.exists():
         try:
@@ -65,6 +64,85 @@ def _fetch(src):
     except Exception as e:
         print(f"   ⚠️ {src}: {str(e)[:120]}", flush=True)
     return []
+
+
+# ═══════════════════════════════════════════════════════════════
+# ★★★ تقرير الحلقات الناقصة
+# ═══════════════════════════════════════════════════════════════
+def build_missing_report(all_series, existing_tg, uploaded):
+    """
+    يبني تقريراً كاملاً بالحلقات الناقصة لكل مسلسل.
+    يرتب الناقص تصاعدياً (1، 2، 3...) لضمان الإكمال بالترتيب.
+    """
+    report = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "series": [],
+    }
+
+    for series in all_series:
+        name = series.get("name", "")
+        src = series.get("_src", "?")
+        eps = series.get("episodes", [])
+
+        if not eps:
+            continue
+
+        available_nums = set()
+        for e in eps:
+            n = e.get("num")
+            if n:
+                available_nums.add(int(n))
+
+        # الموجود محلياً أو على TG
+        present_nums = set()
+        for n in available_nums:
+            local_key = f"{name}|ep{n}"
+            if local_key in uploaded:
+                present_nums.add(n)
+            elif existing_tg and is_episode_uploaded(existing_tg, name, n):
+                present_nums.add(n)
+
+        missing = sorted(available_nums - present_nums)
+
+        if missing:
+            report["series"].append({
+                "name": name,
+                "source": src,
+                "total_available": len(available_nums),
+                "present": len(present_nums),
+                "missing_count": len(missing),
+                "missing_episodes": missing,
+            })
+
+    # ترتيب حسب عدد الناقص (الأكثر أولاً)
+    report["series"].sort(key=lambda x: -x["missing_count"])
+    return report
+
+
+def print_missing_report(report):
+    """طباعة تقرير واضح عن الحلقات الناقصة."""
+    if not report.get("series"):
+        print("\n   ✨ لا توجد حلقات ناقصة — كل المتاح مرفوع", flush=True)
+        return
+
+    total_missing = sum(s["missing_count"] for s in report["series"])
+    print(f"\n{'═' * 60}", flush=True)
+    print(f"📋 تقرير الحلقات الناقصة ({len(report['series'])} مسلسل | {total_missing} حلقة)",
+          flush=True)
+    print(f"{'═' * 60}", flush=True)
+
+    for s in report["series"][:20]:  # أول 20
+        miss_preview = s["missing_episodes"][:10]
+        miss_str = ", ".join(str(x) for x in miss_preview)
+        if len(s["missing_episodes"]) > 10:
+            miss_str += "..."
+        print(f"   📺 [{s['source']}] {s['name']}", flush=True)
+        print(f"      ✅ موجود: {s['present']}/{s['total_available']} | "
+              f"❌ ناقص: {s['missing_count']}", flush=True)
+        print(f"      🔢 الأرقام الناقصة: {miss_str}", flush=True)
+
+    if len(report["series"]) > 20:
+        print(f"\n   ... و{len(report['series']) - 20} مسلسل آخر", flush=True)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -111,92 +189,73 @@ def _scrape_all():
 
 
 # ═══════════════════════════════════════════════════════════════
-# تحديد الحلقات الجديدة (Telegram + محلي)
+# الخطوة 3: تنزيل + ضغط + رفع (بالترتيب)
 # ═══════════════════════════════════════════════════════════════
-def _filter_new_episodes(series, existing_tg, uploaded):
-    """
-    يعيد (new_eps, all_eps, newly_marked)
-      - new_eps: حلقات تحتاج تنزيلاً فعلياً
-      - all_eps: كل الحلقات بعد ضمّ URLs من uploaded (للفهرسة)
-      - newly_marked: حلقات اكتُشفت على TG وعُلّمت محلياً
-    """
-    name = series.get("name", "")
-    eps = series.get("episodes", [])
-    new_eps = []
-    newly_marked = []
-
-    for e in eps:
-        n = e.get("num", 0)
-        if not n:
-            continue
-
-        local_key = f"{name}|ep{n}"
-
-        # 1) موجود محلياً؟
-        if local_key in uploaded:
-            continue
-
-        # 2) موجود على Telegram؟
-        if existing_tg and is_episode_uploaded(existing_tg, name, n):
-            uploaded[local_key] = {
-                "url": e.get("url", ""),
-                "done": True,
-                "source": "telegram",
-            }
-            newly_marked.append(local_key)
-            continue
-
-        # 3) جديد فعلاً
-        new_eps.append(e)
-
-    all_eps = [
-        {
-            "num": e.get("num"),
-            "url": uploaded.get(f"{name}|ep{e.get('num')}", {}).get(
-                "url", e.get("url", "")
-            ),
-        }
-        for e in eps
-    ]
-
-    return new_eps, all_eps, newly_marked
-
-
-# ═══════════════════════════════════════════════════════════════
-# الخطوة 3: تنزيل + ضغط + رفع
-# ═══════════════════════════════════════════════════════════════
-async def _process_series(series, existing_tg, uploaded):
+async def _process_series(series, existing_tg, uploaded, missing_report):
     name = series.get("name", "")
     src = series.get("_src", "?")
     poster = series.get("poster", "")
     genre = series.get("genre", "")
 
-    new_eps, all_eps, newly_marked = _filter_new_episodes(
-        series, existing_tg, uploaded
-    )
+    # جمع كل الحلقات المتاحة
+    all_eps_by_num = {}
+    for e in series.get("episodes", []):
+        n = e.get("num")
+        if n:
+            all_eps_by_num[int(n)] = e
 
-    if newly_marked:
-        print(f"   🎯 [{src}] {name}: {len(newly_marked)} حلقة موجودة على Telegram",
-              flush=True)
+    all_eps_sorted = [all_eps_by_num[k] for k in sorted(all_eps_by_num.keys())]
 
-    if not new_eps:
+    # تحديد الحلقات التي تحتاج تنزيلاً
+    to_download = []
+    for n in sorted(all_eps_by_num.keys()):
+        local_key = f"{name}|ep{n}"
+
+        # موجود محلياً؟
+        if local_key in uploaded:
+            continue
+
+        # موجود على TG؟
+        if existing_tg and is_episode_uploaded(existing_tg, name, n):
+            uploaded[local_key] = {
+                "url": all_eps_by_num[n].get("url", ""),
+                "done": True,
+                "source": "telegram",
+                "at": datetime.now(timezone.utc).isoformat(),
+            }
+            continue
+
+        # ناقص — أضف للتنزيل
+        to_download.append(all_eps_by_num[n])
+
+    # ★ ترتيب تصاعدي لضمان الإكمال بالترتيب
+    to_download.sort(key=lambda e: int(e.get("num", 0)))
+
+    if not to_download:
         return {
             "name": name,
             "poster": poster,
             "genre": genre,
             "source": src,
-            "episodes": all_eps,
-            "episodes_count": len(all_eps),
+            "episodes": [
+                {"num": e.get("num"),
+                 "url": uploaded.get(f"{name}|ep{e.get('num')}", {}).get(
+                     "url", e.get("url", ""))}
+                for e in all_eps_sorted
+            ],
+            "episodes_count": len(all_eps_sorted),
         }
 
     print(f"\n{'═' * 60}", flush=True)
     print(f"📺 [{src}] {name}", flush=True)
-    print(f"   🆕 {len(new_eps)}/{len(all_eps)} حلقة جديدة", flush=True)
+    print(f"   🆕 {len(to_download)}/{len(all_eps_sorted)} حلقة للتنزيل", flush=True)
+    print(f"   🔢 الأرقام: {[e.get('num') for e in to_download[:10]]}"
+          f"{'...' if len(to_download) > 10 else ''}", flush=True)
     print(f"{'═' * 60}", flush=True)
 
     ok_count = 0
 
-    for ep in new_eps:
+    for ep in to_download:
         n = ep.get("num", 0)
         u = ep.get("url", "")
         if not u:
@@ -204,7 +263,6 @@ async def _process_series(series, existing_tg, uploaded):
 
         print(f"\n   ── الحلقة {n} ──", flush=True)
 
-        # 1) تنزيل + ضغط (الإعدادات كما هي)
         try:
             r = download_episode(name, n, u)
         except Exception as e:
@@ -215,7 +273,6 @@ async def _process_series(series, existing_tg, uploaded):
             print(f"   ⚠️ فشل التنزيل", flush=True)
             continue
 
-        # 2) رفع على Telegram
         try:
             info = await uploader.upload(
                 file_path=r,
@@ -233,7 +290,6 @@ async def _process_series(series, existing_tg, uploaded):
             }
             ok_count += 1
             print(f"   ✅ تمت + رُفعت (msg={info.get('message_id')})", flush=True)
-
         except Exception as e:
             print(f"   ⚠️ فشل الرفع: {str(e)[:150]}", flush=True)
             uploaded[f"{name}|ep{n}"] = {
@@ -248,8 +304,13 @@ async def _process_series(series, existing_tg, uploaded):
         "poster": poster,
         "genre": genre,
         "source": src,
-        "episodes": all_eps,
-        "episodes_count": len(all_eps),
+        "episodes": [
+            {"num": e.get("num"),
+             "url": uploaded.get(f"{name}|ep{e.get('num')}", {}).get(
+                 "url", e.get("url", ""))}
+            for e in all_eps_sorted
+        ],
+        "episodes_count": len(all_eps_sorted),
         "is_new": ok_count > 0,
     }
 
@@ -259,7 +320,7 @@ async def _process_series(series, existing_tg, uploaded):
 # ═══════════════════════════════════════════════════════════════
 async def _main_async():
     print("╔" + "═" * 58 + "╗")
-    print("║" + " " * 12 + "شوف — Shoof Automation v2" + " " * 20 + "║")
+    print("║" + " " * 10 + "شوف — Shoof Automation v3" + " " * 18 + "║")
     print("╚" + "═" * 58 + "╝", flush=True)
 
     try:
@@ -272,7 +333,7 @@ async def _main_async():
     # ─── 1) فحص Telegram ───
     existing_tg = await _scan_telegram()
 
-    # ─── تحميل الحالة المحلية ───
+    # ─── تحميل الحالة ───
     state = _load(STATE, {"series": []})
     uploaded = _load(UPLOADED, {})
     print(
@@ -285,6 +346,15 @@ async def _main_async():
     all_series = _scrape_all()
     if not all_series:
         return 0
+
+    # ─── ★ بناء تقرير الناقص ───
+    print("\n" + "═" * 60, flush=True)
+    print("📋 [الخطوة 2.5] تحليل الحلقات الناقصة...", flush=True)
+    print("═" * 60, flush=True)
+
+    missing_report = build_missing_report(all_series, existing_tg, uploaded)
+    print_missing_report(missing_report)
+    _save(MISSING_REPORT, missing_report)
 
     # ─── 3) المعالجة ───
     print("\n" + "═" * 60, flush=True)
@@ -304,14 +374,13 @@ async def _main_async():
                 break
 
             try:
-                item = await _process_series(series, existing_tg, uploaded)
+                item = await _process_series(series, existing_tg, uploaded, missing_report)
                 if item:
                     out_series.append(item)
             except Exception as e:
                 print(f"   ❌ [{series.get('name','?')}]: {str(e)[:150]}", flush=True)
                 continue
 
-            # حفظ تدريجي
             _save(
                 STATE,
                 {
@@ -327,7 +396,6 @@ async def _main_async():
         except Exception:
             pass
 
-    # حفظ نهائي
     _save(
         STATE,
         {

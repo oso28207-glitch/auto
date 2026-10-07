@@ -68,9 +68,9 @@ jobs:
           SESSION_STRING=${SESSION_STRING}
           CHANNEL_ID=${CHANNEL_ID}
           ENABLED_SOURCES=u3seq,yam,egybest
-          SOURCE_BASE_URL=https://u.3seq.cam
-          SOURCE_CATEGORY=712
-          SOURCE_MAX_PAGES=10
+          SOURCE_BASE_URL=https://o.3seq.cam
+          SOURCE_CATEGORY=0
+          SOURCE_MAX_PAGES=20
           YAM_BASE_URL=https://yam.ahwaktv.net
           YAM_SERIES_PATH=/moslslat.php
           EGYBEST_BASE_URL=https://egybesstt.baby
