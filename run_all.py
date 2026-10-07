@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-run_all.py — Shoof Automation v3.2
+run_all.py — Shoof Automation v3.2.1
+
+★ إصلاح: DOCS_DIR يُستورد مباشرة بدل config.DOCS_DIR
 
 ★ الميزات:
     1) ترتيب الأولوية: مسلسلات تركية مدبلجة → مسلسلات مدبلجة أخرى → أفلام مدبلجة → الباقي
@@ -8,7 +10,7 @@ run_all.py — Shoof Automation v3.2
     3) تحميل الحلقات بالترتيب (1، 2، 3، ...)
     4) تسجيل الحلقات بدون URL في skipped_episodes.json
     5) استئناف من آخر حلقة على Telegram
-    6) بناء out_series لكل المسلسلات أولاً (حتى لو لم تُحمَّل بعد)
+    6) بناء out_series لكل المسلسلات أولاً
     7) خيار --clean لتنظيف كل شيء
 """
 import argparse
@@ -22,7 +24,7 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
-from config import config, DATA_DIR, MEDIA_DIR
+from config import config, DATA_DIR, MEDIA_DIR, DOCS_DIR
 from downloader import download_episode
 from telegram_checker import (
     fetch_existing_episodes,
@@ -55,11 +57,11 @@ def _clean_all():
         DATA_DIR / "uploaded.json",
         DATA_DIR / "missing_report.json",
         DATA_DIR / "skipped_episodes.json",
-        config.DOCS_DIR / "watch",
-        config.DOCS_DIR / "posters",
-        config.DOCS_DIR / "index.html",
-        config.DOCS_DIR / "series.json",
-        config.DOCS_DIR / "videos.json",
+        DOCS_DIR / "watch",
+        DOCS_DIR / "posters",
+        DOCS_DIR / "index.html",
+        DOCS_DIR / "series.json",
+        DOCS_DIR / "videos.json",
     ]
 
     for t in targets:
@@ -74,7 +76,7 @@ def _clean_all():
         except Exception as e:
             print(f"   ⚠️  فشل حذف {t}: {str(e)[:80]}", flush=True)
 
-    for d in (MEDIA_DIR, config.DOCS_DIR / "watch", config.DOCS_DIR / "posters"):
+    for d in (MEDIA_DIR, DOCS_DIR / "watch", DOCS_DIR / "posters"):
         d.mkdir(parents=True, exist_ok=True)
 
     print("   ✅ تم التنظيف\n", flush=True)
@@ -321,7 +323,7 @@ async def _process_series(series, existing_tg, uploaded, skipped_log):
 # ═══════════════════════════════════════════════════════════════
 async def _main_async(clean=False):
     print("╔" + "═" * 58 + "╗")
-    print("║" + " " * 9 + "شوف — Shoof Automation v3.2" + " " * 17 + "║")
+    print("║" + " " * 8 + "شوف — Shoof Automation v3.2.1" + " " * 16 + "║")
     print("╚" + "═" * 58 + "╝", flush=True)
 
     try:
@@ -355,7 +357,6 @@ async def _main_async(clean=False):
         return 0
 
     # ★★★ بناء out_series لكل المسلسلات أولاً
-    # حتى لو لم تُحمَّل بعد، تُحفظ في series.json ليبنيها الموقع
     out_series = []
     for series in all_series:
         name = series.get("name", "")
@@ -375,7 +376,6 @@ async def _main_async(clean=False):
             "episodes_count": len(all_eps),
         })
 
-    # حفظ مبدئي
     _save(STATE, {
         "series": out_series,
         "last_update": datetime.now(timezone.utc).isoformat(),
@@ -423,7 +423,6 @@ async def _main_async(clean=False):
                 _save(SKIPPED_LOG, skipped_log)
                 raise
 
-            # حفظ تدريجي
             _save(STATE, {
                 "series": out_series,
                 "last_update": datetime.now(timezone.utc).isoformat(),
