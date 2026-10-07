@@ -1,235 +1,138 @@
-/* شوف — Shoof App with posters */
+// app.js — مشغل HLS + autoplay + انتقال تلقائي
+let hls = null;
+let currentSeries = null;
+let currentEpisode = null;
+let countdownTimer = null;
 
-const API_BASE = (window.APP_CONFIG?.API_BASE || "").replace(/\/$/, "");
-
-const state = {
-  series: [], filtered: [], currentSort: "recent", search: "",
-  page: 1, perPage: 30,
-};
-
-const $ = (id) => document.getElementById(id);
-
-function escapeHtml(s) {
-  const d = document.createElement("div");
-  d.textContent = s || "";
-  return d.innerHTML;
+async function loadData() {
+    const r = await fetch('series.json');
+    return r.json();
 }
 
-function formatDate(iso) {
-  if (!iso) return "";
-  try {
-    const d = new Date(iso), now = new Date();
-    const diff = (now - d) / 1000;
-    if (diff < 60) return "الآن";
-    if (diff < 3600) return `${Math.floor(diff / 60)} دقيقة`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} ساعة`;
-    if (diff < 604800) return `${Math.floor(diff / 86400)} يوم`;
-    return d.toLocaleDateString("ar-EG");
-  } catch { return ""; }
+async function openPlayer(seriesName, episodeNum = 1) {
+    const data = await loadData();
+    const series = data.series.find(s => s.name === seriesName);
+    if (!series) return;
+
+    currentSeries = series;
+    currentEpisode = episodeNum;
+
+    document.getElementById('player-modal').classList.remove('hidden');
+    document.getElementById('player-title').textContent = series.name;
+    document.getElementById('player-subtitle').textContent =
+        `الحلقة ${episodeNum} من ${series.episodes || '?'}`;
+
+    buildEpisodesGrid(series);
+
+    const url = series.episodes_urls?.[episodeNum - 1];
+    if (!url) return;
+
+    playVideo(url);
 }
 
-function renderStats() {
-  $("statSeries").textContent = state.series.length;
-  $("statEpisodes").textContent =
-    state.series.reduce((s, x) => s + (x.count || 0), 0);
-  const dates = state.series.map(s => s.last_updated).filter(Boolean).sort().reverse();
-  $("statUpdated").textContent = dates[0] ? formatDate(dates[0]) : "—";
+function playVideo(url) {
+    const video = document.getElementById('video-player');
+
+    if (hls) { hls.destroy(); hls = null; }
+
+    if (Hls.isSupported()) {
+        hls = new Hls({
+            maxBufferLength: 30,
+            enableWorker: true,
+            lowLatencyMode: false,
+        });
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            video.play().catch(e => console.log('autoplay blocked:', e));
+        });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = url;
+        video.play().catch(() => {});
+    }
+
+    // autoplay للانتقال التلقائي
+    video.removeEventListener('timeupdate', onTimeUpdate);
+    video.removeEventListener('ended', onEnded);
+    video.addEventListener('timeupdate', onTimeUpdate);
+    video.addEventListener('ended', onEnded);
 }
 
-function renderSeries(series) {
-  const card = document.createElement("div");
-  card.className = "card";
-
-  const initial = (series.name || "?").charAt(0);
-  const epsCount = series.count || 0;
-  const isNew = series.last_updated &&
-    (Date.now() - new Date(series.last_updated)) < 7 * 86400000;
-
-  // ★ poster إن وُجد، وإلا placeholder
-  const thumbHtml = series.poster
-    ? `<img src="${escapeHtml(series.poster)}" alt="${escapeHtml(series.name)}"
-         loading="lazy" onerror="this.style.display='none';
-         this.parentElement.classList.add('no-poster')">`
-    : "";
-
-  card.innerHTML = `
-    <div class="card-thumb">
-      ${thumbHtml}
-      <div class="card-thumb-placeholder">${escapeHtml(initial)}</div>
-      ${isNew ? '<span class="card-badge new">جديد</span>' : ''}
-      <div class="card-play">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-      </div>
-    </div>
-    <div class="card-body">
-      <h3 class="card-title">${escapeHtml(series.name)}</h3>
-      <div class="card-sub">${epsCount} حلقة</div>
-    </div>
-  `;
-  card.addEventListener("click", () => openSeries(series));
-  return card;
+function onTimeUpdate(e) {
+    const v = e.target;
+    if (!v.duration) return;
+    const remaining = v.duration - v.currentTime;
+    if (remaining <= 10 && remaining > 0) {
+        showCountdown(Math.floor(remaining));
+    } else {
+        hideCountdown();
+    }
 }
 
-function renderGrid() {
-  const grid = $("grid");
-  grid.innerHTML = "";
-  if (!state.filtered.length) {
-    $("emptyBox").classList.remove("hidden");
-    $("loadMoreWrap").classList.add("hidden");
-    return;
-  }
-  $("emptyBox").classList.add("hidden");
-  const end = state.page * state.perPage;
-  const visible = state.filtered.slice(0, end);
-  const frag = document.createDocumentFragment();
-  visible.forEach(s => frag.appendChild(renderSeries(s)));
-  grid.appendChild(frag);
-  if (end < state.filtered.length) {
-    $("loadMoreWrap").classList.remove("hidden");
-  } else {
-    $("loadMoreWrap").classList.add("hidden");
-  }
+function onEnded() {
+    playNext();
 }
 
-function applySort() {
-  const arr = [...state.series];
-  if (state.search) {
-    const q = state.search.toLowerCase();
-    state.filtered = arr.filter(s => s.name.toLowerCase().includes(q));
-  } else {
-    state.filtered = arr;
-  }
-  switch (state.currentSort) {
-    case "recent":
-      state.filtered.sort((a, b) =>
-        (b.last_updated || "").localeCompare(a.last_updated || ""));
-      break;
-    case "name":
-      state.filtered.sort((a, b) => a.name.localeCompare(b.name, "ar"));
-      break;
-    case "episodes":
-      state.filtered.sort((a, b) => (b.count || 0) - (a.count || 0));
-      break;
-  }
-  state.page = 1;
-  renderGrid();
+function showCountdown(sec) {
+    const el = document.getElementById('autoplay-countdown');
+    const num = document.getElementById('countdown-num');
+    el.classList.remove('hidden');
+    num.textContent = sec;
+    if (countdownTimer) clearTimeout(countdownTimer);
+    countdownTimer = setTimeout(() => playNext(), sec * 1000);
 }
 
-function openSeries(series) {
-  $("seriesTitle").textContent = series.name;
-  $("seriesMeta").textContent = `${series.count} حلقة`;
-  const grid = $("episodesGrid");
-  grid.innerHTML = "";
-  if (!series.episodes || !series.episodes.length) {
-    grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-3);padding:20px">لا توجد حلقات</p>';
-  } else {
-    series.episodes.forEach(ep => {
-      const btn = document.createElement("button");
-      btn.className = "ep-btn";
-      btn.textContent = ep.episode;
-      btn.addEventListener("click", () => {
-        closeSeries();
-        openPlayer(ep, series.name);
-      });
-      grid.appendChild(btn);
+function hideCountdown() {
+    document.getElementById('autoplay-countdown').classList.add('hidden');
+    if (countdownTimer) { clearTimeout(countdownTimer); countdownTimer = null; }
+}
+
+function playNext() {
+    hideCountdown();
+    if (!currentSeries) return;
+    const next = currentEpisode + 1;
+    const nextUrl = currentSeries.episodes_urls?.[next - 1];
+    if (nextUrl) {
+        openPlayer(currentSeries.name, next);
+    }
+}
+
+function buildEpisodesGrid(series) {
+    const grid = document.getElementById('episodes-grid');
+    grid.innerHTML = '';
+    (series.episodes_urls || []).forEach((url, i) => {
+        const ep = i + 1;
+        const btn = document.createElement('button');
+        btn.className = 'ep-btn' + (ep === currentEpisode ? ' active' : '');
+        btn.textContent = ep;
+        btn.onclick = () => openPlayer(series.name, ep);
+        grid.appendChild(btn);
     });
-  }
-  $("seriesModal").classList.remove("hidden");
-  document.body.style.overflow = "hidden";
-}
-
-function closeSeries() {
-  $("seriesModal").classList.add("hidden");
-  document.body.style.overflow = "";
-}
-
-function openPlayer(ep, seriesName) {
-  const modal = $("playerModal");
-  const video = $("player");
-  const loader = $("playerLoader");
-  $("modalTitle").textContent = `${seriesName} — الحلقة ${ep.episode}`;
-  $("modalDesc").textContent = "";
-  if (!ep.file_id || !ep.size) {
-    video.src = "";
-    loader.innerHTML = '<p style="color:var(--error)">البيانات غير مكتملة</p>';
-    loader.classList.remove("hidden");
-  } else {
-    const url = `${API_BASE}/stream?fid=${encodeURIComponent(ep.file_id)}&size=${ep.size}&mid=${ep.message_id}`;
-    video.src = url;
-    loader.classList.remove("hidden");
-    video.load();
-    video.play().catch(() => {});
-  }
-  video.onloadeddata = () => loader.classList.add("hidden");
-  video.onerror = () => {
-    loader.innerHTML = '<p style="color:var(--error)">تعذر تشغيل الفيديو</p>';
-    loader.classList.remove("hidden");
-  };
-  modal.classList.remove("hidden");
-  document.body.style.overflow = "hidden";
 }
 
 function closePlayer() {
-  const video = $("player");
-  video.pause();
-  video.removeAttribute("src");
-  video.load();
-  $("playerModal").classList.add("hidden");
-  $("playerLoader").classList.add("hidden");
-  document.body.style.overflow = "";
+    const video = document.getElementById('video-player');
+    video.pause();
+    if (hls) { hls.destroy(); hls = null; }
+    hideCountdown();
+    document.getElementById('player-modal').classList.add('hidden');
 }
 
-async function init() {
-  $("year").textContent = new Date().getFullYear();
-  try {
-    const res = await fetch("series.json", { cache: "no-cache" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    state.series = await res.json();
-    if (!Array.isArray(state.series)) state.series = [];
-  } catch (e) {
-    console.error("فشل تحميل series.json:", e);
-    $("loading").classList.add("hidden");
-    $("errorBox").classList.remove("hidden");
-    $("errorMsg").textContent = "تعذر تحميل البيانات. حاول تحديث الصفحة.";
-    return;
-  }
-  $("loading").classList.add("hidden");
-  renderStats();
-  applySort();
-
-  $("search").addEventListener("input", (e) => {
-    state.search = e.target.value.trim();
-    applySort();
-  });
-
-  document.querySelectorAll(".tab").forEach(tab => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-      tab.classList.add("active");
-      state.currentSort = tab.dataset.sort;
-      applySort();
-    });
-  });
-
-  $("loadMore").addEventListener("click", () => {
-    state.page++;
-    renderGrid();
-  });
-
-  const scrollBtn = $("scrollTop");
-  window.addEventListener("scroll", () => {
-    if (window.scrollY > 400) scrollBtn.classList.remove("hidden");
-    else scrollBtn.classList.add("hidden");
-  }, { passive: true });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      if (!$("playerModal").classList.contains("hidden")) closePlayer();
-      else if (!$("seriesModal").classList.contains("hidden")) closeSeries();
+// click handlers
+document.addEventListener('click', e => {
+    const card = e.target.closest('.card');
+    if (card) {
+        e.preventDefault();
+        const name = decodeURIComponent(card.dataset.series);
+        openPlayer(name, 1);
     }
-  });
+});
 
-  console.log(`✅ شوف: ${state.series.length} مسلسل`);
-}
-
-document.addEventListener("DOMContentLoaded", init);
+// search
+document.getElementById('search-input')?.addEventListener('input', e => {
+    const q = e.target.value.toLowerCase();
+    document.querySelectorAll('.card').forEach(c => {
+        const name = (c.querySelector('.card-title')?.textContent || '').toLowerCase();
+        c.style.display = name.includes(q) ? '' : 'none';
+    });
+});
