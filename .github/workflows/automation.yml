@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['downloader.py', 'run_all.py', 'sources/**']
+    paths: ['downloader.py', 'run_all.py', 'sources/**', 'telegram_checker.py', 'uploader.py']
 
 permissions:
   contents: write
@@ -75,6 +75,9 @@ jobs:
           YAM_SERIES_PATH=/moslslat.php
           EGYBEST_BASE_URL=https://egybesstt.baby
           EGYBEST_SERIES_PATH=/all-series.php
+          CHECK_CHANNELS=shoofcima,shoofFilm
+          CHECK_CHANNEL_LIMIT=3000
+          CHECK_CACHE_TTL=3600
           MAX_EPISODES_PER_RUN=0
           MAX_RUNTIME_SECONDS=9900
           SKIP_COMPRESS=false

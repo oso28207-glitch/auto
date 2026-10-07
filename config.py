@@ -20,6 +20,13 @@ class Config:
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
     CHANNEL_ID = os.environ.get("CHANNEL_ID", "").strip()
 
+    # ★ فحص قنوات Telegram قبل التنزيل
+    CHECK_CHANNELS = os.environ.get(
+        "CHECK_CHANNELS", "shoofcima,shoofFilm"
+    ).strip()
+    CHECK_CHANNEL_LIMIT = int(os.environ.get("CHECK_CHANNEL_LIMIT", "3000"))
+    CHECK_CACHE_TTL = int(os.environ.get("CHECK_CACHE_TTL", "3600"))
+
     # المصادر
     ENABLED_SOURCES = os.environ.get("ENABLED_SOURCES", "u3seq,yam").strip()
 
@@ -46,7 +53,7 @@ class Config:
     SKIP_COMPRESS = os.environ.get("SKIP_COMPRESS", "false").lower() == "true"
     KEEP_MEDIA = os.environ.get("KEEP_MEDIA", "false").lower() == "true"
 
-    # الضغط
+    # الضغط (بدون أي تغيير)
     COMPRESS_SCALE = int(os.environ.get("COMPRESS_SCALE", "240"))
     COMPRESS_CRF = int(os.environ.get("COMPRESS_CRF", "32"))
     COMPRESS_PRESET = os.environ.get("COMPRESS_PRESET", "veryfast")
