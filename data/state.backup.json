@@ -562,7 +562,7 @@
           "status": "failed",
           "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-61/",
           "title": "مسلسل ما زلت في 17 الحلقة 61 مدبلجة",
-          "updated_at": "2026-10-07T04:44:46.801363+00:00",
+          "updated_at": "2026-10-07T05:00:14.799874+00:00",
           "error": "فشل التحميل"
         },
         "62": {
@@ -1116,7 +1116,7 @@
         "51": {
           "status": "failed",
           "error": "فشل التحميل",
-          "updated_at": "2026-10-07T04:40:14.593718+00:00"
+          "updated_at": "2026-10-07T04:54:29.381896+00:00"
         },
         "52": {
           "status": "failed",
@@ -1369,7 +1369,7 @@
           "status": "failed",
           "url": "https://u.3seq.com/video/modablaj-uzak-sehir-episode-141-rkoy/",
           "title": "مسلسل المدينة البعيدة الحلقة 141 مدبلجة",
-          "updated_at": "2026-10-07T04:20:03.520256+00:00",
+          "updated_at": "2026-10-07T05:02:47.726639+00:00",
           "error": "فشل التحميل"
         },
         "1": {
@@ -1787,7 +1787,7 @@
           "status": "failed",
           "url": "https://u.3seq.com/video/modablaj-acarpinti-episode-34/",
           "title": "مسلسل الخفقان الحلقة 34 مدبلجة",
-          "updated_at": "2026-10-07T04:24:51.231043+00:00",
+          "updated_at": "2026-10-07T05:07:35.987880+00:00",
           "error": "فشل التحميل"
         },
         "35": {
@@ -1819,7 +1819,7 @@
           "status": "failed",
           "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e01-444x/",
           "title": "مسلسل المشردون 2 الموسم الثاني الحلقة 1 مدبلجة",
-          "updated_at": "2026-10-07T04:28:18.978243+00:00",
+          "updated_at": "2026-10-07T05:12:35.107151+00:00",
           "error": "فشل التحميل"
         },
         "2": {
@@ -1841,7 +1841,7 @@
           "status": "failed",
           "url": "https://u.3seq.com/video/modablaj-esref-ruya-episode-10-2joa/",
           "title": "مسلسل حلم اشرف الحلقة 10 مدبلجة",
-          "updated_at": "2026-10-07T04:29:44.363364+00:00",
+          "updated_at": "2026-10-07T05:14:00.962680+00:00",
           "error": "فشل التحميل"
         }
       },
@@ -1858,7 +1858,7 @@
           "status": "failed",
           "url": "https://u.3seq.com/video/modablaj-umutsuz-ev-kadinlari-episode-s05e64/",
           "title": "مسلسل نساء حائرات الموسم الخامس الحلقة 64 مدبلجة والاخيرة",
-          "updated_at": "2026-10-07T04:30:02.691648+00:00",
+          "updated_at": "2026-10-07T05:14:19.856854+00:00",
           "error": "فشل التحميل"
         }
       },
@@ -1875,7 +1875,7 @@
           "status": "failed",
           "url": "https://u.3seq.com/video/modablaj-hay-sultan-episode-01-l8oq-2-yg73/",
           "title": "مسلسل الجيلاني الحلقة 1 مدبلجة",
-          "updated_at": "2026-10-06T23:16:26.181046+00:00",
+          "updated_at": "2026-10-07T05:18:42.688417+00:00",
           "error": "فشل التحميل"
         }
       },
@@ -39446,5 +39446,5 @@
       "source": "telegram:@shoofFilm"
     }
   ],
-  "last_run": "2026-10-07T04:44:46.801379+00:00"
+  "last_run": "2026-10-07T05:18:42.688433+00:00"
 }
