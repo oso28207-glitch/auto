@@ -1,25 +1,46 @@
-"""u3seq source — يجرّب مسارات متعددة للعثور على قائمة المسلسلات"""
+"""
+u3seq source — قصة عشق (u.3seq.cam / u.3seq.com)
+★ تجرب مسارات متعددة للعثور على أرشيف المسلسلات
+★ تدعم النطاقات البديلة
+"""
 import os
 import re
 import html
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from curl_cffi import requests as cffi
 from bs4 import BeautifulSoup
 
-BASE = os.environ.get("SOURCE_BASE_URL", "https://u.3seq.cam").rstrip("/")
+# النطاقات الأساسية
+PRIMARY_DOMAIN = os.environ.get("SOURCE_BASE_URL", "https://u.3seq.cam").rstrip("/")
+DOMAIN_CANDIDATES = [
+    PRIMARY_DOMAIN,
+    "https://u.3seq.com",
+    "https://u.3seq.cam",
+    "https://3seq.cam",
+]
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
+# أنماط روابط الحلقات
+EPISODE_PATTERNS = [
+    re.compile(r'href=["\']([^"\']*?/video/[^"\']*?modablaj-[^"\']*?episode[-_](\d+)[^"\']*)["\']', re.I),
+    re.compile(r'href=["\']([^"\']*?modablaj-[^"\']*?episode[-_](\d+)[^"\']*)["\']', re.I),
+    re.compile(r'href=["\']([^"\']*?episode[-_](\d+)[^"\']*)["\']', re.I),
+]
 
-def _get(url, timeout=30):
+
+def _get(url, timeout=25):
     try:
         return cffi.get(
             url, impersonate="chrome120", timeout=timeout, verify=False,
-            headers={"User-Agent": UA,
-                     "Accept-Language": "ar,en-US;q=0.9,en;q=0.8"},
+            headers={
+                "User-Agent": UA,
+                "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+                "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
+            },
         )
     except Exception:
         return None
@@ -31,62 +52,81 @@ def _clean_name(raw):
     name = html.unescape(raw).strip()
     name = re.sub(r'\s*[-–—]\s*الحلقة\s*\d+.*$', '', name).strip()
     name = re.sub(r'\s*الحلقة\s*\d+\s*(مدبلجة|مترجمة)?\s*$', '', name).strip()
+    name = re.sub(r'\s*\|\s*قصة عشق.*$', '', name).strip()
     return name
 
 
-def _try_archive_paths():
-    """يجرّب مسارات متعددة لأرشيف المسلسلات."""
+def _try_base():
+    """يجرب النطاقات ويرجع أول واحد يعمل."""
+    for base in DOMAIN_CANDIDATES:
+        r = _get(base + "/", timeout=10)
+        if r and r.status_code == 200 and len(r.text) > 1000:
+            print(f"   ✅ النطاق: {base}")
+            return base
+    return None
+
+
+def _discover_series_urls(base):
+    """
+    يعيد قائمة URLs لصفحات المسلسلات.
+    يجرب مسارات متعددة.
+    """
     candidates = [
-        f"{BASE}/video/series/",
-        f"{BASE}/series/",
-        f"{BASE}/مسلسلات/",
-        f"{BASE}/video/series/page/1/",
-        f"{BASE}/genre/series/",
+        f"{base}/video/series/",
+        f"{base}/video/series/page/1/",
+        f"{base}/series/",
+        f"{base}/مسلسلات/",
+        f"{base}/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa/",
+        f"{base}/category/series/",
     ]
+
+    series_urls = set()
+    working_base = None
+
     for url in candidates:
         r = _get(url, timeout=15)
         if not r or r.status_code != 200:
             continue
+        if "/video/series" not in r.text and "modablaj" not in r.text:
+            continue
+        working_base = url
         soup = BeautifulSoup(r.text, "html.parser")
-        links = set()
         for a in soup.find_all("a", href=True):
             href = a["href"]
             if "/video/series/" in href or "/series/" in href:
-                full = urljoin(BASE, href).rstrip("/")
-                if full != f"{BASE}/video/series" and full != f"{BASE}/series":
-                    links.add(full)
-        if links:
-            print(f"   ✅ مسار ناجح: {url} ({len(links)} رابط)")
-            return url, links
-    return None, set()
+                full = urljoin(base, href).rstrip("/")
+                # تجنب القائمة نفسها
+                if "/page/" in full or full.endswith("/video/series") or full.endswith("/series"):
+                    continue
+                series_urls.add(full)
 
+        if series_urls:
+            print(f"   ✅ مسار يعمل: {url} ({len(series_urls)} رابط)")
+            break
 
-def _fetch_all_series():
-    base_url, first_links = _try_archive_paths()
-    if not base_url:
-        return []
-
-    all_links = set(first_links)
     # جلب صفحات إضافية
-    for page in range(2, 11):
-        url = f"{base_url.rstrip('/')}/page/{page}/"
-        r = _get(url, timeout=15)
-        if not r or r.status_code != 200:
-            break
-        soup = BeautifulSoup(r.text, "html.parser")
-        new = 0
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if "/video/series/" in href or "/series/" in href:
-                full = urljoin(BASE, href).rstrip("/")
-                if full not in all_links:
-                    all_links.add(full)
-                    new += 1
-        if new == 0:
-            break
-        print(f"   صفحة {page}: +{new}")
+    if working_base and series_urls:
+        for page in range(2, 8):
+            page_url = working_base.rstrip("/").split("/page/")[0] + f"/page/{page}/"
+            r = _get(page_url, timeout=15)
+            if not r or r.status_code != 200:
+                break
+            soup = BeautifulSoup(r.text, "html.parser")
+            new = 0
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if "/video/series/" in href or "/series/" in href:
+                    full = urljoin(base, href).rstrip("/")
+                    if "/page/" in full or full.endswith("/video/series") or full.endswith("/series"):
+                        continue
+                    if full not in series_urls:
+                        series_urls.add(full)
+                        new += 1
+            if new == 0:
+                break
+            print(f"   صفحة {page}: +{new}")
 
-    return list(all_links)
+    return list(series_urls)
 
 
 def _parse_series(url):
@@ -118,6 +158,7 @@ def _parse_series(url):
                 genre = a.get_text(strip=True)
                 break
 
+    # ═══ الحلقات من ul.eplist ═══
     episodes = []
     seen = set()
     eplist = soup.find("ul", class_="eplist")
@@ -131,27 +172,61 @@ def _parse_series(url):
                 num = int(sp.get_text(strip=True))
             except ValueError:
                 continue
-            if num in seen:
+            if num in seen or num < 1 or num > 10000:
                 continue
             seen.add(num)
             page_url = urljoin(url, href)
             if not page_url.endswith("/"):
                 page_url += "/"
-            episodes.append({"num": num, "url": page_url + "?do=watch"})
+            episodes.append({
+                "num": num,
+                "url": page_url + "?do=watch",
+                "page_url": page_url,
+            })
+
+    if not episodes:
+        # جرّب النمط الاحتياطي
+        for pat in EPISODE_PATTERNS:
+            for m in pat.finditer(r.text):
+                raw_url = m.group(1)
+                try:
+                    num = int(m.group(2))
+                except ValueError:
+                    continue
+                if num in seen or num < 1 or num > 10000:
+                    continue
+                seen.add(num)
+                full = urljoin(url, raw_url)
+                if not full.endswith("/"):
+                    full += "/"
+                episodes.append({
+                    "num": num,
+                    "url": full + "?do=watch",
+                    "page_url": full,
+                })
+            if episodes:
+                break
 
     if not episodes:
         return None
 
     return {
-        "name": name, "poster": poster, "genre": genre,
+        "name": name or url.rstrip("/").split("/")[-1],
+        "poster": poster,
+        "genre": genre,
         "episodes": sorted(episodes, key=lambda x: x["num"]),
         "source_url": url,
     }
 
 
 def fetch():
-    print(f"   📄 جلب قائمة المسلسلات...")
-    urls = _fetch_all_series()
+    base = _try_base()
+    if not base:
+        print(f"   ⚠️ لا نطاق يعمل")
+        return []
+
+    print(f"   📄 جلب قائمة المسلسلات من {base}...")
+    urls = _discover_series_urls(base)
     if not urls:
         print(f"   ⚠️ لا مسلسلات")
         return []

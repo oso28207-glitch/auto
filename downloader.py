@@ -1,11 +1,12 @@
 """
-downloader.py — Universal HLS Downloader v21
+downloader.py — Universal HLS Downloader v22
 ═══════════════════════════════════════════════════════════
 يدعم:
-  • u3seq.com  — صفحات /video/modablaj-*  (يحتاج ?do=watch)
-  • yam.ahwaktv.net — صفحات watch.php?vid=XXX
-  • shhaiid4u.net  — صفحات /watch/*
-  • المشغلات المباشرة (firestream, luluvdo, ...)
+  • u3seq.com       — /video/modablaj-*  (يحتاج ?do=watch)
+  • yam.ahwaktv.net — /see.php?vid=XXX  ← الرابط الفعلي
+  • yam.ahwaktv.net — /watch.php?vid=XXX (بديل)
+  • shhaiid4u.net   — /watch/*
+  • المشغلات المباشرة (firestream, luluvdo, playmate, ...)
 
 الاستراتيجيات (بالترتيب):
   1. CDP capture + deep m3u8 resolution
@@ -40,7 +41,7 @@ MIN_PARTIAL_ACCEPT = 30 * 1024 * 1024
 M3U8_SEARCH_TIMEOUT = int(os.environ.get("M3U8_SEARCH_TIMEOUT", "40"))
 YTDLP_TIMEOUT = int(os.environ.get("YTDLP_TIMEOUT", "900"))
 FFMPEG_HLS_TIMEOUT = int(os.environ.get("FFMPEG_HLS_TIMEOUT", "1800"))
-OPEN_TIMEOUT = int(os.environ.get("OPEN_TIMEOUT", "25"))
+OPEN_TIMEOUT = int(os.environ.get("OPEN_TIMEOUT", "40"))
 STALL_TIMEOUT = int(os.environ.get("STALL_TIMEOUT", "90"))
 
 BROWSER_BATCH = int(os.environ.get("BROWSER_BATCH", "16"))
@@ -122,15 +123,16 @@ def _get_ffmpeg_exe():
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ التحقق من صلاحية URL — يدعم u3seq + yam + مشغلات
+# ★★★ التحقق من صلاحية URL — يدعم u3seq + yam(see.php) + مشغلات
 # ═══════════════════════════════════════════════════════════════
 def _is_valid_episode_url(url):
     """
     يقبل:
       • u3seq:      /video/modablaj-* أو ?do=watch
-      • yam:        /watch.php?vid=XXX
+      • yam:        /see.php?vid=XXX  ← الرابط الفعلي
+      • yam:        /watch.php?vid=XXX (بديل)
       • shhaiid4u:  /watch/*
-      • المشغلات:   /embed/, /e/, firestream, playmate, ...
+      • مشغلات:     /embed/, /e/, firestream, playmate, ...
     يرفض:
       • صفحات التصنيف: moslslat.php, all-series.php, topvideos.php
       • صفحات التنقل: الرئيسية، جديد الأفلام، ...
@@ -149,24 +151,23 @@ def _is_valid_episode_url(url):
         if b in u:
             return False
 
-    # ─── u3seq (صفحة حلقة) ───
+    # ─── u3seq ───
     if "modablaj-" in u or "/video/" in u:
         return True
 
-    # ★ yam: /watch.php?vid=XXX
+    # ★ yam — الروابط الفعلية هي see.php
+    if "see.php" in u and "vid=" in u:
+        return True
     if "watch.php" in u and "vid=" in u:
         return True
 
-    # ★ shhaiid4u: /watch/...
+    # shhaiid4u
     if "/watch/" in u and ".php" not in u:
         return True
 
     # ─── مشغلات مباشرة ───
-    play_markers = [
-        "/embed/", "firestream.to/", "playmate.to/",
-        "luluvdo.com/", "vidsonic", "vidaraa", "/e/",
-    ]
-    for m in play_markers:
+    for m in ["/embed/", "firestream.to/", "playmate.to/",
+              "luluvdo.com/", "vidsonic", "vidaraa", "/e/"]:
         if m in u:
             return True
 
@@ -419,7 +420,6 @@ def try_cffi_segments(segments, out_path, iframe_url, cookies_dict):
     if cookie_str:
         headers["Cookie"] = cookie_str
 
-    # اختبار سريع
     test_data = None
     for imp in ["chrome124", "chrome120", "chrome110"]:
         try:
@@ -971,15 +971,20 @@ def trigger_play(sb):
 
 
 # ═══════════════════════════════════════════════════════════════
-# فتح الصفحة بمهلة
+# ★★★ فتح الصفحة بمهلة (محسّن)
 # ═══════════════════════════════════════════════════════════════
 def _open_with_timeout(sb, url, timeout=OPEN_TIMEOUT):
+    """
+    فتح URL مع مهلة — يستخدم Page.navigate + Page.stopLoading.
+    لا ينتظر تحميل كل الموارد (فقط DOM).
+    """
     result = [False]
 
     def _do():
         try:
             sb.driver.execute_cdp_cmd("Page.navigate", {"url": url})
             result[0] = True
+
             # انتظر DOMContentLoaded فقط
             for _ in range(int(timeout * 2)):
                 time.sleep(0.5)
@@ -988,7 +993,8 @@ def _open_with_timeout(sb, url, timeout=OPEN_TIMEOUT):
                         "expression": "document.readyState",
                         "returnByValue": True,
                     })
-                    if state and state.get("result", {}).get("value") in ("interactive", "complete"):
+                    val = state.get("result", {}).get("value") if state else None
+                    if val in ("interactive", "complete"):
                         break
                 except Exception:
                     pass
@@ -1004,8 +1010,15 @@ def _open_with_timeout(sb, url, timeout=OPEN_TIMEOUT):
             sb.driver.execute_cdp_cmd("Page.stopLoading", {})
         except Exception:
             pass
+        try:
+            sb.driver.execute_cdp_cmd("Runtime.evaluate", {
+                "expression": "try{window.stop()}catch(e){}",
+            })
+        except Exception:
+            pass
         print(f"      ⏱️ تجاوز {timeout}s — متابعة", flush=True)
 
+    sb.cdp.sleep(2)
     return True
 
 
@@ -1100,7 +1113,7 @@ def _process_generic_video_page(sb, url, out_path):
         return None
     sb.cdp.sleep(3)
 
-    # نقرات متعددة على الفيديو
+    # نقرات متعددة
     for cycle in range(8):
         try:
             sb.cdp.execute_script("""
@@ -1144,7 +1157,7 @@ def _process_generic_video_page(sb, url, out_path):
 
         sb.cdp.sleep(1.5)
 
-    # iframe متداخل (yam)
+    # iframe متداخل (yam قد يستخدمه)
     for _ in range(3):
         try:
             ifr = sb.cdp.execute_script("""
@@ -1163,7 +1176,6 @@ def _process_generic_video_page(sb, url, out_path):
             print(f"      🔄 iframe: {ifr[:80]}", flush=True)
             sb.driver.execute_cdp_cmd("Page.navigate", {"url": ifr, "referrer": url})
             sb.cdp.sleep(3)
-            # نقرات داخل iframe
             for _ in range(3):
                 try:
                     sb.cdp.execute_script("""
@@ -1233,7 +1245,7 @@ def _process_generic_video_page(sb, url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# العملية الرئيسية — u3seq مع جلسة متصفح كاملة
+# العملية الرئيسية
 # ═══════════════════════════════════════════════════════════════
 def _process_with_browser(url, out_path):
     from seleniumbase import SB
@@ -1257,8 +1269,10 @@ def _process_with_browser(url, out_path):
 
     try:
         with SB(uc=True, xvfb=True, headless=False, incognito=True,
-                ad_block_on=True, disable_csp=True,
-                page_load_strategy="eager", locale_code="en") as sb:
+                ad_block_on=True,
+                disable_csp=True,
+                page_load_strategy="eager",
+                locale_code="en") as sb:
             try:
                 sb.activate_cdp_mode()
 
@@ -1321,12 +1335,24 @@ def _process_with_browser(url, out_path):
                 except Exception:
                     pass
 
-                # ═══ فتح الصفحة الرئيسية ═══
+                # ═══ 1) فتح الصفحة ═══
                 print(f"🖥️  فتح: {url[:90]}", flush=True)
                 _open_with_timeout(sb, url, timeout=OPEN_TIMEOUT)
                 sb.cdp.sleep(2)
 
-                # إذا كان الرابط يحتوي ?do=watch، استخدمه مباشرة
+                # ═══ 2) إذا كان yam/shhaiid4u: لا نضيف ?do=watch ═══
+                u_low = url.lower()
+                if "see.php" in u_low or "watch.php" in u_low or "/watch/" in u_low:
+                    # معالج عام مباشرة
+                    print(f"   🔄 رابط generic — معالج عام", flush=True)
+                    res = _process_generic_video_page(sb, url, out_path)
+                    try:
+                        os.remove(netlog)
+                    except Exception:
+                        pass
+                    return res
+
+                # ═══ 3) u3seq: أضف ?do=watch ═══
                 if "?do=watch" in url:
                     watch_url = url
                 else:
@@ -1339,7 +1365,7 @@ def _process_with_browser(url, out_path):
                     _open_with_timeout(sb, watch_url, timeout=OPEN_TIMEOUT)
                     sb.cdp.sleep(3)
 
-                # ═══ انتظار السيرفرات ═══
+                # ═══ 4) انتظار السيرفرات ═══
                 servers = []
                 for i in range(20):
                     sb.cdp.sleep(1)
@@ -1360,7 +1386,7 @@ def _process_with_browser(url, out_path):
                     except Exception:
                         pass
 
-                # ★★★ لا سيرفرات → المعالج العام ═══
+                # لا سيرفرات → معالج عام
                 if not servers:
                     print(f"   🔄 لا سيرفرات — المعالج العام", flush=True)
                     res = _process_generic_video_page(sb, url, out_path)
@@ -1370,7 +1396,7 @@ def _process_with_browser(url, out_path):
                         pass
                     return res
 
-                # ═══ جمع iframes ═══
+                # ═══ 5) جمع iframes ═══
                 print(f"\n   📋 جمع iframes...", flush=True)
                 iframe_map = {}
                 seen = set()
@@ -1452,7 +1478,7 @@ def _process_with_browser(url, out_path):
 
                 ordered = sorted(iframe_map.items(), key=_prio)
 
-                # ═══ تجربة كل سيرفر ═══
+                # ═══ 6) تجربة كل سيرفر ═══
                 for sname, iframe_url in ordered:
                     print(f"\n   ═══ {sname} ═══", flush=True)
                     try:
@@ -1509,7 +1535,6 @@ def _process_with_browser(url, out_path):
                             except Exception:
                                 pass
 
-                        # تشغيل
                         trigger_play(sb)
 
                         # بحث عن m3u8
@@ -1579,7 +1604,7 @@ def _process_with_browser(url, out_path):
                         print(f"   ❌ {str(e)[:120]}", flush=True)
                         continue
 
-                # كل السيرفرات فشلت → جرّب المعالج العام
+                # كل السيرفرات فشلت → معالج عام
                 print(f"\n   🔄 جميع السيرفرات فشلت — المعالج العام", flush=True)
                 res = _process_generic_video_page(sb, url, out_path)
                 try:
@@ -1693,7 +1718,6 @@ def download_episode(series_name, episode_num, url,
         print(f"    ↳ موجودة: {final.name}", flush=True)
         return final
 
-    # ★ فحص صلاحية الرابط
     if not _is_valid_episode_url(url):
         print(f"    ⏭️ تخطي (رابط غير مدعوم): {url[:80]}", flush=True)
         return None
@@ -1736,7 +1760,6 @@ def download_episode(series_name, episode_num, url,
     if not final.exists():
         return None
 
-    # thumbnail
     try:
         thumb_path = out_dir / f"{file_prefix}.jpg"
         _make_thumbnail(final, thumb_path)
