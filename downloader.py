@@ -1,12 +1,11 @@
 """
-downloader.py v46 — FINAL
+downloader.py v47 — FINAL
 ═══════════════════════════════════════════════════════════
-v46: 3 تحسينات ذكية لتسريع 10x
-     1. اختيار variant الأدنى (≥360p) بدل الأعلى (1080p)
-        → 60MB بدل 250MB لكل حلقة
-     2. 16 worker بدل 4 (يعمل Chrome بـ threads بشكل آمن)
-     3. base64 chunk 128KB بدل 32KB
-     4. progress كل 100 مقطع (أقل ضجيجاً)
+v47: إصلاح فوري
+     - CHUNK=8192 (آمن، تجنب RangeError في apply)
+     - طباعة أخطاء fetch (أول 3 فقط)
+     - اختيار variant ذكي: تحقق من وجود >1 variant
+     - 16 workers (يُبقى)
 """
 
 import os
@@ -28,8 +27,11 @@ MIN_SIZE = 100 * 1024
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
-# الحد الأدنى للجودة المقبولة (نتجاهل أي variant أقل من هذا)
 MIN_HEIGHT = 360
+
+# عدادات للأخطاء (لمنع ضجيج السجل)
+_fetch_error_count = 0
+_fetch_exc_count = 0
 
 
 def _safe(n):
@@ -356,9 +358,11 @@ def _fetch_text_cdp(sb, url, referer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ fetch مقطع واحد (مع AbortController)
+# ★★★ v47: fetch مقطع واحد (CHUNK=8192)
 # ═══════════════════════════════════════════════════════════════
-def _fetch_one_segment(driver, url, referer, max_size_mb=10, timeout_s=100):
+def _fetch_one_segment(driver, url, referer, max_size_mb=10, timeout_s=60):
+    global _fetch_error_count, _fetch_exc_count
+
     max_bytes = max_size_mb * 1024 * 1024
     js = f"""
     (function(){{
@@ -384,18 +388,24 @@ def _fetch_one_segment(driver, url, referer, max_size_mb=10, timeout_s=100):
             var bytes = new Uint8Array(buf);
             if (bytes.length > {max_bytes}) return 'ERROR: TOO_BIG';
             var binary = '';
-            var CHUNK = 131072;
+            var CHUNK = 8192;
             for (var i = 0; i < bytes.length; i += CHUNK) {{
-                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+                var sub = bytes.subarray(i, i + CHUNK);
+                binary += String.fromCharCode.apply(null, sub);
             }}
-            return 'OK:' + btoa(binary);
+            try {{
+                return 'OK:' + btoa(binary);
+            }} catch(b64err) {{
+                return 'ERROR: btoa: ' + b64err.message;
+            }}
         }})
         .catch(e => {{
             clearTimeout(timer);
-            return 'ERROR: ' + (e.message || 'fetch failed');
+            return 'ERROR: ' + (e.message || e.name || 'fetch failed');
         }});
     }})();
     """
+
     try:
         result = driver.execute_cdp_cmd("Runtime.evaluate", {
             "expression": js,
@@ -406,16 +416,23 @@ def _fetch_one_segment(driver, url, referer, max_size_mb=10, timeout_s=100):
         if not isinstance(value, str):
             return None
         if value.startswith("ERROR:"):
+            _fetch_error_count += 1
+            if _fetch_error_count <= 3:
+                print(f"      ⚠️ fetch error #{_fetch_error_count}: "
+                      f"{value[6:150]}", flush=True)
             return None
         if value.startswith("OK:"):
             return base64.b64decode(value[3:])
-    except Exception:
-        pass
+    except Exception as e:
+        _fetch_exc_count += 1
+        if _fetch_exc_count <= 3:
+            print(f"      ⚠️ fetch exc #{_fetch_exc_count}: "
+                  f"{str(e)[:120]}", flush=True)
     return None
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v46: التحميل المتوازي مع 16 worker
+# التحميل المتوازي
 # ═══════════════════════════════════════════════════════════════
 def _parallel_download(sb, seg_urls, referer, tmp_dir, max_workers=16,
                        hard_deadline_s=1800):
@@ -474,7 +491,6 @@ def _parallel_download(sb, seg_urls, referer, tmp_dir, max_workers=16,
                     else:
                         failed += 1
 
-            # اطبع كل 100 مقطع أو كل 15 ثانية
             now = time.time()
             if done % 100 == 0 or (done < total and now - last_print > 15 and done > 0):
                 with lock:
@@ -505,6 +521,10 @@ def _parallel_download(sb, seg_urls, referer, tmp_dir, max_workers=16,
 # downloader الرئيسي
 # ═══════════════════════════════════════════════════════════════
 def _download_via_browser(sb, m3u8_url, out_path, referer):
+    global _fetch_error_count, _fetch_exc_count
+    _fetch_error_count = 0
+    _fetch_exc_count = 0
+
     print(f"      🎯 التحميل عبر المتصفح...", flush=True)
 
     m3u8_text = _fetch_text_cdp(sb, m3u8_url, referer)
@@ -514,7 +534,6 @@ def _download_via_browser(sb, m3u8_url, out_path, referer):
 
     print(f"      ✅ m3u8: {len(m3u8_text)} حرف", flush=True)
 
-    # ★★★ v46: اختر variant الأدنى (>= 360p) بدل الأعلى
     if "#EXT-X-STREAM-INF" in m3u8_text:
         chosen = _pick_smallest_variant(m3u8_text, m3u8_url,
                                          min_height=MIN_HEIGHT)
@@ -571,12 +590,13 @@ def _download_via_browser(sb, m3u8_url, out_path, referer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v46: اختيار أصغر variant بجودة مقبولة
+# ★★★ v47: اختيار variant ذكي
 # ═══════════════════════════════════════════════════════════════
 def _pick_smallest_variant(m3u8_text, base_url, min_height=360):
     """
-    يختار أصغر variant بجودة >= min_height.
-    يوفر ~75% من حجم التنزيل والوقت.
+    v47: 
+    - إذا كان هناك variant واحد فقط → لا تغيير (يعيد None)
+    - إذا كانت هناك variants متعددة → اختر الأصغر بجودة >= min_height
     """
     variants = []
     lines = m3u8_text.splitlines()
@@ -584,7 +604,6 @@ def _pick_smallest_variant(m3u8_text, base_url, min_height=360):
     for i, line in enumerate(lines):
         if not line.startswith("#EXT-X-STREAM-INF"):
             continue
-        # استخرج BANDWIDTH و RESOLUTION
         m_bw = re.search(r"BANDWIDTH=(\d+)", line)
         m_res = re.search(r"RESOLUTION=(\d+)x(\d+)", line)
         bw = int(m_bw.group(1)) if m_bw else 0
@@ -597,29 +616,32 @@ def _pick_smallest_variant(m3u8_text, base_url, min_height=360):
                     base_url.rsplit("/", 1)[0] + "/", uri)
                 variants.append({"bw": bw, "h": height, "url": full})
 
+    # لا variants → لا تغيير
     if not variants:
-        # لا يوجد variants — استخدم ما هو موجود
         return None
 
-    # فلترة: فقط variants بجودة >= min_height
+    # variant واحد فقط → لا داعي للتغيير
+    if len(variants) == 1:
+        v = variants[0]
+        print(f"      ℹ️ variant واحد فقط ({v['h']}p@{v['bw']//1000}kbps) — "
+              f"نستخدمه مباشرة", flush=True)
+        return v["url"]
+
     eligible = [v for v in variants if v["h"] == 0 or v["h"] >= min_height]
     if not eligible:
-        # لم نجد جودة كافية — اختر الأعلى
         eligible = variants
 
-    # اختر الأصغر bandwidth بين المؤهلة
     eligible.sort(key=lambda v: v["bw"])
     chosen = eligible[0]
 
-    print(f"      🎚️  variants متاحة: "
-          + ", ".join(f"{v['h']}p@{v['bw']//1000}kbps" for v in variants[:5]),
+    print(f"      🎚️  {len(variants)} variants: "
+          + ", ".join(f"{v['h']}p@{v['bw']//1000}kbps" for v in variants[:6]),
           flush=True)
     print(f"      🎯 اخترنا: {chosen['h']}p@{chosen['bw']//1000}kbps", flush=True)
 
     return chosen["url"]
 
 
-# (احتفظ بالاسم القديم للتوافق)
 _pick_best_variant = _pick_smallest_variant
 
 
