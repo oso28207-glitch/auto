@@ -1,8 +1,14 @@
-"""build_site.py — يبني موقع نتفليكس-ستايل."""
-import os, json, re, hashlib, shutil
+"""build_site.py — يبني موقع نتفليكس-ستايل مع ترتيب الأولوية."""
+import os
+import json
+import re
+import hashlib
+import shutil
 from pathlib import Path
 from urllib.parse import quote
+
 from curl_cffi import requests as cffi
+
 from config import config, DATA_DIR, DOCS_DIR
 
 POSTERS = DOCS_DIR / "posters"
@@ -16,11 +22,13 @@ def _slug(name):
 
 
 def _dl_poster(url, name):
-    if not url or not url.startswith("http"): return "posters/placeholder.jpg"
+    if not url or not url.startswith("http"):
+        return "posters/placeholder.jpg"
     ext = "jpg"
     for e in (".png", ".jpeg", ".jpg", ".webp"):
         if url.lower().split("?")[0].endswith(e):
-            ext = e.lstrip("."); break
+            ext = e.lstrip(".")
+            break
     slug = _slug(name)
     out = POSTERS / f"{slug}.{ext}"
     if out.exists() and out.stat().st_size > 1024:
@@ -29,15 +37,18 @@ def _dl_poster(url, name):
         try:
             r = cffi.get(url, impersonate=imp, timeout=20, verify=False)
             if r.status_code == 200 and len(r.content) > 1024:
-                with open(out, "wb") as f: f.write(r.content)
+                with open(out, "wb") as f:
+                    f.write(r.content)
                 return f"posters/{out.name}"
-        except: continue
+        except Exception:
+            continue
     return "posters/placeholder.jpg"
 
 
 CARD = """<a class="card" href="watch/{slug}.html">
   <div class="poster-wrap">
-    <img src="../{poster}" alt="{name}" loading="lazy" onerror="this.src='../posters/placeholder.jpg'">
+    <img src="../{poster}" alt="{name}" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
     <div class="play">▶</div>
   </div>
   <div class="title">{name}</div>
@@ -46,7 +57,11 @@ CARD = """<a class="card" href="watch/{slug}.html">
 
 
 def _watch_html(s, ch):
-    eps_json = json.dumps([{"num": e.get("num"), "url": e.get("url","")} for e in s.get("episodes", [])], ensure_ascii=False)
+    eps_json = json.dumps(
+        [{"num": e.get("num"), "url": e.get("url", "")}
+         for e in s.get("episodes", [])],
+        ensure_ascii=False,
+    )
     return f"""<!DOCTYPE html><html lang="ar" dir="rtl"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{s['name']} — Shoof</title>
@@ -60,10 +75,10 @@ def _watch_html(s, ch):
 <div class="wtitle">{s['name']}</div>
 </header>
 <main class="watch-main">
-<div class="player-wrap"><video id="v" controls playsinline poster="../{s.get('poster','posters/placeholder.jpg')}"></video>
+<div class="player-wrap"><video id="v" controls playsinline poster="../{s.get('poster', 'posters/placeholder.jpg')}"></video>
 <div id="count" class="countdown hidden">الحلقة التالية بعد <span id="cn">10</span> <button onclick="next()">الآن</button></div>
 </div>
-<div class="info"><h1>{s['name']}</h1><div class="meta"><span class="badge">{s.get('episodes_count',0)} حلقة</span></div>
+<div class="info"><h1>{s['name']}</h1><div class="meta"><span class="badge">{s.get('episodes_count', 0)} حلقة</span></div>
 <div class="controls"><button onclick="prev()">⏮ السابقة</button><button onclick="next()">التالية ⏭</button></div></div>
 <div class="eps"><h2>الحلقات</h2><div id="grid" class="grid"></div></div>
 </main>
@@ -71,24 +86,63 @@ def _watch_html(s, ch):
 <script src="../watch.js"></script></body></html>"""
 
 
+def _priority_of(name: str) -> int:
+    n = (name or "").strip()
+    is_dubbed = ("مدبلج" in n)
+    is_turkish = ("تركي" in n) or ("تركية" in n) or ("turkish" in n.lower())
+    is_movie = (
+        n.startswith("فيلم") or n.startswith("افلام") or
+        n.startswith("أفلام") or "افلام" in n[:10] or "أفلام" in n[:10]
+    )
+    if is_turkish and is_dubbed and not is_movie:
+        return 1
+    if is_dubbed and not is_movie:
+        return 2
+    if is_dubbed and is_movie:
+        return 3
+    if not is_movie:
+        return 4
+    return 5
+
+
 def build_site():
     print("\n🏗️  بناء الموقع", flush=True)
+
     state = {"series": []}
     f = DATA_DIR / "series.json"
     if f.exists():
         try:
-            with open(f, encoding="utf-8") as fh: state = json.load(fh)
-        except: pass
-    series = state.get("series", [])
-    if not series:
-        print("⚠️ لا مسلسلات", flush=True); return
+            with open(f, encoding="utf-8") as fh:
+                state = json.load(fh)
+        except Exception:
+            pass
 
-    ch = f"https://t.me/{config.CHANNEL_ID.lstrip('@')}" if config.CHANNEL_ID else "#"
+    series = state.get("series", [])
+
+    # فلترة العناصر غير الصحيحة
+    series = [s for s in series
+              if s.get("name") and
+              s.get("name") not in ("الصفحة الرئيسية", "جديد الأفلام")]
+
+    if not series:
+        print("⚠️ لا مسلسلات", flush=True)
+        return
+
+    # ★★★ ترتيب حسب الأولوية
+    series.sort(key=lambda s: (
+        _priority_of(s.get("name", "")),
+        s.get("name", ""),
+    ))
+
+    ch = (f"https://t.me/{config.CHANNEL_ID.lstrip('@')}"
+          if config.CHANNEL_ID else "#")
 
     # تحميل الصور
     for s in series:
         if not s.get("local_poster"):
-            s["local_poster"] = _dl_poster(s.get("poster", ""), s.get("name", ""))
+            s["local_poster"] = _dl_poster(
+                s.get("poster", ""), s.get("name", "")
+            )
 
     # صفحات المشاهدة
     watch = DOCS_DIR / "watch"
@@ -99,14 +153,40 @@ def build_site():
         with open(watch / f"{slug}.html", "w", encoding="utf-8") as fh:
             fh.write(_watch_html(s, ch))
 
-    # الرئيسية
-    cats = {"أحدث": series[:30]}
+    # ★★★ أقسام متعددة حسب الأولوية
+    turkish_dubbed = [s for s in series if _priority_of(s["name"]) == 1]
+    other_dubbed = [s for s in series if _priority_of(s["name"]) == 2]
+    dubbed_movies = [s for s in series if _priority_of(s["name"]) == 3]
+    regular = [s for s in series if _priority_of(s["name"]) >= 4]
+
     rows = ""
-    for cname, items in cats.items():
-        cards = "".join(CARD.format(slug=_slug(s["name"]), name=s["name"],
-                                     poster=s.get("local_poster","posters/placeholder.jpg"),
-                                     eps=s.get("episodes_count",0)) for s in items)
-        rows += f'<section class="row"><h2>{cname}</h2><div class="grid">{cards}</div></section>'
+    if turkish_dubbed:
+        cards = "".join(CARD.format(
+            slug=_slug(s["name"]), name=s["name"],
+            poster=s.get("local_poster", "posters/placeholder.jpg"),
+            eps=s.get("episodes_count", 0)) for s in turkish_dubbed)
+        rows += f'<section class="row"><h2>🇹🇷 مسلسلات تركية مدبلجة</h2><div class="grid">{cards}</div></section>'
+
+    if other_dubbed:
+        cards = "".join(CARD.format(
+            slug=_slug(s["name"]), name=s["name"],
+            poster=s.get("local_poster", "posters/placeholder.jpg"),
+            eps=s.get("episodes_count", 0)) for s in other_dubbed)
+        rows += f'<section class="row"><h2>🎙️ مسلسلات مدبلجة</h2><div class="grid">{cards}</div></section>'
+
+    if dubbed_movies:
+        cards = "".join(CARD.format(
+            slug=_slug(s["name"]), name=s["name"],
+            poster=s.get("local_poster", "posters/placeholder.jpg"),
+            eps=s.get("episodes_count", 0)) for s in dubbed_movies)
+        rows += f'<section class="row"><h2>🎬 أفلام مدبلجة</h2><div class="grid">{cards}</div></section>'
+
+    if regular:
+        cards = "".join(CARD.format(
+            slug=_slug(s["name"]), name=s["name"],
+            poster=s.get("local_poster", "posters/placeholder.jpg"),
+            eps=s.get("episodes_count", 0)) for s in regular[:60])
+        rows += f'<section class="row"><h2>📺 مسلسلات وأفلام</h2><div class="grid">{cards}</div></section>'
 
     html = f"""<!DOCTYPE html><html lang="ar" dir="rtl"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -119,17 +199,24 @@ def build_site():
 <main>{rows}</main>
 <footer class="footer">Shoof © 2026</footer>
 </body></html>"""
+
     with open(DOCS_DIR / "index.html", "w", encoding="utf-8") as fh:
         fh.write(html)
 
     # series.json للـ JS
-    meta = {"series": [{"name": s["name"], "slug": _slug(s["name"]),
-                        "poster": s.get("local_poster",""), "eps": s.get("episodes_count",0)}
-                       for s in series]}
+    meta = {"series": [
+        {"name": s["name"], "slug": _slug(s["name"]),
+         "poster": s.get("local_poster", ""),
+         "eps": s.get("episodes_count", 0)}
+        for s in series
+    ]}
     with open(DOCS_DIR / "series.json", "w", encoding="utf-8") as fh:
         json.dump(meta, fh, ensure_ascii=False, indent=2)
 
-    print(f"✅ {len(series)} مسلسل", flush=True)
+    print(f"✅ {len(series)} مسلسل "
+          f"(تركي مدبلج: {len(turkish_dubbed)}, "
+          f"مدبلج: {len(other_dubbed)}, "
+          f"أفلام مدبلجة: {len(dubbed_movies)})", flush=True)
 
 
 if __name__ == "__main__":
