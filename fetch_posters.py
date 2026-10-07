@@ -1,5 +1,5 @@
 """
-fetch_posters.py — جلب صور المسلسلات (إصلاح)
+fetch_posters.py — جلب صور من og:image (لأن featured_media=0)
 """
 
 import json
@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import cloudscraper
+from bs4 import BeautifulSoup
 
 from config import config, DATA_DIR
 
@@ -35,14 +36,43 @@ def _api_get(path, params=None, retries=3):
             if r.status_code == 200:
                 return r.json()
             if r.status_code == 403:
-                time.sleep(5 * attempt)
-                continue
-            print(f"      ⚠️ HTTP {r.status_code} من {url}")
+                time.sleep(5 * attempt); continue
             return None
-        except Exception as e:
-            print(f"      ⚠️ {str(e)[:100]}")
+        except Exception:
             time.sleep(3)
     return None
+
+
+def _extract_og_image(page_url, retries=2):
+    """★ يجلب og:image من HTML الصفحة."""
+    scraper = _get_scraper()
+    for _ in range(retries):
+        try:
+            r = scraper.get(page_url, timeout=30,
+                            headers={"Referer": config.U3SEQ_BASE_URL + "/"})
+            if r.status_code != 200:
+                time.sleep(2); continue
+            soup = BeautifulSoup(r.text, "html.parser")
+
+            # og:image
+            og = soup.find("meta", property="og:image")
+            if og and og.get("content"):
+                return og["content"]
+
+            # twitter:image
+            tw = soup.find("meta", attrs={"name": "twitter:image"})
+            if tw and tw.get("content"):
+                return tw["content"]
+
+            # itemprop="image"
+            ip = soup.find("meta", attrs={"itemprop": "image"})
+            if ip and ip.get("content"):
+                return ip["content"]
+
+            return ""
+        except Exception:
+            time.sleep(2)
+    return ""
 
 
 def _clean_series_name(title):
@@ -59,8 +89,7 @@ def _load_posters():
         try:
             data = json.loads(POSTERS_FILE.read_text(encoding="utf-8"))
             return data if isinstance(data, dict) else {}
-        except Exception:
-            pass
+        except Exception: pass
     return {}
 
 
@@ -72,119 +101,72 @@ def _save_posters(posters):
 
 
 def fetch_posters():
-    print("🖼️  جلب الصور من u3seq...")
+    print("🖼️  جلب الصور من u3seq (og:image)...")
     posters = _load_posters()
 
-    # ★ 1) جلب كل المنشورات مع featured_media
+    # 1) اجلب كل المنشورات (id, title, link)
     all_posts = []
     for page in range(1, config.U3SEQ_MAX_PAGES + 1):
-        # ★ استخدم _embed لضمان featured_media كامل
         posts = _api_get(
             "/wp-json/wp/v2/posts",
             params={
                 "categories": config.U3SEQ_CATEGORY,
                 "per_page": 100,
                 "page": page,
-                "_embed": "wp:featuredmedia",
+                "_fields": "id,title,link,slug",
             },
         )
-        if not isinstance(posts, list) or not posts:
-            break
+        if not isinstance(posts, list) or not posts: break
         all_posts.extend(posts)
         print(f"   صفحة {page}: {len(posts)} منشور")
-        if len(posts) < 100:
-            break
+        if len(posts) < 100: break
         time.sleep(0.5)
 
     print(f"   📊 إجمالي المنشورات: {len(all_posts)}")
-    if not all_posts:
-        return posters
 
-    # ★★★ 2) افحص أول منشور لمعرفة البنية
-    sample = all_posts[0]
-    print(f"   🔍 فحص أول منشور:")
-    print(f"      featured_media: {sample.get('featured_media', 'N/A')}")
-    if "_embedded" in sample:
-        emb = sample.get("_embedded", {})
-        if "wp:featuredmedia" in emb:
-            fm = emb["wp:featuredmedia"]
-            if fm and isinstance(fm, list):
-                print(f"      wp:featuredmedia[0].source_url: "
-                      f"{fm[0].get('source_url', 'N/A')[:80]}")
-
-    # ★★★ 3) استخرج الصور مباشرة من _embedded
-    series_map = {}
+    # 2) استخرج الأسماء + الروابط
+    series_links = {}
     for post in all_posts:
         title = (post.get("title") or {}).get("rendered", "")
-        if not title: continue
+        link = post.get("link", "")
+        if not title or not link: continue
 
         name = _clean_series_name(title)
-        if not name or name in series_map:
-            continue
+        if name and name not in series_links:
+            series_links[name] = link
 
-        # جرّب _embedded أولاً
-        poster_url = ""
-        emb = post.get("_embedded", {})
-        if "wp:featuredmedia" in emb:
-            fm = emb["wp:featuredmedia"]
-            if isinstance(fm, list) and fm:
-                poster_url = fm[0].get("source_url", "") or ""
-                if not poster_url:
-                    # جرّب sizes
-                    media_details = fm[0].get("media_details", {})
-                    sizes = media_details.get("sizes", {})
-                    for size in ["medium_large", "large", "medium", "thumbnail"]:
-                        if size in sizes:
-                            poster_url = sizes[size].get("source_url", "")
-                            break
+    print(f"   🎬 مسلسلات فريدة: {len(series_links)}")
 
-        # إذا لم يُوجد في embedded، احفظ media_id للجلب لاحقاً
-        media_id = post.get("featured_media", 0)
-        if not poster_url and media_id:
-            series_map[name] = {"media_id": media_id, "url": ""}
-        elif poster_url:
-            series_map[name] = {"media_id": media_id, "url": poster_url}
-            posters[f"__series__{name}"] = poster_url
-            print(f"      ✅ {name}: {poster_url[:80]}")
+    # 3) فلترة المطلوب فقط
+    needed = {n: u for n, u in series_links.items()
+              if not posters.get(f"__series__{n}")}
+    print(f"   🔄 جلب {len(needed)} صورة من HTML...")
 
-    print(f"   🎬 مسلسلات: {len(series_map)}")
-
-    # ★★★ 4) اجلب الصور المتبقية عبر media API
-    pending_ids = set()
-    for info in series_map.values():
-        if info["media_id"] and not info["url"]:
-            pending_ids.add(info["media_id"])
-
-    if pending_ids:
-        print(f"   🔄 جلب {len(pending_ids)} صورة عبر media API...")
-        media_urls = {}
-        for i, mid in enumerate(pending_ids, 1):
-            data = _api_get(f"/wp-json/wp/v2/media/{mid}")
-            if data:
-                src = data.get("source_url", "")
-                if src:
-                    media_urls[mid] = src
-            if i % 10 == 0:
-                print(f"      {i}/{len(pending_ids)}")
-            time.sleep(0.3)
-
-        # اربط
-        for name, info in series_map.items():
-            if not info["url"] and info["media_id"] in media_urls:
-                posters[f"__series__{name}"] = media_urls[info["media_id"]]
+    # 4) اجلب og:image لكل صفحة
+    success = 0
+    for i, (name, page_url) in enumerate(needed.items(), 1):
+        try:
+            og = _extract_og_image(page_url)
+            if og:
+                posters[f"__series__{name}"] = og
+                success += 1
+                print(f"      [{i}/{len(needed)}] ✅ {name}: {og[:70]}")
+            else:
+                print(f"      [{i}/{len(needed)}] ⚠️ {name}: لا صورة")
+        except Exception as e:
+            print(f"      [{i}/{len(needed)}] ❌ {name}: {str(e)[:50]}")
+        time.sleep(0.5)
 
     _save_posters(posters)
-
     total = len([k for k in posters if k.startswith("__series__")])
-    print(f"   ✅ إجمالي الصور: {total}")
+    print(f"   ✅ إجمالي الصور: {total} (+{success} جديد)")
     return posters
 
 
 def get_poster_map():
     posters = _load_posters()
     return {k.replace("__series__", "", 1): v
-            for k, v in posters.items()
-            if k.startswith("__series__")}
+            for k, v in posters.items() if k.startswith("__series__")}
 
 
 if __name__ == "__main__":
