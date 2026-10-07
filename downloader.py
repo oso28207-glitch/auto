@@ -1,12 +1,12 @@
 """
-downloader.py v44 — FINAL
+downloader.py v45 — FINAL
 ═══════════════════════════════════════════════════════════
-v44: حل جذري لتحميل مقاطع كثيرة (800+)
-     - ThreadPool من Python: 8 طلبات CDP متوازية
-     - كل طلب يجلب مقطعاً واحداً بـ base64
-     - لا حدود CDP (كل طلب < 120s)
-     - لا حاجة لـ Blob أو polling
-     - fallback للطرق الأخرى
+v45: منع التعليق في التحميل المتوازي
+     - AbortController في JS (timeout 100s لكل مقطع)
+     - ThreadPool مع wait() + hard deadline (30 دقيقة)
+     - max_workers=4 (أكثر أماناً من 8)
+     - إلغاء الطلبات المعلقة تلقائياً
+     - progress كل 40 مقطع
 """
 
 import os
@@ -18,7 +18,7 @@ import tempfile
 import threading
 import time
 import base64
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import concurrent.futures
 from pathlib import Path
 from urllib.parse import urlparse, urljoin
 
@@ -353,24 +353,31 @@ def _fetch_text_cdp(sb, url, referer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v44: fetch مقطع واحد (يُستدعى من ThreadPool)
+# ★★★ v45: fetch مقطع واحد مع AbortController (timeout صارم)
 # ═══════════════════════════════════════════════════════════════
-def _fetch_one_segment(driver, url, referer, max_size_mb=10):
+def _fetch_one_segment(driver, url, referer, max_size_mb=10, timeout_s=100):
     """
-    يجلب مقطعاً واحداً عبر CDP.
-    آمن للاستدعاء من ThreadPool.
+    v45: AbortController يمنع التعليق إذا تجاوز الطلب timeout_s.
     """
     max_bytes = max_size_mb * 1024 * 1024
+
     js = f"""
     (function(){{
+        var controller = new AbortController();
+        var timer = setTimeout(function(){{
+            try {{ controller.abort(); }} catch(e) {{}}
+        }}, {timeout_s * 1000});
+
         return fetch({repr(url)}, {{
             method: 'GET',
             credentials: 'include',
             cache: 'no-store',
             referrer: {repr(referer or '')},
+            signal: controller.signal,
             headers: {{ 'Accept': '*/*' }}
         }})
         .then(r => {{
+            clearTimeout(timer);
             if (!r.ok) return 'ERROR: HTTP ' + r.status;
             return r.arrayBuffer();
         }})
@@ -384,9 +391,13 @@ def _fetch_one_segment(driver, url, referer, max_size_mb=10):
             }}
             return 'OK:' + btoa(binary);
         }})
-        .catch(e => 'ERROR: ' + (e.message || 'fetch failed'));
+        .catch(e => {{
+            clearTimeout(timer);
+            return 'ERROR: ' + (e.message || 'fetch failed');
+        }});
     }})();
     """
+
     try:
         result = driver.execute_cdp_cmd("Runtime.evaluate", {
             "expression": js,
@@ -406,12 +417,15 @@ def _fetch_one_segment(driver, url, referer, max_size_mb=10):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v44: التحميل المتوازي عبر ThreadPool
+# ★★★ v45: التحميل المتوازي مع wait() + hard deadline
 # ═══════════════════════════════════════════════════════════════
-def _parallel_download(sb, seg_urls, referer, tmp_dir, max_workers=8):
+def _parallel_download(sb, seg_urls, referer, tmp_dir, max_workers=4,
+                       hard_deadline_s=1800):
     """
-    يحمّل المقاطع على دفعات متوازية عبر CDP.
-    كل مقطع عبر طلب CDP منفصل (< 120 ثانية).
+    v45: 
+      - wait() بدل as_completed (يمنع التعليق الأبدي)
+      - hard deadline يضمن التوقف
+      - cancel الطلبات المعلقة تلقائياً
     """
     driver = sb.driver
     total = len(seg_urls)
@@ -420,12 +434,13 @@ def _parallel_download(sb, seg_urls, referer, tmp_dir, max_workers=8):
     done = 0
     lock = threading.Lock()
 
-    # قائمة المهام: (index, url)
-    tasks = list(enumerate(seg_urls))
-
     def _worker(task):
         idx, url = task
-        data = _fetch_one_segment(driver, url, referer, max_size_mb=10)
+        try:
+            data = _fetch_one_segment(driver, url, referer,
+                                       max_size_mb=10, timeout_s=100)
+        except Exception:
+            return (idx, None, 0)
         if not data:
             return (idx, None, 0)
         seg_path = os.path.join(tmp_dir, f"seg_{idx:06d}.ts")
@@ -436,27 +451,52 @@ def _parallel_download(sb, seg_urls, referer, tmp_dir, max_workers=8):
             return (idx, None, 0)
         return (idx, seg_path, len(data))
 
-    print(f"      ⚡ تحميل متوازٍ ({max_workers} workers) — {total} مقطع", flush=True)
+    print(f"      ⚡ تحميل متوازٍ ({max_workers} workers) — {total} مقطع",
+          flush=True)
 
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        futures = [ex.submit(_worker, t) for t in tasks]
-        for f in as_completed(futures):
-            try:
-                idx, path, size = f.result()
-            except Exception:
-                idx, path, size = (-1, None, 0)
+    tasks = [(i, s) for i, s in enumerate(seg_urls)]
 
-            with lock:
-                done += 1
-                if path:
-                    paths[idx] = path
-                else:
-                    failed += 1
+    start = time.time()
+    hard_deadline = start + hard_deadline_s
 
-                if done % 40 == 0 or done == total:
-                    mb = sum(os.path.getsize(p) for p in paths.values()) / 1048576
-                    print(f"      📦 {done}/{total} | نجح: {len(paths)} | فشل: {failed} | {mb:.1f}MB",
-                          flush=True)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+        future_map = {ex.submit(_worker, t): t for t in tasks}
+        pending = set(future_map.keys())
+
+        while pending and time.time() < hard_deadline:
+            done_set, pending = concurrent.futures.wait(
+                pending, timeout=5,
+                return_when=concurrent.futures.FIRST_COMPLETED,
+            )
+            for f in done_set:
+                try:
+                    idx, path, size = f.result(timeout=1)
+                except Exception:
+                    idx, path, size = (-1, None, 0)
+
+                with lock:
+                    done += 1
+                    if path:
+                        paths[idx] = path
+                    else:
+                        failed += 1
+
+                    if done % 40 == 0 or done == total:
+                        try:
+                            mb = sum(os.path.getsize(p) for p in paths.values()) / 1048576
+                        except Exception:
+                            mb = 0
+                        print(f"      📦 {done}/{total} | نجح: {len(paths)} | فشل: {failed} | {mb:.1f}MB",
+                              flush=True)
+
+        # إلغاء الطلبات المعلقة
+        if pending:
+            print(f"      ⚠️ {len(pending)} طلب معلّق — إلغاء", flush=True)
+            for f in pending:
+                try:
+                    f.cancel()
+                except Exception:
+                    pass
 
     return paths, failed
 
@@ -498,10 +538,18 @@ def _download_via_browser(sb, m3u8_url, out_path, referer):
 
     print(f"      📋 {len(seg_urls)} مقطع", flush=True)
 
-    # ★★★ التحميل المتوازي عبر ThreadPool
     tmp_dir = tempfile.mkdtemp(prefix="br_segs_")
     start = time.time()
-    paths, failed = _parallel_download(sb, seg_urls, referer, tmp_dir, max_workers=8)
+
+    # ★ v45: hard deadline يعتمد على حجم المقاطع
+    hard_deadline_s = min(1800, max(300, len(seg_urls) * 3))
+
+    paths, failed = _parallel_download(
+        sb, seg_urls, referer, tmp_dir,
+        max_workers=4,
+        hard_deadline_s=hard_deadline_s,
+    )
+
     elapsed = time.time() - start
 
     if not paths:
@@ -516,7 +564,8 @@ def _download_via_browser(sb, m3u8_url, out_path, referer):
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
     if success and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-        print(f"      ✅ تحميل: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
+        print(f"      ✅ تحميل: {os.path.getsize(out_path)/1048576:.1f}MB",
+              flush=True)
         return (os.path.getsize(out_path), True)
     return None
 
@@ -902,6 +951,9 @@ def _thumb(v, o):
     return False
 
 
+# ═══════════════════════════════════════════════════════════════
+# الواجهة العامة
+# ═══════════════════════════════════════════════════════════════
 def download_episode(series_name, episode_num, url,
                      media_type="series", item_name=None):
     safe = _safe(item_name or series_name)
