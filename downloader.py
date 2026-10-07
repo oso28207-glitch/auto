@@ -1,11 +1,11 @@
 """
-downloader.py v40 — FINAL
+downloader.py v41 — FINAL
 ═══════════════════════════════════════════════════════════
-v40: حل مشكلة IP-Locked Tokens + CORS باستخدام اعتراض الشبكة عبر CDP
-     - اعتراض استجابة m3u8 مباشرة من الشبكة (يتجاوز CORS)
-     - جمع المقاطع (ts) من استجابات الشبكة
-     - دمج محلي باستخدام ffmpeg
-     - آليات احتياطية: yt-dlp, ffmpeg-HLS
+v41: إصلاح جذري لمشكلة fetch في المتصفح
+     - استخدام Runtime.evaluate مع awaitPromise=true
+     - تعطيل CORS عبر --disable-web-security
+     - إضافة referrer صريح في fetch
+     - حذف CDP interception غير الفعّال
 """
 
 import os
@@ -21,9 +21,6 @@ from urllib.parse import urlparse, urljoin
 
 from config import config, MEDIA_DIR
 
-# ═══════════════════════════════════════════════════════════════
-# ثوابت
-# ═══════════════════════════════════════════════════════════════
 MIN_SIZE = 100 * 1024
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
@@ -69,7 +66,7 @@ def _is_valid_url(url):
 
 
 # ═══════════════════════════════════════════════════════════════
-# JS interceptor (لبقاء كشف الروابط)
+# JS interceptor
 # ═══════════════════════════════════════════════════════════════
 _JS = r"""
 (function(){
@@ -203,9 +200,6 @@ def _open(sb, url, wait=1.5):
     _cdp(sb, "Runtime.evaluate", {"expression": "try{window.stop()}catch(e){}"})
 
 
-# ═══════════════════════════════════════════════════════════════
-# ★★★ _play — تشغيل الفيديو في المتصفح
-# ═══════════════════════════════════════════════════════════════
 def _play(sb):
     _eval(sb, """
         (function(){try{
@@ -257,9 +251,6 @@ def _play(sb):
         pass
 
 
-# ═══════════════════════════════════════════════════════════════
-# كشف m3u8
-# ═══════════════════════════════════════════════════════════════
 def _scan(sb):
     found = set()
     try:
@@ -324,151 +315,23 @@ def _scan(sb):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v40: اعتراض الشبكة عبر CDP
+# ★★★ v41: fetch عبر CDP مع awaitPromise + referrer
 # ═══════════════════════════════════════════════════════════════
-def _download_via_network_interception(sb, m3u8_url_pattern, out_path):
+def _fetch_binary_cdp(sb, url, referer, max_size_mb=500):
     """
-    يعترض استجابة m3u8 ويجمع المقاطع من الشبكة.
-    - m3u8_url_pattern: جزء من رابط m3u8 للتعرف عليه
+    يجلب بيانات ثنائية عبر fetch() داخل المتصفح.
+    يستخدم Runtime.evaluate مع awaitPromise=true (الإصلاح الرئيسي).
     """
-    print(f"      🎯 اعتراض الشبكة (CDP)...", flush=True)
-
-    # 1) تفعيل Network domain
-    _cdp(sb, "Network.enable", {})
-
-    # 2) حقن JS لبدء التقاط الطلبات (سنتعامل معها عبر CDP)
-    # (لا حاجة، لأننا سنلتقط الحدث Network.responseReceived)
-
-    # 3) تشغيل الفيديو لبدء طلبات m3u8
-    _play(sb)
-
-    # 4) انتظار حدث استجابة m3u8
-    m3u8_body = None
-    m3u8_request_id = None
-    start_time = time.time()
-    timeout = 30  # ثانية
-
-    # نستخدم حلقة لجمع الأحداث
-    while time.time() - start_time < timeout:
-        # جلب سجل الشبكة (في SeleniumBase CDP Mode يمكن استخدام get_log)
-        try:
-            logs = sb.cdp.get_log("performance")  # قد لا يكون متاحًا في جميع الإصدارات
-            if logs:
-                for entry in logs:
-                    msg = entry.get("message", {})
-                    if msg.get("method") == "Network.responseReceived":
-                        params = msg.get("params", {})
-                        resp = params.get("response", {})
-                        url = resp.get("url", "")
-                        if m3u8_url_pattern in url and ".m3u8" in url:
-                            m3u8_request_id = params.get("requestId")
-                            print(f"      ✅ تم اعتراض m3u8: {url[:100]}", flush=True)
-                            break
-        except Exception:
-            # إذا لم تكن get_log متاحة، نستخدم طريقة بديلة بالاستماع للأحداث
-            pass
-
-        if m3u8_request_id:
-            break
-        sb.cdp.sleep(0.5)
-
-    if not m3u8_request_id:
-        print(f"      ❌ لم يتم اعتراض m3u8", flush=True)
-        return None
-
-    # 5) جلب محتوى m3u8
-    try:
-        result = _cdp(sb, "Network.getResponseBody", {"requestId": m3u8_request_id})
-        if result and "body" in result:
-            m3u8_body = result["body"]
-            if result.get("base64Encoded"):
-                m3u8_body = base64.b64decode(m3u8_body).decode("utf-8", errors="ignore")
-            print(f"      ✅ تم جلب محتوى m3u8 ({len(m3u8_body)} حرف)", flush=True)
-    except Exception as e:
-        print(f"      ❌ فشل جلب m3u8: {str(e)[:100]}", flush=True)
-        return None
-
-    if not m3u8_body:
-        return None
-
-    # 6) تحليل m3u8 واستخراج المقاطع
-    base = m3u8_url_pattern.rsplit("/", 1)[0]
-    seg_urls = []
-    for line in m3u8_body.splitlines():
-        l = line.strip()
-        if not l or l.startswith("#"):
-            continue
-        full = l if l.startswith("http") else urljoin(base + "/", l)
-        seg_urls.append(full)
-
-    if not seg_urls:
-        print(f"      ❌ لا مقاطع في m3u8", flush=True)
-        return None
-
-    print(f"      📋 {len(seg_urls)} مقطع", flush=True)
-
-    # 7) جمع المقاطع عبر اعتراض الشبكة
-    # ملاحظة: هذه الخطوة تتطلب انتظار تحميل كل مقطع، وهو أمر معقد.
-    # بدلاً من ذلك، سنستخدم fetch داخل المتصفح لطلب المقاطع.
-    # (نظرًا لأن m3u8 تم اعتراضه بنجاح، فإن fetch للمقاطع قد يعمل)
-    return _fetch_segments_via_browser(sb, seg_urls, out_path, base)
-
-
-def _fetch_segments_via_browser(sb, seg_urls, out_path, base_url):
-    """
-    يجلب المقاطع باستخدام fetch داخل المتصفح.
-    (يُستدعى فقط بعد نجاح اعتراض m3u8، مما يعني أن الطلبات قد تكون مسموحة)
-    """
-    print(f"      🎯 جلب المقاطع عبر fetch...", flush=True)
-
-    tmp_dir = tempfile.mkdtemp(prefix="cdp_segs_")
-    ok_count = 0
-    failed = 0
-
-    for i, seg_url in enumerate(seg_urls, 1):
-        if i % 20 == 0 or i == len(seg_urls):
-            print(f"      📦 {i}/{len(seg_urls)} | نجح: {ok_count} | فشل: {failed}",
-                  flush=True)
-
-        # نستخدم fetch داخل المتصفح
-        data = _fetch_in_browser(sb, seg_url, max_size_mb=20)
-        if not data:
-            failed += 1
-            continue
-
-        seg_path = os.path.join(tmp_dir, f"seg_{i:06d}.ts")
-        with open(seg_path, "wb") as f:
-            f.write(data)
-        ok_count += 1
-
-    if ok_count == 0:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        print(f"      ❌ لا مقاطع محمّلة", flush=True)
-        return None
-
-    seg_paths = sorted([
-        os.path.join(tmp_dir, f) for f in os.listdir(tmp_dir)
-        if f.endswith(".ts")
-    ])
-
-    ok = _concat_segments(seg_paths, str(out_path), tmp_dir)
-    shutil.rmtree(tmp_dir, ignore_errors=True)
-
-    if ok and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-        print(f"      ✅ تحميل CDP: {os.path.getsize(out_path)/1048576:.1f}MB",
-              flush=True)
-        return (os.path.getsize(out_path), True)
-    return None
-
-
-def _fetch_in_browser(sb, url, max_size_mb=2000):
     max_bytes = max_size_mb * 1024 * 1024
+
     js = f"""
     (function(){{
         return fetch({repr(url)}, {{
             method: 'GET',
             credentials: 'include',
             cache: 'no-store',
+            referrer: {repr(referer or '')},
+            referrerPolicy: 'no-referrer-when-downgrade',
             headers: {{ 'Accept': '*/*' }}
         }})
         .then(r => {{
@@ -476,7 +339,6 @@ def _fetch_in_browser(sb, url, max_size_mb=2000):
             return r.arrayBuffer();
         }})
         .then(buf => {{
-            if (typeof buf === 'string') return buf;
             var bytes = new Uint8Array(buf);
             if (bytes.length > {max_bytes}) return 'ERROR: TOO_BIG';
             var binary = '';
@@ -489,28 +351,193 @@ def _fetch_in_browser(sb, url, max_size_mb=2000):
         .catch(e => 'ERROR: ' + (e.message || 'fetch failed'));
     }})();
     """
+
     try:
-        result = _eval(sb, js)
-        if not result or not isinstance(result, str):
+        result = sb.driver.execute_cdp_cmd("Runtime.evaluate", {
+            "expression": js,
+            "awaitPromise": True,
+            "returnByValue": True,
+        })
+        value = (result or {}).get("result", {}).get("value")
+        if not isinstance(value, str):
             return None
-        if result.startswith("ERROR:"):
-            print(f"      ⚠️ fetch error: {result[6:100]}", flush=True)
+        if value.startswith("ERROR:"):
+            print(f"      ⚠️ fetch: {value[6:150]}", flush=True)
             return None
-        if result.startswith("OK:"):
-            b64 = result[3:]
-            try:
-                return base64.b64decode(b64)
-            except Exception as e:
-                print(f"      ⚠️ decode error: {str(e)[:80]}", flush=True)
-                return None
+        if value.startswith("OK:"):
+            return base64.b64decode(value[3:])
     except Exception as e:
-        print(f"      ⚠️ fetch exception: {str(e)[:100]}", flush=True)
+        print(f"      ⚠️ fetch exc: {str(e)[:120]}", flush=True)
     return None
 
 
-# ═══════════════════════════════════════════════════════════════
-# دمج المقاطع
-# ═══════════════════════════════════════════════════════════════
+def _fetch_text_cdp(sb, url, referer):
+    """يجلب نص (m3u8) عبر fetch() داخل المتصفح."""
+    js = f"""
+    (function(){{
+        return fetch({repr(url)}, {{
+            method: 'GET',
+            credentials: 'include',
+            cache: 'no-store',
+            referrer: {repr(referer or '')},
+            referrerPolicy: 'no-referrer-when-downgrade',
+            headers: {{ 'Accept': '*/*' }}
+        }})
+        .then(r => r.ok ? r.text() : 'ERROR: HTTP ' + r.status)
+        .catch(e => 'ERROR: ' + (e.message || 'fetch failed'));
+    }})();
+    """
+    try:
+        result = sb.driver.execute_cdp_cmd("Runtime.evaluate", {
+            "expression": js,
+            "awaitPromise": True,
+            "returnByValue": True,
+        })
+        value = (result or {}).get("result", {}).get("value")
+        if not isinstance(value, str):
+            return None
+        if value.startswith("ERROR:"):
+            print(f"      ⚠️ fetch m3u8: {value[6:150]}", flush=True)
+            return None
+        return value
+    except Exception as e:
+        print(f"      ⚠️ fetch m3u8 exc: {str(e)[:120]}", flush=True)
+    return None
+
+
+def _download_via_browser(sb, m3u8_url, out_path, referer):
+    """الحل الجذري: تحميل m3u8 والمقاطع من داخل المتصفح."""
+    print(f"      🎯 التحميل عبر fetch (CDP)...", flush=True)
+
+    # 1) جلب m3u8
+    m3u8_text = _fetch_text_cdp(sb, m3u8_url, referer)
+    if not m3u8_text:
+        print(f"      ❌ فشل جلب m3u8", flush=True)
+        return None
+
+    print(f"      ✅ m3u8: {len(m3u8_text)} حرف", flush=True)
+
+    # 2) master playlist؟ اختر أفضل variant
+    if "#EXT-X-STREAM-INF" in m3u8_text:
+        best = _pick_best_variant(m3u8_text, m3u8_url)
+        if best:
+            m3u8_url = best
+            m3u8_text = _fetch_text_cdp(sb, m3u8_url, referer)
+            if not m3u8_text:
+                return None
+            print(f"      ✅ m3u8 (variant): {len(m3u8_text)} حرف", flush=True)
+
+    # 3) استخرج المقاطع + مفتاح AES
+    base = m3u8_url.rsplit("/", 1)[0]
+    key_url = None
+    key_data = None
+    seg_urls = []
+    has_aes = False
+
+    for line in m3u8_text.splitlines():
+        l = line.strip()
+        if not l:
+            continue
+        if l.startswith("#EXT-X-KEY"):
+            m = re.search(r'URI="([^"]+)"', l)
+            if m:
+                has_aes = True
+                key_uri = m.group(1)
+                key_url = key_uri if key_uri.startswith("http") else urljoin(base + "/", key_uri)
+        elif not l.startswith("#"):
+            full = l if l.startswith("http") else urljoin(base + "/", l)
+            seg_urls.append(full)
+
+    if not seg_urls:
+        print(f"      ❌ لا مقاطع في m3u8", flush=True)
+        return None
+
+    print(f"      📋 {len(seg_urls)} مقطع | AES: {has_aes}", flush=True)
+
+    # 4) جلب مفتاح AES
+    if key_url:
+        key_data = _fetch_binary_cdp(sb, key_url, referer, max_size_mb=1)
+        if not key_data or len(key_data) != 16:
+            print(f"      ⚠️ فشل مفتاح AES", flush=True)
+            key_data = None
+            has_aes = False
+
+    # 5) جلب المقاطع
+    tmp_dir = tempfile.mkdtemp(prefix="br_hls_")
+    ok_count = 0
+    failed = 0
+
+    for i, seg_url in enumerate(seg_urls, 1):
+        if i % 10 == 0 or i == len(seg_urls):
+            print(f"      📦 {i}/{len(seg_urls)} | نجح: {ok_count} | فشل: {failed}",
+                  flush=True)
+
+        data = _fetch_binary_cdp(sb, seg_url, referer, max_size_mb=30)
+        if not data:
+            failed += 1
+            continue
+
+        # فك AES-128
+        if has_aes and key_data:
+            try:
+                from Crypto.Cipher import AES
+                iv = b'\x00' * 16
+                m = re.search(r'#EXT-X-MEDIA-SEQUENCE:(\d+)', m3u8_text)
+                if m:
+                    seq = int(m.group(1)) + (i - 1)
+                    iv = seq.to_bytes(16, 'big')
+                cipher = AES.new(key_data, AES.MODE_CBC, iv)
+                data = cipher.decrypt(data)
+                pad_len = data[-1]
+                if 1 <= pad_len <= 16:
+                    data = data[:-pad_len]
+            except Exception as e:
+                print(f"      ⚠️ AES: {str(e)[:60]}", flush=True)
+
+        seg_path = os.path.join(tmp_dir, f"seg_{i:06d}.ts")
+        with open(seg_path, "wb") as f:
+            f.write(data)
+        ok_count += 1
+
+    if ok_count == 0:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        print(f"      ❌ لا مقاطع محمّلة", flush=True)
+        return None
+
+    # 6) دمج
+    seg_paths = sorted([
+        os.path.join(tmp_dir, f) for f in os.listdir(tmp_dir)
+        if f.endswith(".ts")
+    ])
+
+    ok = _concat_segments(seg_paths, str(out_path), tmp_dir)
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    if ok and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+        print(f"      ✅ fetch: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
+        return (os.path.getsize(out_path), True)
+    return None
+
+
+def _pick_best_variant(m3u8_text, base_url):
+    variants = []
+    lines = m3u8_text.splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("#EXT-X-STREAM-INF"):
+            m = re.search(r"BANDWIDTH=(\d+)", line)
+            bw = int(m.group(1)) if m else 0
+            if i + 1 < len(lines):
+                uri = lines[i + 1].strip()
+                if uri and not uri.startswith("#"):
+                    full = uri if uri.startswith("http") else urljoin(
+                        base_url.rsplit("/", 1)[0] + "/", uri)
+                    variants.append((bw, full))
+    if not variants:
+        return None
+    variants.sort(key=lambda x: -x[0])
+    return variants[0][1]
+
+
 def _concat_segments(seg_paths, out_path, seg_dir):
     if not seg_paths:
         return False
@@ -568,24 +595,79 @@ def _concat_segments(seg_paths, out_path, seg_dir):
 
 
 # ═══════════════════════════════════════════════════════════════
-# آليات احتياطية
+# fallback: yt-dlp مع cookies file
 # ═══════════════════════════════════════════════════════════════
+def _ytdlp_with_cookies(url, out_path, referer, cookies_dict):
+    print(f"      [yt-dlp]", flush=True)
+
+    # حوّل الكوكيز لملف Netscape
+    tmp_cookie = tempfile.mktemp(suffix=".txt")
+    try:
+        with open(tmp_cookie, "w", encoding="utf-8") as f:
+            f.write("# Netscape HTTP Cookie File\n")
+            for k, v in cookies_dict.items():
+                f.write(f".cdn-vids.xyz\tTRUE\t/\tFALSE\t0\t{k}\t{v}\n")
+    except Exception:
+        pass
+
+    cmd = [
+        "yt-dlp",
+        "--no-warnings", "--no-playlist", "--no-part",
+        "--retries", "3", "--fragment-retries", "5",
+        "--socket-timeout", "30",
+        "--concurrent-fragments", "16",
+        "--no-check-certificate",
+        "--hls-prefer-native",
+        "--user-agent", UA,
+        "--referer", referer,
+        "--add-header", "Origin:" + _origin(referer),
+        "--add-header", "Accept:*/*",
+        "-o", out_path, url,
+    ]
+    if os.path.exists(tmp_cookie):
+        cmd += ["--cookies", tmp_cookie]
+
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=400)
+        if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+            print(f"      ✅ yt-dlp: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
+            os.unlink(tmp_cookie)
+            return True
+        err = (r.stderr or "")[-200:]
+        print(f"      ⚠️ yt-dlp: {err}", flush=True)
+    except Exception as e:
+        print(f"      ⚠️ yt-dlp: {str(e)[:100]}", flush=True)
+    try:
+        os.unlink(tmp_cookie)
+    except Exception:
+        pass
+    return False
+
+
 def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
     print(f"      [ffmpeg-hls]", flush=True)
     headers = (
-        f"Referer: {referer}\r\nOrigin: {_origin(referer)}\r\n"
-        f"User-Agent: {UA}\r\nAccept: */*\r\n"
-        "Sec-Fetch-Dest: empty\r\nSec-Fetch-Mode: cors\r\nSec-Fetch-Site: cross-site\r\n"
+        f"Referer: {referer}\r\n"
+        f"Origin: {_origin(referer)}\r\n"
+        f"User-Agent: {UA}\r\n"
+        "Accept: */*\r\n"
+        "Sec-Fetch-Dest: empty\r\n"
+        "Sec-Fetch-Mode: cors\r\n"
+        "Sec-Fetch-Site: cross-site\r\n"
     )
     if ck:
         headers += f"Cookie: {'; '.join(f'{k}={v}' for k,v in ck.items())[:8000]}\r\n"
+
     cmd = [
         _ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "warning",
         "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
-        "-headers", headers, "-user_agent", UA,
+        "-headers", headers,
+        "-user_agent", UA,
         "-reconnect", "1", "-reconnect_streamed", "1",
-        "-i", m3u8_url, "-c", "copy", "-bsf:a", "aac_adtstoasc",
-        "-movflags", "+faststart", "-y", out_path,
+        "-i", m3u8_url,
+        "-c", "copy", "-bsf:a", "aac_adtstoasc",
+        "-movflags", "+faststart",
+        "-y", out_path,
     ]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
@@ -599,50 +681,8 @@ def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
     return False
 
 
-def _ytdlp(url, out_path, referer, ck):
-    print(f"      [yt-dlp]", flush=True)
-    ck_s = "; ".join(f"{k}={v}" for k, v in ck.items())[:8000]
-    cmd = ["yt-dlp", "--no-warnings", "--no-playlist", "--no-part",
-           "--retries", "3", "--fragment-retries", "5",
-           "--socket-timeout", "30", "--concurrent-fragments", "16",
-           "--no-check-certificate", "--hls-use-mpegts", "--hls-prefer-native",
-           "--impersonate", "chrome", "--user-agent", UA,
-           "--referer", referer,
-           "--add-header", "Origin:" + _origin(referer),
-           "--add-header", "Accept:*/*",
-           "-o", out_path, url]
-    if ck_s:
-        cmd += ["--add-header", f"Cookie:{ck_s}"]
-    log_path = out_path + ".log"
-    try:
-        log = open(log_path, "w", encoding="utf-8", errors="replace")
-        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
-    except Exception as e:
-        print(f"      ⚠️ spawn: {str(e)[:80]}", flush=True)
-        return False
-    start = time.time()
-    while proc.poll() is None:
-        time.sleep(2)
-        if time.time() - start > 400:
-            try: proc.kill()
-            except Exception: pass
-            break
-    try: log.close()
-    except Exception: pass
-    if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-        print(f"      ✅ yt-dlp: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
-        return True
-    try:
-        with open(log_path, encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
-        for line in lines[-5:]:
-            print(f"      ⚠️ {line.strip()[:150]}", flush=True)
-    except Exception: pass
-    return False
-
-
 # ═══════════════════════════════════════════════════════════════
-# استخراج m3u8 من iframe
+# استخراج m3u8
 # ═══════════════════════════════════════════════════════════════
 def _extract_from_iframe(sb, iframe_url, out_path):
     print(f"      🌐 iframe: {iframe_url[:80]}", flush=True)
@@ -681,6 +721,7 @@ def _extract_from_iframe(sb, iframe_url, out_path):
         return 2
     m3u8s.sort(key=_priority)
 
+    # إزالة المكرر
     unique = []
     seen = set()
     for u in m3u8s:
@@ -693,42 +734,29 @@ def _extract_from_iframe(sb, iframe_url, out_path):
     for u in m3u8s[:3]:
         print(f"         · {u[:100]}", flush=True)
 
-    # ★★★ المحاولة 1: اعتراض الشبكة عبر CDP
-    for m in m3u8s[:2]:
-        res = _download_via_network_interception(sb, m, str(out_path))
-        if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-            return res
-
-    # ★★★ المحاولة 2: التحميل من داخل المتصفح (fetch) - قد يفشل بسبب CORS
-    for m in m3u8s[:2]:
-        res = _download_via_browser(sb, m, str(out_path))
-        if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-            return res
-
-    # ★★★ المحاولة 3: yt-dlp
+    ref = iframe_url
     ck = _cookies(sb)
-    ref = sb.cdp.get_current_url() or iframe_url
 
+    # ★★★ المحاولة 1: fetch عبر CDP (الإصلاح الرئيسي)
+    for m in m3u8s[:2]:
+        res = _download_via_browser(sb, m, str(out_path), ref)
+        if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+            return res
+
+    # fallback: yt-dlp
     print(f"      🎯 [fallback] yt-dlp...", flush=True)
     for m in m3u8s[:2]:
-        if _ytdlp(m, str(out_path), ref, ck):
+        if _ytdlp_with_cookies(m, str(out_path), ref, ck):
             if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
                 return (os.path.getsize(out_path), True)
 
-    # ★★★ المحاولة 4: ffmpeg-HLS
+    # fallback: ffmpeg-HLS
     print(f"      🎯 [fallback] ffmpeg-HLS...", flush=True)
     for m in m3u8s[:2]:
         if _ffmpeg_hls(m, str(out_path), ref, ck):
             if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
                 return (os.path.getsize(out_path), True)
 
-    return None
-
-
-def _download_via_browser(sb, m3u8_url, out_path):
-    # (نفس الدالة السابقة، لكنها ستبقى للتوافق)
-    print(f"      🎯 التحميل من داخل المتصفح (fetch)...", flush=True)
-    # ... (نفس الكود السابق)
     return None
 
 
@@ -823,7 +851,8 @@ def _run_browser(url, out_path):
     try:
         with SB(uc=True, xvfb=True, headless=False, incognito=True,
                 ad_block_on=True, disable_csp=True,
-                page_load_strategy="eager", locale_code="en") as sb:
+                page_load_strategy="eager", locale_code="en",
+                chromium_arg="--disable-web-security,--disable-site-isolation-trials") as sb:
             try:
                 sb.activate_cdp_mode()
                 try: sb.driver.set_page_load_timeout(15)
