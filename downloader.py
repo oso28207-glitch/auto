@@ -1,11 +1,10 @@
 """
-downloader.py v48 — FINAL
+downloader.py v49 — FINAL
 ═══════════════════════════════════════════════════════════
-v48: توازي حقيقي داخل المتصفح
-     - كل CDP call يجلب 20 مقطع في Promise.all
-     - لا threads على Python (chromedriver thread-safe? No!)
-     - 42 دورة × 20 = 834 مقطع في ~3 دقائق
-     - retry تلقائي للمقاطع الفاشلة
+v49: ضغط تكيفي + منع رفع الأصلي عند الفشل
+     - _compress يحاول عدة إعدادات (240p CRF=32 → 180p CRF=42 → 144p ...)
+     - عند فشل كل المحاولات: حذف الحلقة بالكامل (لا رفع للأصلي)
+     - v48: توازي حقيقي داخل المتصفح (Promise.all مع 20 مقطع/دفعة)
 """
 
 import os
@@ -27,7 +26,7 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
 MIN_HEIGHT = 360
-BATCH_SIZE = 20  # عدد المقاطع في كل CDP call
+BATCH_SIZE = 20
 
 
 def _safe(n):
@@ -354,14 +353,9 @@ def _fetch_text_cdp(sb, url, referer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v48: جلب دفعة من المقاطع داخل المتصفح (Promise.all)
+# fetch دفعة داخل المتصفح (Promise.all)
 # ═══════════════════════════════════════════════════════════════
 def _fetch_batch_in_browser(sb, urls_batch, referer, timeout_s=90):
-    """
-    يجلب دفعة مقاطع (حتى 20) في CDP call واحد.
-    التوازي حقيقي داخل المتصفح.
-    يعيد: list of (bytes | None).
-    """
     urls_json = json.dumps(urls_batch)
 
     js = f"""
@@ -390,7 +384,6 @@ def _fetch_batch_in_browser(sb, urls_batch, referer, timeout_s=90):
                 const buf = await r.arrayBuffer();
                 const bytes = new Uint8Array(buf);
 
-                // base64 آمن (CHUNK=8192)
                 let binary = '';
                 const CHUNK = 8192;
                 for (let i = 0; i < bytes.length; i += CHUNK) {{
@@ -438,14 +431,10 @@ def _fetch_batch_in_browser(sb, urls_batch, referer, timeout_s=90):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v48: تحميل كل المقاطع بدفعات
+# تحميل كل المقاطع بدفعات
 # ═══════════════════════════════════════════════════════════════
 def _download_all_segments(sb, seg_urls, referer, tmp_dir,
                             batch_size=BATCH_SIZE):
-    """
-    يحمّل كل المقاطع بدفعات عبر CDP.
-    كل دفعة = CDP call واحد مع Promise.all (20 متوازي).
-    """
     total = len(seg_urls)
     print(f"      ⚡ تحميل بدفعات ({batch_size} مقطع/دفعة) — {total} مقطع",
           flush=True)
@@ -460,7 +449,6 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
         results = _fetch_batch_in_browser(sb, batch, referer, timeout_s=90)
 
         if results is None:
-            # فشل كامل للدفعة
             for j in range(len(batch)):
                 failed_indices.append(i + j)
         else:
@@ -477,7 +465,6 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
                 else:
                     failed_indices.append(idx)
 
-        # progress كل دفعة
         done = batch_end
         elapsed = time.time() - start
         rate = done / elapsed if elapsed > 0 else 0
@@ -490,12 +477,11 @@ def _download_all_segments(sb, seg_urls, referer, tmp_dir,
               f"فشل: {len(failed_indices)} | {mb:.1f}MB | "
               f"{rate:.1f}/s | ETA: {eta:.0f}s", flush=True)
 
-    # ★ إعادة محاولة الفاشلة (مرة واحدة)
+    # إعادة محاولة الفاشلة
     if failed_indices:
         print(f"      🔁 إعادة محاولة {len(failed_indices)} مقطع فاشل...",
               flush=True)
         retry_urls = [seg_urls[idx] for idx in failed_indices]
-        # دفعات من 10 لإعادة المحاولة
         still_failed = []
         for k in range(0, len(retry_urls), 10):
             sub = retry_urls[k:k + 10]
@@ -957,30 +943,83 @@ def _run_browser(url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# الضغط + thumbnail (بدون تغيير)
+# ★★★ v49: ضغط تكيفي
 # ═══════════════════════════════════════════════════════════════
-def _compress(inp, out):
-    im = Path(inp).stat().st_size / 1048576
-    print(f"   🗜️  {im:.2f}MB → {config.COMPRESS_SCALE}p", flush=True)
-    cmd = [_ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "error",
-           "-err_detect", "ignore_err", "-i", str(inp),
-           "-vf", f"scale=-2:{config.COMPRESS_SCALE}",
-           "-c:v", "libx264", "-preset", config.COMPRESS_PRESET,
-           "-crf", str(config.COMPRESS_CRF),
-           "-profile:v", "main", "-level", "3.1", "-pix_fmt", "yuv420p",
-           "-c:a", "aac", "-b:a", config.COMPRESS_AUDIO_BITRATE,
-           "-ac", "2", "-ar", "44100",
-           "-movflags", "+faststart", "-threads", "2",
-           "-y", str(out)]
+def _compress_once(inp, out, scale, crf):
+    """محاولة ضغط واحدة بإعدادات محددة. تعيد الحجم بالميغا أو 0."""
     try:
-        t0 = time.time()
+        cmd = [_ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "error",
+               "-err_detect", "ignore_err", "-i", str(inp),
+               "-vf", f"scale=-2:{scale}",
+               "-c:v", "libx264", "-preset", config.COMPRESS_PRESET,
+               "-crf", str(crf),
+               "-profile:v", "main", "-level", "3.1", "-pix_fmt", "yuv420p",
+               "-c:a", "aac", "-b:a", config.COMPRESS_AUDIO_BITRATE,
+               "-ac", "2", "-ar", "44100",
+               "-movflags", "+faststart", "-threads", "2",
+               "-y", str(out)]
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
         if r.returncode == 0 and Path(out).exists():
-            om = Path(out).stat().st_size / 1048576
-            print(f"   ✅ {im:.2f}→{om:.2f}MB في {time.time()-t0:.1f}s", flush=True)
-            return om <= config.COMPRESS_MAX_SIZE_MB
+            return Path(out).stat().st_size / 1048576
     except Exception as e:
-        print(f"   ⚠️ {str(e)[:100]}", flush=True)
+        print(f"      ⚠️ compress_once: {str(e)[:100]}", flush=True)
+    return 0
+
+
+def _compress(inp, out):
+    """
+    ★ v49: ضغط تكيفي.
+    يحاول عدة إعدادات حتى الوصول <= MAX_SIZE_MB.
+    إذا فشل كل شيء، يعيد False (المستدعي يحذف الملفات).
+    """
+    max_mb = config.COMPRESS_MAX_SIZE_MB
+    im = Path(inp).stat().st_size / 1048576
+
+    # قائمة المحاولات (scale, CRF) — تتدرج في القوة
+    attempts = [
+        (config.COMPRESS_SCALE, config.COMPRESS_CRF),
+        (config.COMPRESS_SCALE, config.COMPRESS_CRF + 4),
+        (config.COMPRESS_SCALE, config.COMPRESS_CRF + 8),
+        (240, config.COMPRESS_CRF + 10),
+        (180, config.COMPRESS_CRF + 8),
+        (144, config.COMPRESS_CRF + 6),
+        (120, config.COMPRESS_CRF + 4),
+    ]
+    # إزالة التكرار
+    seen = set()
+    unique_attempts = []
+    for s, c in attempts:
+        key = (s, c)
+        if key not in seen:
+            seen.add(key)
+            unique_attempts.append((s, c))
+
+    for i, (scale, crf) in enumerate(unique_attempts, 1):
+        print(f"   🗜️  [{i}/{len(unique_attempts)}] {scale}p CRF={crf} "
+              f"({im:.1f}MB → ?)", flush=True)
+
+        # امسح أي ملف سابق
+        try:
+            if Path(out).exists():
+                Path(out).unlink()
+        except Exception:
+            pass
+
+        t0 = time.time()
+        om = _compress_once(inp, out, scale, crf)
+        elapsed = time.time() - t0
+
+        if om > 0:
+            print(f"   ✅ {im:.1f}→{om:.1f}MB في {elapsed:.0f}s", flush=True)
+            if om <= max_mb:
+                return True
+            print(f"   ⚠️ {om:.1f}MB > {max_mb}MB — إعادة محاولة بأقوى...",
+                  flush=True)
+        else:
+            print(f"   ❌ فشل الترميز — المحاولة التالية", flush=True)
+
+    print(f"   ❌ فشلت كل محاولات الضغط ({len(unique_attempts)} محاولة)",
+          flush=True)
     return False
 
 
@@ -1055,8 +1094,19 @@ def download_episode(series_name, episode_num, url,
         shutil.move(str(raw), str(final))
     else:
         if not _compress(raw, final):
-            print("    ⚠️ فشل الضغط — الأصلي", flush=True)
-            shutil.move(str(raw), str(final))
+            # ★ v49: لا ترفع الأصلي — احذف الحلقة بالكامل
+            print("    ❌ فشل الضغط — حذف الحلقة (لن تُرفع)", flush=True)
+            try:
+                if raw.exists():
+                    raw.unlink()
+            except Exception:
+                pass
+            try:
+                if final.exists():
+                    final.unlink()
+            except Exception:
+                pass
+            return None
 
     if raw.exists(): raw.unlink()
     if not final.exists(): return None
