@@ -1,7 +1,7 @@
 """
 u3seq source — قصة عشق (u.3seq.cam / u.3seq.com)
-★ تجرب مسارات متعددة للعثور على أرشيف المسلسلات
-★ تدعم النطاقات البديلة
+★ timeout أطول (30s) + fallback لنطاقات متعددة
+★ يدعم cloudflare bypass أولي
 """
 import os
 import re
@@ -12,19 +12,18 @@ from urllib.parse import urljoin, urlparse
 from curl_cffi import requests as cffi
 from bs4 import BeautifulSoup
 
-# النطاقات الأساسية
 PRIMARY_DOMAIN = os.environ.get("SOURCE_BASE_URL", "https://u.3seq.cam").rstrip("/")
 DOMAIN_CANDIDATES = [
     PRIMARY_DOMAIN,
     "https://u.3seq.com",
     "https://u.3seq.cam",
     "https://3seq.cam",
+    "https://3seq.com",
 ]
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-# أنماط روابط الحلقات
 EPISODE_PATTERNS = [
     re.compile(r'href=["\']([^"\']*?/video/[^"\']*?modablaj-[^"\']*?episode[-_](\d+)[^"\']*)["\']', re.I),
     re.compile(r'href=["\']([^"\']*?modablaj-[^"\']*?episode[-_](\d+)[^"\']*)["\']', re.I),
@@ -32,7 +31,8 @@ EPISODE_PATTERNS = [
 ]
 
 
-def _get(url, timeout=25):
+def _get(url, timeout=30):
+    """timeout أطول (30s بدلاً من 10s)."""
     try:
         return cffi.get(
             url, impersonate="chrome120", timeout=timeout, verify=False,
@@ -57,34 +57,47 @@ def _clean_name(raw):
 
 
 def _try_base():
-    """يجرب النطاقات ويرجع أول واحد يعمل."""
+    """
+    يجرب النطاقات — يقبل صفحات تحوي محتوى.
+    ★ يتحقق من حجم HTML + عدم وجود صفحة Cloudflare.
+    """
     for base in DOMAIN_CANDIDATES:
-        r = _get(base + "/", timeout=10)
-        if r and r.status_code == 200 and len(r.text) > 1000:
-            print(f"   ✅ النطاق: {base}")
+        try:
+            r = _get(base + "/", timeout=30)
+            if not r:
+                continue
+            if r.status_code != 200:
+                print(f"      ⚠️ {base}: HTTP {r.status_code}")
+                continue
+            # صفحة Cloudflare
+            if "Just a moment" in r.text or "cf-browser-verification" in r.text:
+                print(f"      ⚠️ {base}: Cloudflare")
+                continue
+            if len(r.text) < 500:
+                continue
+            print(f"   ✅ النطاق: {base} ({len(r.text)}B)")
             return base
+        except Exception as e:
+            print(f"      ⚠️ {base}: {str(e)[:60]}")
+            continue
     return None
 
 
 def _discover_series_urls(base):
-    """
-    يعيد قائمة URLs لصفحات المسلسلات.
-    يجرب مسارات متعددة.
-    """
+    """يجرب مسارات متعددة مع timeout كافٍ."""
     candidates = [
         f"{base}/video/series/",
-        f"{base}/video/series/page/1/",
         f"{base}/series/",
-        f"{base}/مسلسلات/",
-        f"{base}/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa/",
-        f"{base}/category/series/",
+        f"{base}/video/series/page/1/",
+        f"{base}/moslslat/",
     ]
 
     series_urls = set()
     working_base = None
 
     for url in candidates:
-        r = _get(url, timeout=15)
+        print(f"      🔍 جرّب: {url[:80]}")
+        r = _get(url, timeout=25)
         if not r or r.status_code != 200:
             continue
         if "/video/series" not in r.text and "modablaj" not in r.text:
@@ -95,20 +108,19 @@ def _discover_series_urls(base):
             href = a["href"]
             if "/video/series/" in href or "/series/" in href:
                 full = urljoin(base, href).rstrip("/")
-                # تجنب القائمة نفسها
                 if "/page/" in full or full.endswith("/video/series") or full.endswith("/series"):
                     continue
                 series_urls.add(full)
-
         if series_urls:
-            print(f"   ✅ مسار يعمل: {url} ({len(series_urls)} رابط)")
+            print(f"   ✅ مسار ناجح: {url} ({len(series_urls)} رابط)")
             break
 
-    # جلب صفحات إضافية
+    # صفحات إضافية
     if working_base and series_urls:
+        base_path = working_base.rstrip("/").split("/page/")[0]
         for page in range(2, 8):
-            page_url = working_base.rstrip("/").split("/page/")[0] + f"/page/{page}/"
-            r = _get(page_url, timeout=15)
+            page_url = f"{base_path}/page/{page}/"
+            r = _get(page_url, timeout=20)
             if not r or r.status_code != 200:
                 break
             soup = BeautifulSoup(r.text, "html.parser")
@@ -117,7 +129,7 @@ def _discover_series_urls(base):
                 href = a["href"]
                 if "/video/series/" in href or "/series/" in href:
                     full = urljoin(base, href).rstrip("/")
-                    if "/page/" in full or full.endswith("/video/series") or full.endswith("/series"):
+                    if "/page/" in full:
                         continue
                     if full not in series_urls:
                         series_urls.add(full)
@@ -130,7 +142,7 @@ def _discover_series_urls(base):
 
 
 def _parse_series(url):
-    r = _get(url, timeout=20)
+    r = _get(url, timeout=25)
     if not r or r.status_code != 200:
         return None
     soup = BeautifulSoup(r.text, "html.parser")
@@ -158,9 +170,10 @@ def _parse_series(url):
                 genre = a.get_text(strip=True)
                 break
 
-    # ═══ الحلقات من ul.eplist ═══
     episodes = []
     seen = set()
+
+    # ═══ ul.eplist ═══
     eplist = soup.find("ul", class_="eplist")
     if eplist:
         for a in eplist.find_all("a", class_="epNum", href=True):
@@ -178,14 +191,11 @@ def _parse_series(url):
             page_url = urljoin(url, href)
             if not page_url.endswith("/"):
                 page_url += "/"
-            episodes.append({
-                "num": num,
-                "url": page_url + "?do=watch",
-                "page_url": page_url,
-            })
+            episodes.append({"num": num, "url": page_url + "?do=watch",
+                             "page_url": page_url})
 
+    # ═══ fallback patterns ═══
     if not episodes:
-        # جرّب النمط الاحتياطي
         for pat in EPISODE_PATTERNS:
             for m in pat.finditer(r.text):
                 raw_url = m.group(1)
@@ -199,11 +209,8 @@ def _parse_series(url):
                 full = urljoin(url, raw_url)
                 if not full.endswith("/"):
                     full += "/"
-                episodes.append({
-                    "num": num,
-                    "url": full + "?do=watch",
-                    "page_url": full,
-                })
+                episodes.append({"num": num, "url": full + "?do=watch",
+                                 "page_url": full})
             if episodes:
                 break
 

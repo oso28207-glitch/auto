@@ -1,14 +1,14 @@
 """
 yam source — استخراج مسلسلات yam.ahwaktv.net
-★ الروابط الفعلية للحلقات: see.php?vid=XXX
+★ الرابط الفعلي للحلقة: see.php?vid=XXX
 """
 import os
 import re
-from urllib.parse import urljoin, urlparse, parse_qs
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urljoin, urlparse
 
 from curl_cffi import requests as cffi
 from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 BASE = os.environ.get("YAM_BASE_URL", "https://yam.ahwaktv.net").rstrip("/")
 SERIES_PATH = os.environ.get("YAM_SERIES_PATH", "/moslslat.php")
@@ -16,19 +16,15 @@ SERIES_PATH = os.environ.get("YAM_SERIES_PATH", "/moslslat.php")
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-# عناوين يجب تجاهلها
 SKIP_NAMES = {
     "الصفحة الرئيسية", "الرئيسية", "جديد الأفلام", "أحدث الحلقات",
     "المسلسلات", "الأفلام", "اهواك تي في", "اتصل بنا", "من نحن",
-    "سياسة الخصوصية", "الأكثر مشاهدة", "أفلام", "مسلسلات",
+    "سياسة الخصوصية", "الأكثر مشاهدة",
 }
 
-# ─── أنماط روابط الفيديو الصحيحة ───
-VIDEO_LINK_PATTERNS = [
-    re.compile(r'see\.php\?vid=([A-Za-z0-9]+)', re.I),
-    re.compile(r'watch\.php\?vid=([A-Za-z0-9]+)', re.I),
-    re.compile(r'/vid/([A-Za-z0-9]+)', re.I),
-]
+# أنماط روابط الفيديو (see.php مفضّل)
+SEE_PATTERN = re.compile(r'see\.php\?vid=([A-Za-z0-9]+)', re.I)
+WATCH_PATTERN = re.compile(r'watch\.php\?vid=([A-Za-z0-9]+)', re.I)
 
 
 def _get(url, timeout=30):
@@ -67,33 +63,20 @@ def _is_nav_page(name):
     return False
 
 
-def _extract_vid(url):
-    """يستخرج vid من أي رابط."""
-    for pat in VIDEO_LINK_PATTERNS:
-        m = pat.search(url or "")
-        if m:
-            return m.group(1)
-    return None
-
-
 def _fetch_series_list():
-    """جلب روابط المسلسلات من الصفحة الرئيسية + مسارات إضافية."""
+    """جلب روابط المسلسلات (بدون روابط الفيديو)."""
     candidates = [
         f"{BASE}{SERIES_PATH}",
         f"{BASE}/moslslat.php",
-        f"{BASE}/series.php",
         f"{BASE}/",
     ]
-
-    links = []
-    seen = set()
+    links, seen = [], set()
     base_domain = urlparse(BASE).netloc
 
     for url in candidates:
         r = _get(url, timeout=20)
         if not r or r.status_code != 200:
             continue
-
         soup = BeautifulSoup(r.text, "html.parser")
         found = 0
         for a in soup.find_all("a", href=True):
@@ -103,16 +86,14 @@ def _fetch_series_list():
                 continue
             if _is_nav_page(text):
                 continue
-
             full = urljoin(BASE, href)
             if base_domain not in full:
                 continue
+            # ★ استبعاد كل ما هو فيديو أو تنقّل
             if any(x in full for x in ["moslslat.php", "topvideos.php",
                                         "?page=", "?cat=", "?s=", "/category/",
-                                        "/tag/", "/actor/", "see.php", "watch.php"]):
-                continue
-            # استبعاد روابط الفيديو المباشرة
-            if _extract_vid(full):
+                                        "/tag/", "/actor/",
+                                        "see.php", "watch.php"]):
                 continue
             if full in seen:
                 continue
@@ -121,7 +102,6 @@ def _fetch_series_list():
             seen.add(full)
             links.append({"url": full, "name": text})
             found += 1
-
         if found >= 20:
             print(f"   ✅ {found} رابط من {url}")
             break
@@ -131,28 +111,36 @@ def _fetch_series_list():
 
 
 def _extract_episodes(series_url):
-    """استخراج حلقات see.php?vid=XXX من صفحة المسلسل."""
+    """
+    استخراج حلقات see.php?vid=XXX.
+    ★ الأولوية: see.php → watch.php
+    """
     r = _get(series_url, timeout=25)
     if not r or r.status_code != 200:
         return [], ""
 
     soup = BeautifulSoup(r.text, "html.parser")
 
-    # البوستر
     poster = ""
     og = soup.find("meta", property="og:image")
     if og and og.get("content"):
         poster = og["content"]
 
-    episodes = {}
+    episodes = {}  # num → dict
+
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
-        vid = _extract_vid(href)
-        if not vid:
+        text = a.get_text(strip=True)
+
+        # ★ الأولوية: see.php
+        see_m = SEE_PATTERN.search(href)
+        watch_m = WATCH_PATTERN.search(href)
+        if not see_m and not watch_m:
             continue
 
+        vid = see_m.group(1) if see_m else watch_m.group(1)
+
         # استخراج رقم الحلقة
-        text = a.get_text(strip=True)
         num = None
         m = re.search(r'(?:الحلقة|حلقة|ep|episode)[\s\-_]*?(\d{1,4})',
                       text + " " + href, re.I)
@@ -161,19 +149,21 @@ def _extract_episodes(series_url):
                 num = int(m.group(1))
             except ValueError:
                 pass
-
         if num is None:
-            # استخدم ترتيب
             num = len(episodes) + 1
 
         if num in episodes:
+            # إذا كان الرابط الحالي see.php والقديم watch.php → استبدل
+            if see_m and "watch.php" in episodes[num]["url"]:
+                episodes[num]["url"] = f"{BASE}/see.php?vid={vid}"
             continue
 
-        # ★ الرابط الفعلي: see.php?vid=XXX
-        full = urljoin(series_url, href)
+        # ★ استخدم see.php دائماً (لأنه الصفحة الفعلية للفيديو)
+        full_url = f"{BASE}/see.php?vid={vid}"
+
         episodes[num] = {
             "num": num,
-            "url": full,
+            "url": full_url,
             "vid": vid,
         }
 
@@ -181,7 +171,6 @@ def _extract_episodes(series_url):
 
 
 def fetch():
-    """الواجهة العامة."""
     print(f"   📄 جلب قائمة المسلسلات...")
     links = _fetch_series_list()
     if not links:
@@ -192,13 +181,6 @@ def fetch():
     def _enrich(item):
         episodes, poster = _extract_episodes(item["url"])
         name = item["name"]
-        if not name:
-            r = _get(item["url"])
-            if r:
-                soup = BeautifulSoup(r.text, "html.parser")
-                t = soup.find("title")
-                if t:
-                    name = _clean_name(t.get_text(strip=True))
         return {
             "name": name or item["url"].rstrip("/").split("/")[-1],
             "poster": poster,

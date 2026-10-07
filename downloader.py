@@ -1,18 +1,23 @@
 """
-downloader.py — Universal HLS Downloader v22
+downloader.py — Universal HLS Downloader v23
 ═══════════════════════════════════════════════════════════
 يدعم:
   • u3seq.com       — /video/modablaj-*  (يحتاج ?do=watch)
-  • yam.ahwaktv.net — /see.php?vid=XXX  ← الرابط الفعلي
-  • yam.ahwaktv.net — /watch.php?vid=XXX (بديل)
+  • yam.ahwaktv.net — /see.php?vid=XXX   ← الرابط الفعلي للفيديو
+  • yam.ahwaktv.net — /watch.php?vid=XXX (صفحة وسيطة)
   • shhaiid4u.net   — /watch/*
   • المشغلات المباشرة (firestream, luluvdo, playmate, ...)
 
 الاستراتيجيات (بالترتيب):
-  1. CDP capture + deep m3u8 resolution
-  2. cffi segments (TLS fingerprint صحيح)
+  1. CDP capture (Fetch.enable) + deep m3u8 resolution
+  2. cffi segments (TLS fingerprint صحيح — الأسرع)
   3. browser XHR segments (جلسة المشغل الفعلية)
   4. yt-dlp مع stall detection
+
+يوجّه تلقائياً:
+  • u3seq → serversList → iframes → m3u8
+  • see.php/watch.php → معالج عام مباشرة
+  • أي شيء آخر → معالج عام
 """
 
 import base64
@@ -123,25 +128,24 @@ def _get_ffmpeg_exe():
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ التحقق من صلاحية URL — يدعم u3seq + yam(see.php) + مشغلات
+# ★★★ التحقق من صلاحية URL
 # ═══════════════════════════════════════════════════════════════
 def _is_valid_episode_url(url):
     """
     يقبل:
       • u3seq:      /video/modablaj-* أو ?do=watch
-      • yam:        /see.php?vid=XXX  ← الرابط الفعلي
-      • yam:        /watch.php?vid=XXX (بديل)
+      • yam:        /see.php?vid=XXX   ← الرابط الفعلي للفيديو
+      • yam:        /watch.php?vid=XXX (صفحة وسيطة)
       • shhaiid4u:  /watch/*
       • مشغلات:     /embed/, /e/, firestream, playmate, ...
     يرفض:
-      • صفحات التصنيف: moslslat.php, all-series.php, topvideos.php
-      • صفحات التنقل: الرئيسية، جديد الأفلام، ...
+      • صفحات التصنيف والتنقّل
     """
     if not url or not isinstance(url, str):
         return False
     u = url.lower()
 
-    # ─── استثناءات صريحة ───
+    # استثناءات صريحة
     bad_markers = [
         "/moslslat.php", "/topvideos.php", "/all-series.php",
         "/series.php", "/category/", "/cats/", "/list/",
@@ -151,11 +155,11 @@ def _is_valid_episode_url(url):
         if b in u:
             return False
 
-    # ─── u3seq ───
+    # u3seq
     if "modablaj-" in u or "/video/" in u:
         return True
 
-    # ★ yam — الروابط الفعلية هي see.php
+    # ★ yam — see.php هو الرابط الفعلي
     if "see.php" in u and "vid=" in u:
         return True
     if "watch.php" in u and "vid=" in u:
@@ -165,7 +169,7 @@ def _is_valid_episode_url(url):
     if "/watch/" in u and ".php" not in u:
         return True
 
-    # ─── مشغلات مباشرة ───
+    # مشغلات مباشرة
     for m in ["/embed/", "firestream.to/", "playmate.to/",
               "luluvdo.com/", "vidsonic", "vidaraa", "/e/"]:
         if m in u:
@@ -403,7 +407,7 @@ def _resolve_m3u8_deep(m3u8_url, headers, depth=0, max_depth=5):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ cffi segments — الأسرع
+# cffi segments — الأسرع
 # ═══════════════════════════════════════════════════════════════
 def try_cffi_segments(segments, out_path, iframe_url, cookies_dict):
     if not segments:
@@ -706,7 +710,7 @@ def _try_ytdlp_with_headers(url, out_path, referer, cookies_dict):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ تحميل m3u8 عبر cffi + deep resolution
+# تحميل m3u8 عبر cffi + deep resolution
 # ═══════════════════════════════════════════════════════════════
 def _download_with_curl_deep(m3u8_url, out_path, referer, cookies_dict):
     print(f"      [cffi-deep] {m3u8_url[:80]}", flush=True)
@@ -971,7 +975,7 @@ def trigger_play(sb):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ فتح الصفحة بمهلة (محسّن)
+# فتح الصفحة بمهلة (محسّن)
 # ═══════════════════════════════════════════════════════════════
 def _open_with_timeout(sb, url, timeout=OPEN_TIMEOUT):
     """
@@ -1059,7 +1063,7 @@ def _bypass_cloudflare(sb, iframe_url, timeout_seconds=30):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ معالج عام لأي صفحة فيديو (yam, shhaiid4u, ...)
+# ★★★ معالج عام لأي صفحة فيديو (see.php, watch.php, shhaiid4u, ...)
 # ═══════════════════════════════════════════════════════════════
 def _process_generic_video_page(sb, url, out_path):
     """
@@ -1157,7 +1161,7 @@ def _process_generic_video_page(sb, url, out_path):
 
         sb.cdp.sleep(1.5)
 
-    # iframe متداخل (yam قد يستخدمه)
+    # iframe متداخل
     for _ in range(3):
         try:
             ifr = sb.cdp.execute_script("""
@@ -1340,11 +1344,22 @@ def _process_with_browser(url, out_path):
                 _open_with_timeout(sb, url, timeout=OPEN_TIMEOUT)
                 sb.cdp.sleep(2)
 
-                # ═══ 2) إذا كان yam/shhaiid4u: لا نضيف ?do=watch ═══
+                # ═══ 2) اكتشف نوع الرابط ═══
                 u_low = url.lower()
-                if "see.php" in u_low or "watch.php" in u_low or "/watch/" in u_low:
-                    # معالج عام مباشرة
-                    print(f"   🔄 رابط generic — معالج عام", flush=True)
+
+                # ★ yam see.php / watch.php → معالج عام
+                if "see.php" in u_low or "watch.php" in u_low:
+                    print(f"   🔄 yam — معالج عام", flush=True)
+                    res = _process_generic_video_page(sb, url, out_path)
+                    try:
+                        os.remove(netlog)
+                    except Exception:
+                        pass
+                    return res
+
+                # ★ shhaiid4u /watch/ → معالج عام
+                if "/watch/" in u_low and ".php" not in u_low:
+                    print(f"   🔄 /watch/ — معالج عام", flush=True)
                     res = _process_generic_video_page(sb, url, out_path)
                     try:
                         os.remove(netlog)
