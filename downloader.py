@@ -1,5 +1,5 @@
 """
-downloader.py — CDP Network Capture + XHR من داخل المتصفح
+downloader.py — CDP Fetch.enable للالتقاط + XHR داخل iframe
 """
 
 import base64
@@ -20,7 +20,7 @@ from curl_cffi import requests as cffi_requests
 from config import config, MEDIA_DIR
 
 MIN_SIZE = 100 * 1024
-M3U8_SEARCH_TIMEOUT = int(os.environ.get("M3U8_SEARCH_TIMEOUT", "60"))
+M3U8_SEARCH_TIMEOUT = int(os.environ.get("M3U8_SEARCH_TIMEOUT", "40"))
 YTDLP_TIMEOUT = int(os.environ.get("YTDLP_TIMEOUT", "120"))
 FFMPEG_HLS_TIMEOUT = int(os.environ.get("FFMPEG_HLS_TIMEOUT", "1800"))
 
@@ -75,13 +75,8 @@ def _get_ffmpeg_exe():
     return "ffmpeg"
 
 
-# ═══════════════════════════════════════════════════════════════
-# ★★★ مساعد CDP موحّد (يحل مشكلة SimpleNamespace)
-# ═══════════════════════════════════════════════════════════════
 def _cdp_cmd(sb, cmd, params=None):
-    """إرسال أمر CDP مع دعم إصدارات seleniumbase المختلفة."""
-    if params is None:
-        params = {}
+    if params is None: params = {}
     try:
         return sb.driver.execute_cdp_cmd(cmd, params)
     except Exception:
@@ -97,7 +92,6 @@ def _cdp_cmd(sb, cmd, params=None):
 
 
 def _cdp_eval_async(sb, expr, timeout_ms=120000):
-    """تنفيذ JS مع انتظار Promise عبر Runtime.evaluate."""
     return _cdp_cmd(sb, "Runtime.evaluate", {
         "expression": expr,
         "awaitPromise": True,
@@ -107,52 +101,152 @@ def _cdp_eval_async(sb, expr, timeout_ms=120000):
 
 
 # ═══════════════════════════════════════════════════════════════
-# CDP Network Capture
+# ★★★ Fetch.enable — الحل الرئيسي لالتقاط m3u8
 # ═══════════════════════════════════════════════════════════════
-def _enable_network_capture(sb):
+def _enable_fetch_capture(sb):
+    """
+    يستخدم CDP Fetch domain لاعتراض استجابات m3u8/mpd.
+    عند الاعتراض، يقرأ body فوراً ويحفظه، ثم يمرر الطلب.
+    """
     global _REQ_IDS, _RESP_BODIES
     with _NET_LOCK:
         _REQ_IDS.clear()
         _RESP_BODIES.clear()
 
-    # ★ محاولة تفعيل Network domain بعدة طرق
-    ok = False
-    for attempt in [
-        lambda: sb.driver.execute_cdp_cmd("Network.enable", {}),
-        lambda: sb.cdp.send_cdp_cmd("Network.enable", {}),
-        lambda: sb.cdp.execute_cdp_cmd("Network.enable", {}),
+    print("      🎯 Fetch.enable...")
+
+    enabled = False
+    for fn in [
+        lambda: sb.driver.execute_cdp_cmd("Fetch.enable", {
+            "patterns": [
+                {"urlPattern": "*.m3u8*", "requestStage": "Response"},
+                {"urlPattern": "*.mpd*", "requestStage": "Response"},
+            ],
+            "handleAuthRequests": False,
+        }),
+        lambda: sb.cdp.send_cdp_cmd("Fetch.enable", {
+            "patterns": [
+                {"urlPattern": "*.m3u8*", "requestStage": "Response"},
+                {"urlPattern": "*.mpd*", "requestStage": "Response"},
+            ],
+        }),
+        lambda: sb.cdp.execute_cdp_cmd("Fetch.enable", {
+            "patterns": [
+                {"urlPattern": "*.m3u8*", "requestStage": "Response"},
+                {"urlPattern": "*.mpd*", "requestStage": "Response"},
+            ],
+        }),
     ]:
         try:
-            attempt()
-            ok = True
+            fn()
+            enabled = True
             break
         except Exception:
             pass
-    if ok:
-        print("      ✅ Network.enable OK")
-    else:
-        print("      ⚠️ Network.enable فشل — سيعمل عبر add_handler")
 
-    # ★ تسجيل handler لالتقاط requestId
+    if not enabled:
+        print("      ⚠️ Fetch.enable فشل")
+        return False
+
+    print("      🎯 Fetch.enable OK")
+
+    # تسجيل handler
+    def _handle_paused(params):
+        try:
+            rid = params.get("requestId", "")
+            req = params.get("request") or {}
+            url = req.get("url", "") if isinstance(req, dict) else ""
+            status = params.get("responseStatusCode")
+
+            if url and (".m3u8" in url or ".mpd" in url) and status == 200:
+                try:
+                    r = _cdp_cmd(sb, "Fetch.getResponseBody", {"requestId": rid})
+                    if r and "body" in r:
+                        b = r["body"]
+                        if r.get("base64Encoded"):
+                            try:
+                                b = base64.b64decode(b).decode("utf-8", errors="ignore")
+                            except Exception:
+                                pass
+                        with _NET_LOCK:
+                            _RESP_BODIES[url] = b
+                        print(f"      💾 m3u8 محفوظ ({len(str(b))}B)")
+                except Exception as e:
+                    print(f"      ⚠️ getResponseBody: {str(e)[:80]}")
+
+            # مرر الطلب دائماً
+            if rid:
+                try:
+                    _cdp_cmd(sb, "Fetch.continueRequest", {"requestId": rid})
+                except Exception:
+                    try:
+                        _cdp_cmd(sb, "Fetch.continueResponse", {"requestId": rid})
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    registered = False
+
+    # محاولة async
     try:
         import mycdp
-        event = mycdp.network.ResponseReceived
+        cls = getattr(mycdp.fetch, "RequestPaused", None)
+        if cls is not None:
+            async def _async_handler(params):
+                _handle_paused(params if isinstance(params, dict) else {})
 
-        async def _on_response(params):
             try:
-                resp = params.get("response", {}) or {}
-                url = resp.get("url", "")
-                rid = params.get("requestId", "")
-                if url and rid:
-                    with _NET_LOCK:
-                        _REQ_IDS[url] = rid
+                sb.cdp.add_handler(cls, _async_handler)
+                print("      🎯 Fetch handler (async)")
+                registered = True
             except Exception:
                 pass
 
-        sb.cdp.add_handler(event, _on_response)
-        print("      📡 CDP network capture enabled")
+            if not registered:
+                def _sync_handler(event):
+                    try:
+                        d = {}
+                        for k in ("requestId", "request_id"):
+                            v = getattr(event, k, None)
+                            if v: d["requestId"] = v
+                        req = getattr(event, "request", None)
+                        if req is not None:
+                            d["request"] = {"url": getattr(req, "url", "")}
+                        st = getattr(event, "response_status_code", None)
+                        if st is None:
+                            st = getattr(event, "responseStatusCode", None)
+                        if st is not None: d["responseStatusCode"] = st
+                        _handle_paused(d)
+                    except Exception:
+                        pass
+
+                try:
+                    sb.cdp.add_handler(cls, _sync_handler)
+                    print("      🎯 Fetch handler (sync)")
+                    registered = True
+                except Exception as e:
+                    print(f"      ⚠️ sync handler: {str(e)[:80]}")
     except Exception as e:
-        print(f"      ⚠️ add_handler: {str(e)[:80]}")
+        print(f"      ⚠️ mycdp.fetch: {str(e)[:80]}")
+
+    return registered
+
+
+def _enable_network_capture(sb):
+    """تفعيل Network domain (backup)."""
+    for fn in [
+        lambda: sb.driver.execute_cdp_cmd("Network.enable", {}),
+        lambda: sb.cdp.send_cdp_cmd("Network.enable", {}),
+    ]:
+        try:
+            fn()
+            print("      ✅ Network.enable OK")
+            return True
+        except Exception:
+            pass
+    print("      ⚠️ Network.enable فشل")
+    return False
 
 
 def _get_response_body(sb, url):
@@ -162,15 +256,12 @@ def _get_response_body(sb, url):
         rid = _REQ_IDS.get(url)
     if not rid:
         return None
-
     result = _cdp_cmd(sb, "Network.getResponseBody", {"requestId": rid})
     if result and "body" in result:
         body = result["body"]
         if result.get("base64Encoded"):
-            try:
-                body = base64.b64decode(body)
-            except Exception:
-                pass
+            try: body = base64.b64decode(body)
+            except Exception: pass
         with _NET_LOCK:
             _RESP_BODIES[url] = body
         return body
@@ -201,7 +292,6 @@ def _fetch_segments_via_xhr(sb, urls, batch_timeout_ms=120000):
         "      const resp = await new Promise((resolve) => {"
         "        xhr.onload = () => resolve(xhr.status === 200 ? xhr.response : ('__HTTP_' + xhr.status));"
         "        xhr.onerror = () => resolve('__NETERR__');"
-        "        xhr.ontimeout = () => resolve('__TIMEOUT__');"
         "        xhr.send();"
         "      });"
         "      if (typeof resp === 'string') { out.push(resp); continue; }"
@@ -222,9 +312,7 @@ def _fetch_segments_via_xhr(sb, urls, batch_timeout_ms=120000):
     if not result or "result" not in result:
         return None
     val = result["result"].get("value")
-    if not isinstance(val, list):
-        return None
-    return val
+    return val if isinstance(val, list) else None
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -233,9 +321,9 @@ def _fetch_segments_via_xhr(sb, urls, batch_timeout_ms=120000):
 def _hls_via_cdp(sb, m3u8_url, out):
     print(f"         🌐 CDP capture HLS...")
 
-    body = _wait_for_body(sb, m3u8_url, timeout=10)
+    body = _wait_for_body(sb, m3u8_url, timeout=12)
     if not body:
-        print(f"         ⚠️ m3u8 body غير متاح في ذاكرة المتصفح")
+        print(f"         ⚠️ m3u8 body غير متاح")
         return False
 
     if isinstance(body, bytes):
@@ -245,7 +333,7 @@ def _hls_via_cdp(sb, m3u8_url, out):
             return False
 
     if "#EXTM3U" not in body:
-        print(f"         ⚠️ ليست m3u8 صالحة")
+        print(f"         ⚠️ ليست m3u8")
         return False
 
     content = body
@@ -259,8 +347,8 @@ def _hls_via_cdp(sb, m3u8_url, out):
                 variant_url = urljoin(cur_url, line)
                 break
         if variant_url:
-            print(f"         ↪️ variant: انتظار...")
-            vbody = _wait_for_body(sb, variant_url, timeout=20)
+            print(f"         ↪️ variant...")
+            vbody = _wait_for_body(sb, variant_url, timeout=25)
             if vbody:
                 if isinstance(vbody, bytes):
                     vbody = vbody.decode("utf-8", errors="ignore")
@@ -343,7 +431,7 @@ def _hls_via_cdp(sb, m3u8_url, out):
                 print(f"         ✅ نجح: {mb:.1f}MB")
                 return True
             err = (r.stderr or "").strip()[-150:] if r.stderr else "?"
-            print(f"         ⚠️ دمج فشل: {err}")
+            print(f"         ⚠️ دمج: {err}")
             return False
         except subprocess.TimeoutExpired:
             return False
@@ -357,7 +445,6 @@ def _hls_via_cdp(sb, m3u8_url, out):
 _INTERCEPTOR_JS = r"""
 (function() {
     window.__captured_m3u8 = window.__captured_m3u8 || [];
-    window.__captured_log = window.__captured_log || [];
 
     function record(url) {
         try {
@@ -493,9 +580,9 @@ def _install_interceptor(sb):
         sb.driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
             "source": _INTERCEPTOR_JS,
         })
-        print("      💉 تم حقن m3u8 interceptor")
+        print("      💉 interceptor")
     except Exception as e:
-        print(f"      ⚠️ فشل الحقن: {str(e)[:100]}")
+        print(f"      ⚠️ interceptor: {str(e)[:80]}")
 
 
 def _read_captured_m3u8(sb):
@@ -522,6 +609,12 @@ def _scan_for_m3u8(sb, netlog_read):
             if ".m3u8" in u or ".mpd" in u:
                 found.add(u)
     except Exception: pass
+
+    # ★ من _RESP_BODIES أيضاً
+    with _NET_LOCK:
+        for u in list(_RESP_BODIES.keys()):
+            if ".m3u8" in u or ".mpd" in u:
+                found.add(u)
 
     try:
         perf = sb.cdp.execute_script("""
@@ -619,7 +712,7 @@ def _scan_for_m3u8(sb, netlog_read):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ نقرات عدوانية — محسّنة (5 نقرات)
+# نقرات عدوانية
 # ═══════════════════════════════════════════════════════════════
 def _aggressive_play(sb):
     try:
@@ -636,7 +729,6 @@ def _aggressive_play(sb):
         """)
     except Exception: pass
 
-    # 1) نقرات على selectors جاهزة
     for sel in ["video", ".jw-icon-playback", ".jw-display-icon-container",
                 ".vjs-big-play-button", "[class*='play']", "#play",
                 "button[aria-label*='Play']", ".play-button"]:
@@ -644,7 +736,6 @@ def _aggressive_play(sb):
             try: sb.cdp.click_if_visible(sel)
             except Exception: pass
 
-    # 2) ★ 5 نقرات على الفيديو نفسه (لأن الفيديو يحتاج نقرتين)
     try:
         rect = sb.cdp.execute_script("""
             (function(){
@@ -656,7 +747,7 @@ def _aggressive_play(sb):
             })();
         """)
         if rect and rect.get("x", 0) > 0:
-            for i in range(5):  # ★ 5 نقرات
+            for i in range(5):
                 sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
                     "type": "mousePressed", "x": rect['x'], "y": rect['y'],
                     "button": "left", "clickCount": 1,
@@ -668,7 +759,6 @@ def _aggressive_play(sb):
                 sb.cdp.sleep(0.5)
     except Exception: pass
 
-    # 3) نقرات برمجية
     try:
         sb.cdp.execute_script("""
             (function(){try{
@@ -732,7 +822,7 @@ def _hls_via_curl(m3u8_url, out, iframe_url, cookies=None):
             r = cffi_requests.get(m3u8_url, headers=headers,
                                   impersonate="chrome120", timeout=30)
         except Exception as e:
-            print(f"         ⚠️ m3u8 fetch: {str(e)[:100]}")
+            print(f"         ⚠️ m3u8: {str(e)[:80]}")
             return False
 
         if r.status_code != 200 or not r.text:
@@ -847,7 +937,7 @@ def _get_duration(path):
 def _compress_to_target(inp, out):
     max_size_mb = config.COMPRESS_MAX_SIZE_MB
     im = Path(inp).stat().st_size / 1048576
-    print(f"   🗜️  {im:.2f}MB → {config.COMPRESS_SCALE}p (حد {max_size_mb}MB)...")
+    print(f"   🗜️  {im:.2f}MB → {config.COMPRESS_SCALE}p...")
 
     ff = _get_ffmpeg_exe()
     duration = _get_duration(inp)
@@ -974,13 +1064,24 @@ def _process_with_browser(url, out_path):
             try:
                 sb.activate_cdp_mode()
 
+                # ★ ترتيب: Network أولاً ثم Fetch (Fetch يحتاج Network مفعل)
                 _enable_network_capture(sb)
+                _enable_fetch_capture(sb)
                 _install_interceptor(sb)
 
+                # تسجيل netlog عبر RequestWillBeSent
                 try:
                     import mycdp
-                    async def on_req(e):
-                        try: _log(e.request.url)
+                    async def on_req(params):
+                        try:
+                            req = params.get("request", {}) or {}
+                            u = req.get("url", "")
+                            rid = params.get("requestId", "")
+                            if u:
+                                _log(u)
+                                if rid:
+                                    with _NET_LOCK:
+                                        _REQ_IDS[u] = rid
                         except Exception: pass
                     sb.cdp.add_handler(mycdp.network.RequestWillBeSent, on_req)
                 except Exception: pass
@@ -1124,7 +1225,7 @@ def _process_with_browser(url, out_path):
                                 else: break
                             except Exception: break
 
-                        # ★ انتظار المشغل (20 محاولة)
+                        # انتظار المشغل
                         player_found = False
                         for _ in range(20):
                             sb.cdp.sleep(1)
@@ -1143,17 +1244,14 @@ def _process_with_browser(url, out_path):
                         if not player_found:
                             print(f"      ⚠️ المشغل لم يظهر")
 
-                        # ★ نقرات لتشغيل الفيديو
                         _aggressive_play(sb)
 
-                        print(f"      🎬 البحث عن m3u8 ({M3U8_SEARCH_TIMEOUT}s)...")
+                        print(f"      🎬 البحث ({M3U8_SEARCH_TIMEOUT}s)...")
                         search_start = time.time()
                         m3u8_urls = []
-                        attempt = 0
 
                         while time.time() - search_start < M3U8_SEARCH_TIMEOUT:
-                            attempt += 1
-                            _aggressive_play(sb)  # ★ كل دورة
+                            _aggressive_play(sb)
                             sb.cdp.sleep(2)
                             found = _scan_for_m3u8(sb, _read)
                             if found:
@@ -1226,7 +1324,7 @@ def download_episode(series_name, episode_num, url,
         res = run_with_timeout(_process_with_browser, args=(url, raw),
                                 timeout=900, default=None)
     except TimeoutError_:
-        print(f"    ⏰ تجاوز التحميل 900s")
+        print(f"    ⏰ تجاوز 900s")
         for p in ["yt-dlp", "chrome", "ffmpeg"]:
             subprocess.run(["pkill", "-9", "-f", p],
                            capture_output=True, timeout=5)
@@ -1249,7 +1347,7 @@ def download_episode(series_name, episode_num, url,
         shutil.move(str(raw), str(final))
     else:
         if not _compress_to_target(raw, final):
-            print("    ⚠️ فشل الضغط — استخدام الأصلي")
+            print("    ⚠️ فشل الضغط — الأصلي")
             shutil.move(str(raw), str(final))
 
     if raw.exists(): raw.unlink()
