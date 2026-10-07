@@ -1,16 +1,18 @@
 """
-downloader.py v35 — FINAL
+downloader.py v36 — FINAL
 ═══════════════════════════════════════════════════════════
-v35: إصلاح جذري لمشكلة ffmpeg concat:
-     - ترتيب المحاولات الجديد: ffmpeg-HLS → yt-dlp → cffi+concat
-     - السبب: مقاطع 1vid.online مشفّرة AES-128، وffmpeg يفك التشفير
-       تلقائياً من m3u8 URL، بينما concat يفشل مع المقاطع المشفّرة.
-     - ترتيب m3u8: master.m3u8 أولاً (أعلى جودة)
+v36: إصلاح مشكلة 403 Forbidden من cdn-vids.xyz
+     - إزالة firefox133 (غير مدعوم في curl_cffi)
+     - إضافة Sec-Fetch-* + Sec-Ch-Ua-* لكل المحاولات
+     - إضافة N_m3u8DL-RE (الأقوى ضد CDN واقٍ)
+     - إضافة فحص صلاحية الرابط قبل التحميل
+     - ترتيب المحاولات: N_m3u8DL-RE → ffmpeg-HLS → yt-dlp → cffi
 
-محاولات التحميل (3 مراحل بالترتيب الجديد):
-  1. ffmpeg-HLS مباشرة (يقرأ m3u8 ويفك التشفير ويدمج)
+محاولات التحميل:
+  0. N_m3u8DL-RE (الأقوى ضد CDN بتوكنات)
+  1. ffmpeg-HLS مباشرة (يفك AES-128 تلقائياً)
   2. yt-dlp (fallback موثوق)
-  3. cffi+concat (فقط إذا كان m3u8 غير مشفّر)
+  3. cffi+concat (فقط للمواقع غير المشفّرة)
 """
 
 import os
@@ -32,9 +34,22 @@ from config import config, MEDIA_DIR
 # ═══════════════════════════════════════════════════════════════
 MIN_SIZE = 100 * 1024
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+      "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
-IMPERSONATES = ["chrome124", "chrome120", "chrome110", "firefox133"]
+# ★ v36: إزالة firefox133 (غير مدعوم في curl_cffi الأقدم)
+IMPERSONATES = ["chrome124", "chrome131", "chrome120", "chrome110"]
+
+# هل N_m3u8DL-RE مثبتة؟
+_HAS_NM3U8DL = None
+
+
+def _has_nm3u8dl():
+    global _HAS_NM3U8DL
+    if _HAS_NM3U8DL is None:
+        _HAS_NM3U8DL = shutil.which("N_m3u8DL-RE") is not None
+        if _HAS_NM3U8DL:
+            print(f"      ℹ️  N_m3u8DL-RE متوفرة", flush=True)
+    return _HAS_NM3U8DL
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -85,7 +100,7 @@ def _is_valid_url(url):
 
 
 def _is_valid_video(path):
-    """يقبل أي صيغة فيديو صالحة (mp4, mpegts, ...)."""
+    """يقبل أي صيغة فيديو صالحة."""
     if not path or not os.path.exists(path) or os.path.getsize(path) < 100:
         return False
     try:
@@ -102,8 +117,36 @@ def _is_valid_video(path):
         return False
 
 
+def _full_headers(referer, ck=None):
+    """يبني headers كاملة تحاكي متصفح Chrome حقيقي."""
+    h = {
+        "Referer": referer or "",
+        "Origin": _origin(referer),
+        "User-Agent": UA,
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "cross-site",
+        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Connection": "keep-alive",
+    }
+    if ck:
+        h["Cookie"] = "; ".join(f"{k}={v}" for k, v in ck.items())[:8000]
+    return h
+
+
+def _headers_as_string(referer, ck=None):
+    """يبني headers كـ string لـ ffmpeg."""
+    h = _full_headers(referer, ck)
+    return "".join(f"{k}: {v}\r\n" for k, v in h.items())
+
+
 # ═══════════════════════════════════════════════════════════════
-# JS interceptor — يلتقط m3u8 من كل المصادر
+# JS interceptor
 # ═══════════════════════════════════════════════════════════════
 _JS = r"""
 (function(){
@@ -385,7 +428,7 @@ def _play(sb):
 
 
 # ═══════════════════════════════════════════════════════════════
-# m3u8 parser + deep resolution
+# m3u8 parser + resolve
 # ═══════════════════════════════════════════════════════════════
 def _parse_m3u8(text, base):
     segs, variants = [], []
@@ -444,10 +487,186 @@ def _resolve_m3u8(url, headers, depth=0, max_depth=4):
 
 
 # ═══════════════════════════════════════════════════════════════
-# cffi download (كخطة ثالثة فقط)
+# ★★★ فحص صلاحية الرابط
+# ═══════════════════════════════════════════════════════════════
+def _is_url_alive(m3u8_url, referer, ck):
+    """يتحقق أن الرابط لا يزال صالحاً (غير منتهي الصلاحية)."""
+    headers = _full_headers(referer, ck)
+    for imp in IMPERSONATES:
+        try:
+            r = cffi_requests.get(m3u8_url, headers=headers,
+                                   impersonate=imp, timeout=10, verify=False)
+            if r.status_code == 200 and len(r.content) > 50:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════
+# ★★★ محاولة 0: N_m3u8DL-RE (الأقوى ضد CDN بتوكنات)
+# ═══════════════════════════════════════════════════════════════
+def _try_nm3u8dl(m3u8_url, out_path, referer, ck):
+    if not _has_nm3u8dl():
+        return False
+
+    print(f"      [N_m3u8DL-RE]", flush=True)
+
+    out_dir = str(Path(out_path).parent)
+    out_name = Path(out_path).stem
+    tmp_dir = tempfile.mkdtemp(prefix="nm3u8_")
+
+    cmd = [
+        "N_m3u8DL-RE",
+        m3u8_url,
+        "--save-dir", out_dir,
+        "--save-name", out_name,
+        "--tmp-dir", tmp_dir,
+        "--thread-count", "16",
+        "--http-request-timeout", "30",
+        "--auto-select",
+        "--check-segments-count",
+        "--no-log",
+        "--del-after-done",
+        "--mux-after-done", "format=mp4",
+        "-H", f"Referer: {referer}",
+        "-H", f"Origin: {_origin(referer)}",
+        "-H", f"User-Agent: {UA}",
+        "-H", "Accept: */*",
+        "-H", "Accept-Language: en-US,en;q=0.9",
+        "-H", "Sec-Fetch-Dest: empty",
+        "-H", "Sec-Fetch-Mode: cors",
+        "-H", "Sec-Fetch-Site: cross-site",
+        "-H", 'Sec-Ch-Ua: "Chromium";v="124", "Google Chrome";v="124"',
+        "-H", "Sec-Ch-Ua-Mobile: ?0",
+        "-H", 'Sec-Ch-Ua-Platform: "Windows"',
+    ]
+    if ck:
+        ck_s = "; ".join(f"{k}={v}" for k, v in ck.items())[:8000]
+        cmd += ["-H", f"Cookie: {ck_s}"]
+
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        # N_m3u8DL-RE يحفظ الملف مباشرة باسم out_name.mp4
+        expected = Path(out_dir) / f"{out_name}.mp4"
+        if expected.exists() and expected.stat().st_size > MIN_SIZE:
+            if str(expected) != str(out_path):
+                shutil.move(str(expected), str(out_path))
+            print(f"      ✅ N_m3u8DL-RE: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return True
+        err = (r.stderr or "").strip()[-200:] or (r.stdout or "").strip()[-200:]
+        print(f"      ⚠️ N_m3u8DL-RE: {err[:150]}", flush=True)
+    except Exception as e:
+        print(f"      ⚠️ N_m3u8DL-RE: {str(e)[:100]}", flush=True)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════
+# محاولة 1: ffmpeg-HLS (مع headers كاملة)
+# ═══════════════════════════════════════════════════════════════
+def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
+    print(f"      [ffmpeg-hls]", flush=True)
+
+    headers_str = _headers_as_string(referer, ck)
+
+    cmd = [
+        _ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "warning",
+        "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+        "-headers", headers_str,
+        "-user_agent", UA,
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_delay_max", "5",
+        "-seekable", "0",
+        "-i", m3u8_url,
+        "-c", "copy",
+        "-bsf:a", "aac_adtstoasc",
+        "-movflags", "+faststart",
+        "-y", out_path,
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        if r.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+            print(f"      ✅ ffmpeg: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
+            return True
+        err = (r.stderr or "").strip().split("\n")[-1] if r.stderr else "?"
+        print(f"      ⚠️ ffmpeg: {err[:150]}", flush=True)
+    except Exception as e:
+        print(f"      ⚠️ ffmpeg: {str(e)[:100]}", flush=True)
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════
+# محاولة 2: yt-dlp
+# ═══════════════════════════════════════════════════════════════
+def _ytdlp(url, out_path, referer, ck):
+    print(f"      [yt-dlp]", flush=True)
+    ck_s = "; ".join(f"{k}={v}" for k, v in ck.items())[:8000]
+
+    cmd = ["yt-dlp",
+           "--no-warnings", "--no-playlist", "--no-part",
+           "--retries", "3", "--fragment-retries", "5",
+           "--socket-timeout", "30",
+           "--concurrent-fragments", "16",
+           "--no-check-certificate",
+           "--hls-use-mpegts", "--hls-prefer-native",
+           "--impersonate", "chrome",
+           "--user-agent", UA,
+           "--referer", referer,
+           "--add-header", "Origin:" + _origin(referer),
+           "--add-header", "Accept:*/*",
+           "--add-header", "Accept-Language:en-US,en;q=0.9",
+           "--add-header", "Sec-Fetch-Dest:empty",
+           "--add-header", "Sec-Fetch-Mode:cors",
+           "--add-header", "Sec-Fetch-Site:cross-site",
+           "-o", out_path, url]
+    if ck_s:
+        cmd += ["--add-header", f"Cookie:{ck_s}"]
+
+    log_path = out_path + ".log"
+    try:
+        log = open(log_path, "w", encoding="utf-8", errors="replace")
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
+    except Exception as e:
+        print(f"      ⚠️ spawn: {str(e)[:80]}", flush=True)
+        return False
+
+    start = time.time()
+    while proc.poll() is None:
+        time.sleep(2)
+        if time.time() - start > 400:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            break
+    try:
+        log.close()
+    except Exception:
+        pass
+
+    if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+        print(f"      ✅ yt-dlp: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
+        return True
+
+    try:
+        with open(log_path, encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        for line in lines[-5:]:
+            print(f"      ⚠️ {line.strip()[:150]}", flush=True)
+    except Exception:
+        pass
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════
+# محاولة 3: cffi+concat
 # ═══════════════════════════════════════════════════════════════
 def _try_concat_protocol(seg_paths, out_path):
-    """concat: protocol — سريع، يعمل مع MPEG-TS غير المشفّر."""
     concat_input = "concat:" + "|".join(seg_paths)
     cmd = [
         _ffmpeg(), "-hide_banner", "-loglevel", "warning",
@@ -468,7 +687,7 @@ def _try_concat_protocol(seg_paths, out_path):
         err = (r.stderr or "")[-200:]
         print(f"      ⚠️ concat protocol: {err}", flush=True)
     except Exception as e:
-        print(f"      ⚠️ concat protocol exception: {str(e)[:100]}", flush=True)
+        print(f"      ⚠️ concat protocol: {str(e)[:100]}", flush=True)
     return False
 
 
@@ -498,12 +717,12 @@ def _try_concat_demuxer(seg_paths, out_path, seg_dir):
         err = (r.stderr or "")[-200:]
         print(f"      ⚠️ concat demuxer: {err}", flush=True)
     except Exception as e:
-        print(f"      ⚠️ concat demuxer exception: {str(e)[:100]}", flush=True)
+        print(f"      ⚠️ concat demuxer: {str(e)[:100]}", flush=True)
     return False
 
 
 def _try_binary_concat(seg_paths, out_path, seg_dir):
-    print(f"      🔄 محاولة دمج ثنائي (binary concat)...", flush=True)
+    print(f"      🔄 محاولة دمج ثنائي...", flush=True)
     try:
         bin_path = os.path.join(seg_dir, "binary.ts")
         with open(bin_path, "wb") as out:
@@ -540,18 +759,7 @@ def _cffi_download(segments, out_path, referer, ck):
     if not segments:
         return None
 
-    headers = {
-        "Referer": referer or "",
-        "Origin": _origin(referer),
-        "User-Agent": UA,
-        "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "cross-site",
-    }
-    if ck:
-        headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in ck.items())[:8000]
+    headers = _full_headers(referer, ck)
 
     test_ok = False
     last_err = "?"
@@ -614,7 +822,6 @@ def _cffi_download(segments, out_path, referer, ck):
 
     sorted_s = [paths[k] for k in sorted(paths)]
 
-    # الترتيب: concat protocol → demuxer → binary
     ok = False
     if not ok:
         ok = _try_concat_protocol(sorted_s, out_path)
@@ -634,122 +841,12 @@ def _cffi_download(segments, out_path, referer, ck):
 
 
 # ═══════════════════════════════════════════════════════════════
-# yt-dlp
-# ═══════════════════════════════════════════════════════════════
-def _ytdlp(url, out_path, referer, ck):
-    print(f"      [yt-dlp]", flush=True)
-    ck_s = "; ".join(f"{k}={v}" for k, v in ck.items())[:8000]
-
-    cmd = ["yt-dlp",
-           "--no-warnings", "--no-playlist", "--no-part",
-           "--retries", "3", "--fragment-retries", "5",
-           "--socket-timeout", "30",
-           "--concurrent-fragments", "16",
-           "--no-check-certificate",
-           "--hls-use-mpegts", "--hls-prefer-native",
-           "--impersonate", "chrome",
-           "--user-agent", UA,
-           "--referer", referer,
-           "--add-header", "Origin:" + _origin(referer),
-           "--add-header", "Accept:*/*",
-           "-o", out_path, url]
-    if ck_s:
-        cmd += ["--add-header", f"Cookie:{ck_s}"]
-
-    log_path = out_path + ".log"
-    try:
-        log = open(log_path, "w", encoding="utf-8", errors="replace")
-        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
-    except Exception as e:
-        print(f"      ⚠️ spawn: {str(e)[:80]}", flush=True)
-        return False
-
-    start = time.time()
-    while proc.poll() is None:
-        time.sleep(2)
-        if time.time() - start > 400:
-            try:
-                proc.kill()
-            except Exception:
-                pass
-            break
-    try:
-        log.close()
-    except Exception:
-        pass
-
-    if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-        print(f"      ✅ yt-dlp: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
-        return True
-
-    try:
-        with open(log_path, encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
-        for line in lines[-5:]:
-            print(f"      ⚠️ {line.strip()[:150]}", flush=True)
-    except Exception:
-        pass
-    return False
-
-
-# ═══════════════════════════════════════════════════════════════
-# ffmpeg HLS مباشرة — ★ الأفضل للمواقع المشفّرة AES-128
-# ═══════════════════════════════════════════════════════════════
-def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
-    print(f"      [ffmpeg-hls]", flush=True)
-
-    headers = (
-        f"Referer: {referer}\r\n"
-        f"Origin: {_origin(referer)}\r\n"
-        f"User-Agent: {UA}\r\n"
-        "Accept: */*\r\n"
-        "Sec-Fetch-Dest: empty\r\n"
-        "Sec-Fetch-Mode: cors\r\n"
-        "Sec-Fetch-Site: cross-site\r\n"
-    )
-    if ck:
-        ck_s = "; ".join(f"{k}={v}" for k, v in ck.items())[:8000]
-        headers += f"Cookie: {ck_s}\r\n"
-
-    cmd = [
-        _ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "warning",
-        "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
-        "-headers", headers,
-        "-user_agent", UA,
-        "-reconnect", "1",
-        "-reconnect_streamed", "1",
-        "-reconnect_delay_max", "5",
-        "-i", m3u8_url,
-        "-c", "copy",
-        "-bsf:a", "aac_adtstoasc",
-        "-movflags", "+faststart",
-        "-y", out_path,
-    ]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
-        if r.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-            print(f"      ✅ ffmpeg: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
-            return True
-        err = (r.stderr or "").strip().split("\n")[-1] if r.stderr else "?"
-        print(f"      ⚠️ ffmpeg: {err[:150]}", flush=True)
-    except Exception as e:
-        print(f"      ⚠️ ffmpeg: {str(e)[:100]}", flush=True)
-    return False
-
-
-# ═══════════════════════════════════════════════════════════════
-# ★★★ v35: استخراج m3u8 — الترتيب الجديد
+# ★★★ v36: استخراج m3u8 — الترتيب الجديد مع N_m3u8DL-RE
 # ═══════════════════════════════════════════════════════════════
 def _extract_from_iframe(sb, iframe_url, out_path):
-    """
-    ★ v35: الترتيب الجديد — ffmpeg-HLS أولاً
-    (لأن مقاطع 1vid.online مشفّرة AES-128، وffmpeg يفك التشفير
-     تلقائياً من خلال m3u8 URL مباشرة، بينما concat يفشل).
-    """
     print(f"      🌐 iframe: {iframe_url[:80]}", flush=True)
     _open(sb, iframe_url, wait=2.5)
 
-    # ── البحث عن m3u8 ──
     m3u8s = []
     for cycle in range(6):
         _play(sb)
@@ -785,40 +882,70 @@ def _extract_from_iframe(sb, iframe_url, out_path):
 
     m3u8s.sort(key=_priority)
 
+    # إزالة المكرر (نفس الرابط بمعاملات مختلفة)
+    unique = []
+    seen_bases = set()
+    for u in m3u8s:
+        base = u.split("?")[0]
+        if base in seen_bases:
+            continue
+        seen_bases.add(base)
+        unique.append(u)
+    m3u8s = unique
+
     for u in m3u8s[:3]:
         print(f"         · {u[:100]}", flush=True)
 
     ck = _cookies(sb)
     ref = sb.cdp.get_current_url() or iframe_url
 
-    # ═══ محاولة 1: ffmpeg-HLS (الأفضل للمواقع المشفّرة) ═══
-    print(f"      🎯 محاولة ffmpeg-HLS (يفك التشفير تلقائياً)...", flush=True)
-    for m in m3u8s[:2]:
+    # ★ فلترة الروابط المنتهية الصلاحية
+    alive = []
+    for m in m3u8s[:3]:
+        if _is_url_alive(m, ref, ck):
+            alive.append(m)
+        else:
+            print(f"         ⚠️ منتهي الصلاحية", flush=True)
+
+    if not alive:
+        print(f"      ⚠️ كل الروابط منتهية — إعادة محاولة بعد 2s", flush=True)
+        sb.cdp.sleep(2)
+        _play(sb)
+        found = _scan(sb)
+        for m in found[:3]:
+            if _is_url_alive(m, ref, ck):
+                alive.append(m)
+
+    if not alive:
+        print(f"      ❌ لا روابط صالحة", flush=True)
+        return None
+
+    # ═══ محاولة 0: N_m3u8DL-RE (الأقوى) ═══
+    if _has_nm3u8dl():
+        print(f"      🎯 [0] N_m3u8DL-RE...", flush=True)
+        for m in alive[:2]:
+            if _try_nm3u8dl(m, str(out_path), ref, ck):
+                if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+                    return (os.path.getsize(out_path), True)
+
+    # ═══ محاولة 1: ffmpeg-HLS ═══
+    print(f"      🎯 [1] ffmpeg-HLS...", flush=True)
+    for m in alive[:2]:
         if _ffmpeg_hls(m, str(out_path), ref, ck):
             if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
                 return (os.path.getsize(out_path), True)
 
-    # ═══ محاولة 2: yt-dlp (fallback موثوق) ═══
-    print(f"      🎯 محاولة yt-dlp...", flush=True)
-    for m in m3u8s[:2]:
+    # ═══ محاولة 2: yt-dlp ═══
+    print(f"      🎯 [2] yt-dlp...", flush=True)
+    for m in alive[:2]:
         if _ytdlp(m, str(out_path), ref, ck):
             if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
                 return (os.path.getsize(out_path), True)
 
-    # ═══ محاولة 3: cffi+concat (فقط إذا كان m3u8 غير مشفّر) ═══
-    print(f"      🎯 محاولة cffi+concat...", flush=True)
-    for m in m3u8s[:3]:
-        headers = {
-            "Referer": ref,
-            "Origin": _origin(ref),
-            "User-Agent": UA,
-            "Accept": "*/*",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "cross-site",
-        }
-        if ck:
-            headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in ck.items())[:8000]
+    # ═══ محاولة 3: cffi+concat ═══
+    print(f"      🎯 [3] cffi+concat...", flush=True)
+    for m in alive:
+        headers = _full_headers(ref, ck)
         _, segs = _resolve_m3u8(m, headers)
         if segs:
             res = _cffi_download(segs, str(out_path), ref, ck)
@@ -1055,7 +1182,7 @@ def download_episode(series_name, episode_num, url,
 
     if t.is_alive():
         print(f"    ⏰ تجاوز {config.EPISODE_TIMEOUT}s — إيقاف", flush=True)
-        for p in ["yt-dlp", "chrome", "ffmpeg"]:
+        for p in ["yt-dlp", "chrome", "ffmpeg", "N_m3u8DL-RE"]:
             try:
                 subprocess.run(["pkill", "-9", "-f", p], capture_output=True, timeout=3)
             except Exception:
