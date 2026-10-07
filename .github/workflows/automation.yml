@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: '0 */3 * * *'
   workflow_dispatch:
+    inputs:
+      clean:
+        description: 'تنظيف كامل قبل البدء'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
   push:
     branches: [main]
     paths:
@@ -13,6 +22,7 @@ on:
       - 'telegram_checker.py'
       - 'uploader.py'
       - 'config.py'
+      - 'build_site.py'
       - '.github/workflows/automation.yml'
 
 permissions:
@@ -34,17 +44,11 @@ jobs:
     timeout-minutes: 340
 
     steps:
-      # ═══════════════════════════════════════════════════════
-      # 1) Checkout
-      # ═══════════════════════════════════════════════════════
       - name: 📥 Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      # ═══════════════════════════════════════════════════════
-      # 2) Python
-      # ═══════════════════════════════════════════════════════
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
@@ -52,89 +56,30 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      # ═══════════════════════════════════════════════════════
-      # 3) ffmpeg
-      # ═══════════════════════════════════════════════════════
       - name: 🎞️ Install ffmpeg
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
           ffmpeg -version | head -1
 
-      # ═══════════════════════════════════════════════════════
-      # 4) ★ N_m3u8DL-RE (الأقوى ضد CDN بتوكنات)
-      # ═══════════════════════════════════════════════════════
-      - name: 🚀 Install N_m3u8DL-RE
-        run: |
-          set -e
-          echo "📦 تحميل N_m3u8DL-RE..."
-
-          # جرّب إصدارات متعددة (الأحدث → الأقدم)
-          URLS=(
-            "https://github.com/nilaoda/N_m3u8DL-RE/releases/download/v0.6.0/N_m3u8DL-RE_v0.6.0_linux-x64_20260628.tar.gz"
-            "https://github.com/nilaoda/N_m3u8DL-RE/releases/download/v0.5.0/N_m3u8DL-RE_v0.5.0_linux-x64_20250703.tar.gz"
-            "https://github.com/nilaoda/N_m3u8DL-RE/releases/download/v0.4.0/N_m3u8DL-RE_v0.4.0_linux-x64_20240605.tar.gz"
-            "https://github.com/nilaoda/N_m3u8DL-RE/releases/download/v0.3.0-beta/N_m3u8DL-RE_v0.3.0-beta_linux-x64_20240321.tar.gz"
-          )
-
-          SUCCESS=0
-          for URL in "${URLS[@]}"; do
-            echo "   ↳ محاولة: $(basename $URL)"
-            if wget -q --timeout=30 -O /tmp/nm3u8.tar.gz "$URL" 2>/dev/null; then
-              if tar -xzf /tmp/nm3u8.tar.gz -C /tmp/ 2>/dev/null; then
-                BIN=$(find /tmp -maxdepth 3 -name "N_m3u8DL-RE" -type f | head -1)
-                if [ -n "$BIN" ]; then
-                  sudo mv "$BIN" /usr/local/bin/N_m3u8DL-RE
-                  sudo chmod +x /usr/local/bin/N_m3u8DL-RE
-                  echo "   ✅ ثُبّت بنجاح"
-                  SUCCESS=1
-                  break
-                fi
-              fi
-            fi
-          done
-
-          rm -f /tmp/nm3u8.tar.gz
-          rm -rf /tmp/N_m3u8DL-RE*
-
-          if [ "$SUCCESS" = "1" ]; then
-            N_m3u8DL-RE --version || echo "   ⚠️ الأداة مثبتة لكنها لا تعمل"
-          else
-            echo "   ⚠️ فشل تثبيت N_m3u8DL-RE — سيتم الاعتماد على ffmpeg/yt-dlp"
-          fi
-
-      # ═══════════════════════════════════════════════════════
-      # 5) Chrome + Xvfb
-      # ═══════════════════════════════════════════════════════
       - name: 🌐 Install Chrome + Xvfb
         run: |
           sudo apt-get install -y -qq xvfb wget
-
-          # Chrome
           wget -q -O /tmp/chrome.deb \
             https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo apt-get install -y -qq /tmp/chrome.deb
           rm -f /tmp/chrome.deb
-
-          # Xvfb
           sudo Xvfb :99 -screen 0 1920x1080x24 &
           echo "DISPLAY=:99" >> $GITHUB_ENV
           sleep 2
-
           google-chrome --version
 
-      # ═══════════════════════════════════════════════════════
-      # 6) pip install
-      # ═══════════════════════════════════════════════════════
       - name: 📚 Install Python packages
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip check || true
 
-      # ═══════════════════════════════════════════════════════
-      # 7) .env
-      # ═══════════════════════════════════════════════════════
       - name: 📝 Create .env
         env:
           API_ID: ${{ secrets.API_ID }}
@@ -165,13 +110,12 @@ jobs:
           COMPRESS_CRF=32
           COMPRESS_PRESET=veryfast
           COMPRESS_AUDIO_BITRATE=32k
-          COMPRESS_MAX_SIZE_MB=45
+          COMPRESS_MAX_SIZE_MB=100
           M3U8_SEARCH_TIMEOUT=25
           OPEN_TIMEOUT=10
-          EPISODE_TIMEOUT=240
+          EPISODE_TIMEOUT=2400
           EOF
 
-          # استبدل المتغيرات بقيمها الحقيقية
           sed -i "s|\${API_ID}|${API_ID}|g" .env
           sed -i "s|\${API_HASH}|${API_HASH}|g" .env
           sed -i "s|\${SESSION_STRING}|${SESSION_STRING}|g" .env
@@ -182,86 +126,67 @@ jobs:
           grep -v -E "API_HASH|SESSION_STRING|API_ID|CHANNEL_ID" .env
           echo "════════════════════════════════════════════════"
 
-      # ═══════════════════════════════════════════════════════
-      # 8) تشخيص سريع
-      # ═══════════════════════════════════════════════════════
       - name: 🔍 Diagnostics
         run: |
           echo "════════════════════════════════════════════════"
           echo "🔧 الأدوات المتوفرة:"
           echo "   ffmpeg:       $(which ffmpeg)"
           echo "   yt-dlp:       $(which yt-dlp || echo '❌')"
-          echo "   N_m3u8DL-RE:  $(which N_m3u8DL-RE || echo '❌')"
           echo "   python:       $(which python)"
           echo "   chrome:       $(which google-chrome)"
           echo "════════════════════════════════════════════════"
-          echo "🌐 DISPLAY=$DISPLAY"
-
-          # تحقق من Xvfb
           if pgrep -x Xvfb > /dev/null; then
             echo "   ✅ Xvfb يعمل"
-          else
-            echo "   ⚠️ Xvfb لا يعمل — سأحاول تشغيله"
-            sudo Xvfb :99 -screen 0 1920x1080x24 &
-            sleep 2
           fi
-
-          # تحقق من yt-dlp
           yt-dlp --version || echo "⚠️ yt-dlp لا يعمل"
 
-          # تحقق من N_m3u8DL-RE
-          if which N_m3u8DL-RE > /dev/null 2>&1; then
-            N_m3u8DL-RE --version 2>&1 | head -3 || echo "⚠️ لكنه لا يعمل"
-          fi
-
-      # ═══════════════════════════════════════════════════════
-      # 9) 🚀 التشغيل
-      # ═══════════════════════════════════════════════════════
+      # ★★★ عند الخطأ: توقف فوراً (بدون || true)
       - name: 🚀 Run Automation
         run: |
-          python run_all.py 2>&1 || true
+          if [ "${{ github.event.inputs.clean }}" = "true" ]; then
+            echo "🧹 تشغيل مع تنظيف شامل..."
+            python run_all.py --clean
+          else
+            python run_all.py
+          fi
 
-      # ═══════════════════════════════════════════════════════
-      # 10) 💾 Push النتائج
-      # ═══════════════════════════════════════════════════════
-      - name: 💾 Push results
-        if: always()
+      - name: 💾 Save & Push
+        if: success()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # احفظ فقط data/ و docs/
           git add -f data/ docs/ 2>/dev/null || true
 
           if git diff --staged --quiet; then
-            echo "✅ لا تغييرات للحفظ"
+            echo "✅ لا تغييرات"
             exit 0
           fi
 
-          git commit -m "🤖 تحديث تلقائي: $(date -u +'%Y-%m-%d %H:%M UTC')" || true
+          git commit -m "🤖 تحديث: $(date -u +'%Y-%m-%d %H:%M UTC')" || true
 
-          # 3 محاولات للـ push
           for i in 1 2 3; do
             if git push; then
-              echo "✅ تم الـ push بنجاح"
+              echo "✅ push ناجح"
               break
-            else
-              echo "⚠️ محاولة $i فشلت — محاولة pull ودمج..."
-              git pull --rebase --autostash || true
-              sleep 5
             fi
+            echo "⚠️ محاولة $i — pull..."; git pull --rebase --autostash || true
+            # حل تعارضات data/ بـ ours
+            git checkout --ours data/ 2>/dev/null || true
+            git checkout --ours docs/ 2>/dev/null || true
+            git add data/ docs/ 2>/dev/null || true
+            git rebase --continue 2>/dev/null || true
+            sleep 5
           done
 
-      # ═══════════════════════════════════════════════════════
-      # 11) رفع السجل عند الفشل
-      # ═══════════════════════════════════════════════════════
-      - name: 📤 Upload failure log
+      # ★★★ حفظ السجل عند الفشل
+      - name: 📤 Upload failure logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: failure-log-${{ github.run_number }}
           path: |
-            data/*.log
             data/*.json
+            data/*.log
           retention-days: 7
           if-no-files-found: ignore
