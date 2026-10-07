@@ -1,14 +1,11 @@
 """
 downloader.py v38 — FINAL
 ═══════════════════════════════════════════════════════════
-v38: حل مشكلة IP-Locked Tokens في cdn-vids.xyz
-     - تحميل الفيديو داخل المتصفح باستخدام fetch() في JavaScript
-     - المقاطع تُدمج عبر ffmpeg محلياً
-     - fallback إلى ffmpeg-HLS/yt-dlp/N_m3u8DL-RE
-
-المبدأ: cdn-vids.xyz يربط التوكن بـ IP المتصفح.
-       الحل هو أن تطلب المقاطع من داخل المتصفح نفسه،
-       ثم نحفظها ونعيد دمجها محلياً.
+v38: حل IP-Locked Tokens في cdn-vids.xyz
+     - التحميل من داخل المتصفح عبر fetch() (نفس IP + cookies)
+     - فك AES-128 إن وُجد
+     - fallback إلى ffmpeg-HLS / yt-dlp
+     - v38.1: إعادة _play المفقودة
 """
 
 import os
@@ -72,7 +69,7 @@ def _is_valid_url(url):
 
 
 # ═══════════════════════════════════════════════════════════════
-# JS interceptor (نفس السابق)
+# JS interceptor
 # ═══════════════════════════════════════════════════════════════
 _JS = r"""
 (function(){
@@ -207,10 +204,68 @@ def _open(sb, url, wait=1.5):
 
 
 # ═══════════════════════════════════════════════════════════════
+# ★★★ _play — تشغيل الفيديو في المتصفح (مُعاد في v38.1)
+# ═══════════════════════════════════════════════════════════════
+def _play(sb):
+    """يُشغّل الفيديو داخل المتصفح عبر النقر على كل عناصر التشغيل المحتملة."""
+    _eval(sb, """
+        (function(){try{
+            var v=document.querySelector('video');
+            if(v){v.muted=true;if(v.play)v.play().catch(function(){});}
+            if(typeof jwplayer!=='undefined'){
+                var p=jwplayer();
+                if(p){
+                    if(p.play)p.play(true);
+                    if(p.setMute)p.setMute(true);
+                }
+            }
+            if(typeof videojs!=='undefined'){
+                var p2=videojs.getPlayers();
+                for(var k in p2){
+                    try{p2[k].play();p2[k].muted(true);}catch(e){}
+                }
+            }
+            ['video','button','.vjs-big-play-button','.jw-icon-playback',
+             '.jw-display-icon-container','[class*=play]'].forEach(function(s){
+                document.querySelectorAll(s).forEach(function(el){
+                    try{el.click();}catch(e){}
+                });
+            });
+        }catch(e){}})();
+    """)
+
+    # نقر حقيقي بموضع الفيديو (لبعض المشغلات)
+    try:
+        r = _eval(sb, """
+            (function(){
+                var v=document.querySelector('video');
+                if(!v)return null;
+                var b=v.getBoundingClientRect();
+                if(b.width<50)return null;
+                return {x:Math.round(b.left+b.width/2),y:Math.round(b.top+b.height/2)};
+            })();
+        """)
+        if r and r.get("x", 0) > 0:
+            for _ in range(2):
+                sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+                    "type": "mousePressed", "x": r['x'], "y": r['y'],
+                    "button": "left", "clickCount": 1,
+                })
+                sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+                    "type": "mouseReleased", "x": r['x'], "y": r['y'],
+                    "button": "left", "clickCount": 1,
+                })
+                sb.cdp.sleep(0.4)
+    except Exception:
+        pass
+
+
+# ═══════════════════════════════════════════════════════════════
 # كشف m3u8
 # ═══════════════════════════════════════════════════════════════
 def _scan(sb):
     found = set()
+
     try:
         urls = _eval(sb, "return window.__m3u8||[]", [])
         if isinstance(urls, list):
@@ -219,6 +274,7 @@ def _scan(sb):
                     found.add(u)
     except Exception:
         pass
+
     try:
         perf = _eval(sb, "try{return performance.getEntriesByType('resource').map(e=>e.name)}catch(e){return[]}", [])
         if isinstance(perf, list):
@@ -227,12 +283,14 @@ def _scan(sb):
                     found.add(u)
     except Exception:
         pass
+
     try:
         html = sb.cdp.get_page_source() or ""
         for m in re.finditer(r'(https?:[^\s"\'<>\\]+\.m3u8[^\s"\'<>\\]*)', html):
             found.add(m.group(1).replace("\\/", "/"))
     except Exception:
         pass
+
     try:
         apis = _eval(sb, """
             (function(){
@@ -269,17 +327,14 @@ def _scan(sb):
                     found.add(u)
     except Exception:
         pass
+
     return [u for u in found if "ping.gif" not in u and "jwpltx" not in u]
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v38: التحميل من داخل المتصفح (fetch + base64)
+# ★★★ التحميل من داخل المتصفح (fetch)
 # ═══════════════════════════════════════════════════════════════
 def _fetch_in_browser(sb, url, max_size_mb=2000):
-    """
-    يحمّل ملفاً من داخل المتصفح عبر fetch().
-    يعيد البيانات كـ bytes أو None.
-    """
     max_bytes = max_size_mb * 1024 * 1024
     js = f"""
     (function(){{
@@ -327,7 +382,6 @@ def _fetch_in_browser(sb, url, max_size_mb=2000):
 
 
 def _fetch_text_in_browser(sb, url):
-    """يحمل نصاً (m3u8) من داخل المتصفح."""
     js = f"""
     (function(){{
         return fetch({repr(url)}, {{
@@ -352,19 +406,14 @@ def _fetch_text_in_browser(sb, url):
 
 
 def _download_via_browser(sb, m3u8_url, out_path):
-    """
-    ★ v38: الحل الجذري — نحمّل m3u8 + المقاطع من داخل المتصفح.
-    نستخدم جلسة المتصفح (نفس IP + كوكيز) لتجاوز IP-Locked Tokens.
-    """
     print(f"      🎯 التحميل من داخل المتصفح (fetch)...", flush=True)
 
-    # 1) احصل على m3u8
     m3u8_text = _fetch_text_in_browser(sb, m3u8_url)
     if not m3u8_text:
         print(f"      ❌ فشل جلب m3u8", flush=True)
         return None
 
-    # 2) إذا كان master playlist، اختر أفضل variant
+    # master playlist → اختر أعلى جودة
     if "#EXT-X-STREAM-INF" in m3u8_text:
         best = _pick_best_variant_browser(sb, m3u8_text, m3u8_url)
         if best:
@@ -373,7 +422,6 @@ def _download_via_browser(sb, m3u8_url, out_path):
             if not m3u8_text:
                 return None
 
-    # 3) استخرج المقاطع + مفتاح التشفير
     base = m3u8_url.rsplit("/", 1)[0]
     key_url = None
     key_data = None
@@ -400,7 +448,6 @@ def _download_via_browser(sb, m3u8_url, out_path):
 
     print(f"      📋 {len(seg_urls)} مقطع | AES: {has_aes}", flush=True)
 
-    # 4) حمّل مفتاح التشفير إن وُجد
     if key_url:
         key_data = _fetch_in_browser(sb, key_url, max_size_mb=1)
         if not key_data or len(key_data) != 16:
@@ -408,7 +455,6 @@ def _download_via_browser(sb, m3u8_url, out_path):
             key_data = None
             has_aes = False
 
-    # 5) حمّل المقاطع
     tmp_dir = tempfile.mkdtemp(prefix="browser_hls_")
     ok_count = 0
     failed = 0
@@ -423,19 +469,17 @@ def _download_via_browser(sb, m3u8_url, out_path):
             failed += 1
             continue
 
-        # فك تشفير AES-128 إن وُجد
+        # فك AES-128
         if has_aes and key_data:
             try:
                 from Crypto.Cipher import AES
                 iv = b'\x00' * 16
-                if "#EXT-X-MEDIA-SEQUENCE" in m3u8_text:
-                    m = re.search(r'#EXT-X-MEDIA-SEQUENCE:(\d+)', m3u8_text)
-                    if m:
-                        seq = int(m.group(1)) + (i - 1)
-                        iv = seq.to_bytes(16, 'big')
+                m = re.search(r'#EXT-X-MEDIA-SEQUENCE:(\d+)', m3u8_text)
+                if m:
+                    seq = int(m.group(1)) + (i - 1)
+                    iv = seq.to_bytes(16, 'big')
                 cipher = AES.new(key_data, AES.MODE_CBC, iv)
                 data = cipher.decrypt(data)
-                # إزالة padding
                 pad_len = data[-1]
                 if 1 <= pad_len <= 16:
                     data = data[:-pad_len]
@@ -452,7 +496,6 @@ def _download_via_browser(sb, m3u8_url, out_path):
         print(f"      ❌ لا مقاطع محمّلة", flush=True)
         return None
 
-    # 6) ادمج المقاطع
     seg_paths = sorted([
         os.path.join(tmp_dir, f) for f in os.listdir(tmp_dir)
         if f.endswith(".ts")
@@ -462,13 +505,13 @@ def _download_via_browser(sb, m3u8_url, out_path):
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
     if ok and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-        print(f"      ✅ تحميل المتصفح: {os.path.getsize(out_path)/1048576:.1f}MB", flush=True)
+        print(f"      ✅ تحميل المتصفح: {os.path.getsize(out_path)/1048576:.1f}MB",
+              flush=True)
         return (os.path.getsize(out_path), True)
     return None
 
 
 def _pick_best_variant_browser(sb, m3u8_text, base_url):
-    """يختار أفضل variant من master playlist."""
     variants = []
     lines = m3u8_text.splitlines()
     for i, line in enumerate(lines):
@@ -478,7 +521,8 @@ def _pick_best_variant_browser(sb, m3u8_text, base_url):
             if i + 1 < len(lines):
                 uri = lines[i + 1].strip()
                 if uri and not uri.startswith("#"):
-                    full = uri if uri.startswith("http") else urljoin(base_url.rsplit("/", 1)[0] + "/", uri)
+                    full = uri if uri.startswith("http") else urljoin(
+                        base_url.rsplit("/", 1)[0] + "/", uri)
                     variants.append((bw, full))
     if not variants:
         return None
@@ -487,11 +531,9 @@ def _pick_best_variant_browser(sb, m3u8_text, base_url):
 
 
 def _concat_segments(seg_paths, out_path, seg_dir):
-    """يدمج المقاطع بـ ffmpeg."""
     if not seg_paths:
         return False
 
-    # محاولة 1: concat demuxer
     concat_file = os.path.join(seg_dir, "concat.txt")
     with open(concat_file, "w", encoding="utf-8") as f:
         for p in seg_paths:
@@ -518,7 +560,7 @@ def _concat_segments(seg_paths, out_path, seg_dir):
     except Exception as e:
         print(f"      ⚠️ concat: {str(e)[:100]}", flush=True)
 
-    # محاولة 2: دمج ثنائي
+    # دمج ثنائي
     try:
         bin_path = os.path.join(seg_dir, "binary.ts")
         with open(bin_path, "wb") as out:
@@ -545,7 +587,7 @@ def _concat_segments(seg_paths, out_path, seg_dir):
 
 
 # ═══════════════════════════════════════════════════════════════
-# محاولات خارجية (fallback فقط)
+# fallback: ffmpeg-HLS + yt-dlp
 # ═══════════════════════════════════════════════════════════════
 def _ffmpeg_hls(m3u8_url, out_path, referer, ck):
     print(f"      [ffmpeg-hls]", flush=True)
@@ -619,7 +661,7 @@ def _ytdlp(url, out_path, referer, ck):
 
 
 # ═══════════════════════════════════════════════════════════════
-# استخراج m3u8 (v38: تحميل المتصفح أولاً)
+# استخراج m3u8
 # ═══════════════════════════════════════════════════════════════
 def _extract_from_iframe(sb, iframe_url, out_path):
     print(f"      🌐 iframe: {iframe_url[:80]}", flush=True)
@@ -658,7 +700,6 @@ def _extract_from_iframe(sb, iframe_url, out_path):
         return 2
     m3u8s.sort(key=_priority)
 
-    # إزالة المكرر
     unique = []
     seen = set()
     for u in m3u8s:
@@ -677,7 +718,7 @@ def _extract_from_iframe(sb, iframe_url, out_path):
         if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
             return res
 
-    # fallback: ffmpeg-HLS
+    # fallback
     ck = _cookies(sb)
     ref = sb.cdp.get_current_url() or iframe_url
 
@@ -697,7 +738,7 @@ def _extract_from_iframe(sb, iframe_url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# u3seq + yam (كما هي)
+# u3seq + yam
 # ═══════════════════════════════════════════════════════════════
 def _u3seq(sb, url, out_path):
     if "?do=watch" not in url:
@@ -812,7 +853,7 @@ def _run_browser(url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# الضغط + thumbnail (بدون أي تغيير)
+# الضغط + thumbnail
 # ═══════════════════════════════════════════════════════════════
 def _compress(inp, out):
     im = Path(inp).stat().st_size / 1048576
