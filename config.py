@@ -19,10 +19,12 @@ class Config:
     API_ID = int(os.environ.get("API_ID", "0") or "0")
     API_HASH = os.environ.get("API_HASH", "").strip()
     SESSION_STRING = os.environ.get(
-        "SESSION_STRING", os.environ.get("STRING_SESSION", "")
+        "SESSION_STRING",
+        os.environ.get("STRING_SESSION", "")
     ).strip()
     CHANNEL_ID = os.environ.get(
-        "CHANNEL_ID", os.environ.get("CHANNEL", "")
+        "CHANNEL_ID",
+        os.environ.get("CHANNEL", "")
     ).strip()
 
     # ═══ المصادر المتعددة ═══
@@ -32,6 +34,11 @@ class Config:
     U3SEQ_BASE_URL = os.environ.get("SOURCE_BASE_URL", "https://u.3seq.com").rstrip("/")
     U3SEQ_CATEGORY = int(os.environ.get("SOURCE_CATEGORY", "712"))
     U3SEQ_MAX_PAGES = int(os.environ.get("SOURCE_MAX_PAGES", "20"))
+
+    # ★ أسماء بديلة (للتوافق مع الكود القديم في checker.py و downloader.py)
+    SOURCE_BASE_URL = U3SEQ_BASE_URL
+    SOURCE_CATEGORY = U3SEQ_CATEGORY
+    SOURCE_MAX_PAGES = U3SEQ_MAX_PAGES
 
     # yam.ahwaktv.net
     YAM_BASE_URL = os.environ.get("YAM_BASE_URL", "https://yam.ahwaktv.net").rstrip("/")
@@ -57,7 +64,8 @@ class Config:
 
     # ═══ فحص قنوات Telegram ═══
     CHECK_CHANNELS = os.environ.get(
-        "CHECK_CHANNELS", "shoofcima,shoofFilm"
+        "CHECK_CHANNELS",
+        "shoofcima,shoofFilm"
     ).strip()
     CHECK_CHANNEL_LIMIT = int(os.environ.get("CHECK_CHANNEL_LIMIT", "3000"))
     CHECK_CACHE_TTL = int(os.environ.get("CHECK_CACHE_TTL", "1800"))
@@ -88,10 +96,14 @@ class Config:
     def validate(cls):
         from errors import ConfigError
         missing = []
-        if not cls.API_ID: missing.append("API_ID")
-        if not cls.API_HASH: missing.append("API_HASH")
-        if not cls.SESSION_STRING: missing.append("SESSION_STRING")
-        if not cls.CHANNEL_ID: missing.append("CHANNEL_ID")
+        if not cls.API_ID:
+            missing.append("API_ID")
+        if not cls.API_HASH:
+            missing.append("API_HASH")
+        if not cls.SESSION_STRING:
+            missing.append("SESSION_STRING")
+        if not cls.CHANNEL_ID:
+            missing.append("CHANNEL_ID")
         if missing:
             raise ConfigError(f"متغيرات مفقودة: {', '.join(missing)}")
         return True
