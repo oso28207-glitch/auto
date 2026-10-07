@@ -1,7 +1,9 @@
 """
-downloader.py — حقن JavaScript لاعتراض m3u8 + curl_cffi HLS + ffmpeg HLS
+downloader.py — حقن JavaScript + تحميل HLS عبر المتصفح (الأقوى)
 """
 
+import base64
+import json
 import os
 import re
 import shutil
@@ -21,7 +23,7 @@ MIN_SIZE = 100 * 1024
 M3U8_SEARCH_TIMEOUT = int(os.environ.get("M3U8_SEARCH_TIMEOUT", "60"))
 YTDLP_TIMEOUT = int(os.environ.get("YTDLP_TIMEOUT", "120"))
 FFMPEG_HLS_TIMEOUT = int(os.environ.get("FFMPEG_HLS_TIMEOUT", "1800"))
-CURL_SEG_TIMEOUT = int(os.environ.get("CURL_SEG_TIMEOUT", "60"))
+BROWSER_FETCH_TIMEOUT = int(os.environ.get("BROWSER_FETCH_TIMEOUT", "90"))
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -71,7 +73,7 @@ def _get_ffmpeg_exe():
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ حقن JavaScript لاعتراض m3u8 قبل تحميل الصفحة
+# حقن JavaScript لاعتراض m3u8
 # ═══════════════════════════════════════════════════════════════
 _INTERCEPTOR_JS = r"""
 (function() {
@@ -229,6 +231,186 @@ def _read_captured_m3u8(sb):
 
 
 # ═══════════════════════════════════════════════════════════════
+# ★★★ المتصفح: fetch() عبر CDP Runtime.evaluate
+# ═══════════════════════════════════════════════════════════════
+def _cdp_eval(sb, expr, await_promise=False, timeout_ms=90000):
+    """تنفيذ JS عبر CDP. إن await_promise، ينتظر حتى انتهاء Promise."""
+    try:
+        result = sb.cdp.send_cdp_cmd("Runtime.evaluate", {
+            "expression": expr,
+            "awaitPromise": bool(await_promise),
+            "returnByValue": True,
+            "timeout": int(timeout_ms),
+        })
+    except Exception as e:
+        return None
+    if not result:
+        return None
+    if "exceptionDetails" in result:
+        return None
+    if "result" in result:
+        return result["result"].get("value")
+    return None
+
+
+def _browser_fetch_text(sb, url, timeout=30):
+    """جلب نص URL عبر fetch() داخل المتصفح (يستخدم كوكيز/هيدرات المتصفح الحقيقية)."""
+    expr = (
+        "(async () => { try {"
+        f"  const r = await fetch({json.dumps(url)}, {{credentials:'include'}});"
+        "  if (!r.ok) return '__HTTP_' + r.status + '__';"
+        "  return await r.text();"
+        "} catch (e) { return '__ERROR__: ' + e.message; } })()"
+    )
+    result = _cdp_eval(sb, expr, await_promise=True, timeout_ms=timeout*1000)
+    if not isinstance(result, str):
+        return None
+    if result.startswith("__"):
+        return None
+    return result
+
+
+def _browser_fetch_base64_batch(sb, urls, timeout=180):
+    """جلب عدة روابط دفعة واحدة عبر fetch() داخل المتصفح، وإرجاع قائمة بـ base64."""
+    expr = (
+        "(async () => {"
+        f"  const urls = {json.dumps(urls)};"
+        "  const out = [];"
+        "  for (const u of urls) {"
+        "    try {"
+        "      const r = await fetch(u, {credentials:'include'});"
+        "      if (!r.ok) { out.push('__HTTP_' + r.status + '__'); continue; }"
+        "      const b = await r.arrayBuffer();"
+        "      const bytes = new Uint8Array(b);"
+        "      let bin = '';"
+        "      const CH = 8192;"
+        "      for (let i = 0; i < bytes.length; i += CH) {"
+        "        bin += String.fromCharCode.apply(null, bytes.subarray(i, i+CH));"
+        "      }"
+        "      out.push(btoa(bin));"
+        "    } catch (e) { out.push('__ERR__:' + e.message); }"
+        "  }"
+        "  return out;"
+        "})()"
+    )
+    result = _cdp_eval(sb, expr, await_promise=True, timeout_ms=timeout*1000)
+    if not isinstance(result, list):
+        return None
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════
+# ★★★ HLS عبر المتصفح — الحل الأقوى والأكيد
+# ═══════════════════════════════════════════════════════════════
+def _hls_via_browser(sb, m3u8_url, out):
+    """
+    تحميل HLS كاملاً عبر شبكة المتصفح الحقيقية:
+    - fetch() للـ m3u8 (بكوكيز المتصفح)
+    - fetch() لكل مقطع (بنفس الجلسة)
+    - دمج محلي بـ ffmpeg
+    """
+    print(f"         🌐 browser fetch HLS...")
+
+    # 1) جلب m3u8 الرئيسي
+    content = _browser_fetch_text(sb, m3u8_url, timeout=30)
+    if not content:
+        print(f"         ⚠️ فشل جلب m3u8 عبر المتصفح")
+        return False
+
+    cur_url = m3u8_url
+
+    # 2) إذا master، اختر variant الأول
+    if "#EXT-X-STREAM-INF" in content:
+        variant = None
+        for line in content.splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                variant = urljoin(cur_url, line)
+                break
+        if variant:
+            print(f"         ↪️ variant")
+            vtxt = _browser_fetch_text(sb, variant, timeout=30)
+            if vtxt:
+                content = vtxt
+                cur_url = variant
+
+    # 3) استخراج المقاطع
+    segments = []
+    for line in content.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            segments.append(urljoin(cur_url, line))
+
+    if not segments:
+        print(f"         ⚠️ لا مقاطع")
+        return False
+
+    print(f"         📥 {len(segments)} مقطع عبر المتصفح...")
+
+    tmpdir = tempfile.mkdtemp(prefix="hls_br_")
+    try:
+        seg_paths = []
+        BATCH = 5
+        for i in range(0, len(segments), BATCH):
+            batch = segments[i:i+BATCH]
+            results = _browser_fetch_base64_batch(sb, batch, timeout=120)
+            if not results:
+                print(f"         ⚠️ فشل الدفعة {i//BATCH+1}")
+                continue
+            for j, b64 in enumerate(results):
+                if not isinstance(b64, str) or b64.startswith("__"):
+                    continue
+                try:
+                    data = base64.b64decode(b64)
+                    if len(data) < 100:
+                        continue
+                    p = os.path.join(tmpdir, f"seg_{i+j:05d}.ts")
+                    with open(p, "wb") as f:
+                        f.write(data)
+                    seg_paths.append(p)
+                except Exception:
+                    continue
+            done_n = min(i+BATCH, len(segments))
+            print(f"         📊 {done_n}/{len(segments)}")
+
+        if len(seg_paths) < 3:
+            print(f"         ⚠️ مقاطع غير كافية: {len(seg_paths)}")
+            return False
+
+        # 4) concat + دمج محلي
+        concat_file = os.path.join(tmpdir, "concat.txt")
+        with open(concat_file, "w") as f:
+            for p in seg_paths:
+                f.write(f"file '{p}'\n")
+
+        ff = _get_ffmpeg_exe()
+        cmd = [
+            ff, "-nostdin", "-hide_banner", "-loglevel", "error",
+            "-f", "concat", "-safe", "0",
+            "-i", concat_file,
+            "-c", "copy", "-bsf:a", "aac_adtstoasc",
+            "-movflags", "+faststart",
+            "-y", str(out),
+        ]
+        try:
+            print(f"         🎬 دمج محلي...")
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            if (r.returncode == 0 and os.path.exists(out)
+                    and os.path.getsize(out) > MIN_SIZE):
+                mb = os.path.getsize(out) / 1048576
+                print(f"         ✅ نجح: {mb:.1f}MB")
+                return True
+            err = (r.stderr or "").strip()[-150:] if r.stderr else "?"
+            print(f"         ⚠️ دمج فشل: {err}")
+            return False
+        except subprocess.TimeoutExpired:
+            print(f"         ⏰ دمج timeout")
+            return False
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+# ═══════════════════════════════════════════════════════════════
 # كشف m3u8
 # ═══════════════════════════════════════════════════════════════
 def _scan_for_m3u8(sb, netlog_read):
@@ -237,15 +419,13 @@ def _scan_for_m3u8(sb, netlog_read):
     try:
         for u in _read_captured_m3u8(sb):
             found.add(u)
-    except Exception:
-        pass
+    except Exception: pass
 
     try:
         for u in netlog_read():
             if ".m3u8" in u or ".mpd" in u:
                 found.add(u)
-    except Exception:
-        pass
+    except Exception: pass
 
     try:
         perf = sb.cdp.execute_script("""
@@ -257,8 +437,7 @@ def _scan_for_m3u8(sb, netlog_read):
             for u in perf:
                 if ".m3u8" in u or ".mpd" in u:
                     found.add(u)
-    except Exception:
-        pass
+    except Exception: pass
 
     try:
         html = sb.cdp.get_page_source() or ""
@@ -266,8 +445,7 @@ def _scan_for_m3u8(sb, netlog_read):
             found.add(m.group(1).replace("\\/", "/"))
         for m in re.finditer(r'(https?:[^\s"\'<>\\]+\.mpd[^\s"\'<>\\]*)', html):
             found.add(m.group(1).replace("\\/", "/"))
-    except Exception:
-        pass
+    except Exception: pass
 
     try:
         js_urls = sb.cdp.execute_script("""
@@ -311,8 +489,7 @@ def _scan_for_m3u8(sb, netlog_read):
             for u in js_urls:
                 if isinstance(u, str) and (".m3u8" in u or ".mpd" in u):
                     found.add(u)
-    except Exception:
-        pass
+    except Exception: pass
 
     try:
         video_src = sb.cdp.execute_script("""
@@ -332,8 +509,7 @@ def _scan_for_m3u8(sb, netlog_read):
             for u in video_src:
                 if isinstance(u, str) and ".m3u8" in u:
                     found.add(u)
-    except Exception:
-        pass
+    except Exception: pass
 
     urls = list(found)
     urls = [u for u in urls if "ping.gif" not in u and "jwpltx" not in u]
@@ -347,166 +523,13 @@ def _scan_for_m3u8(sb, netlog_read):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ [جديد] تحميل HLS عبر curl_cffi — الحل الأقوى
-# ═══════════════════════════════════════════════════════════════
-def _build_curl_headers(iframe_url, cookies):
-    headers = {
-        "User-Agent": UA,
-        "Accept": "*/*",
-        "Accept-Language": "ar,en;q=0.9",
-    }
-    if iframe_url:
-        headers["Referer"] = iframe_url
-        headers["Origin"] = _origin(iframe_url)
-    if cookies:
-        headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
-    return headers
-
-
-def _hls_via_curl(m3u8_url, out, iframe_url, cookies=None):
-    """
-    الحل الأقوى: تحميل m3u8 وكل المقاطع عبر curl_cffi
-    (يحاكي بصمة TLS الخاصة بـ Chrome) ثم الدمج محلياً بـ ffmpeg.
-    """
-    cookies = cookies or {}
-    headers = _build_curl_headers(iframe_url, cookies)
-
-    print(f"         🌐 curl_cffi HLS...")
-
-    tmpdir = tempfile.mkdtemp(prefix="hls_curl_")
-    try:
-        # ─── 1) تحميل m3u8 الرئيسي ───
-        try:
-            r = cffi_requests.get(
-                m3u8_url, headers=headers,
-                impersonate="chrome120", timeout=30,
-            )
-        except Exception as e:
-            print(f"         ⚠️ m3u8 fetch: {str(e)[:100]}")
-            return False
-
-        if r.status_code != 200 or not r.text:
-            print(f"         ⚠️ m3u8 HTTP {r.status_code}")
-            return False
-
-        content = r.text
-        cur_url = m3u8_url
-
-        # ─── 2) إذا master playlist، اختر variant ───
-        if "#EXT-X-STREAM-INF" in content:
-            variant_url = None
-            for line in content.splitlines():
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    variant_url = urljoin(cur_url, line)
-                    break
-            if variant_url:
-                print(f"         ↪️ variant: {variant_url[:80]}")
-                try:
-                    r2 = cffi_requests.get(
-                        variant_url, headers=headers,
-                        impersonate="chrome120", timeout=30,
-                    )
-                    if r2.status_code == 200 and r2.text:
-                        content = r2.text
-                        cur_url = variant_url
-                except Exception as e:
-                    print(f"         ⚠️ variant: {str(e)[:80]}")
-
-        # ─── 3) تحميل المقاطع بالتوازي ───
-        segments = []
-        for line in content.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            segments.append(urljoin(cur_url, line))
-
-        if not segments:
-            print(f"         ⚠️ لا مقاطع")
-            return False
-
-        print(f"         📥 تحميل {len(segments)} مقطع...")
-
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        seg_paths = [os.path.join(tmpdir, f"seg_{i:05d}.ts") for i in range(len(segments))]
-        failed = 0
-        done_count = 0
-
-        def _fetch_seg(args):
-            idx, seg_url, seg_path = args
-            try:
-                rr = cffi_requests.get(
-                    seg_url, headers=headers,
-                    impersonate="chrome120", timeout=CURL_SEG_TIMEOUT,
-                )
-                if rr.status_code == 200 and rr.content:
-                    with open(seg_path, "wb") as f:
-                        f.write(rr.content)
-                    return True
-            except Exception:
-                pass
-            return False
-
-        with ThreadPoolExecutor(max_workers=8) as ex:
-            futures = [ex.submit(_fetch_seg, (i, s, seg_paths[i]))
-                       for i, s in enumerate(segments)]
-            for f in as_completed(futures):
-                if f.result():
-                    done_count += 1
-                else:
-                    failed += 1
-
-        print(f"         ✅ {done_count}/{len(segments)} مقطع (فشل: {failed})")
-
-        existing = [p for p in seg_paths if os.path.exists(p) and os.path.getsize(p) > 0]
-        if len(existing) < 3:
-            print(f"         ⚠️ مقاطع غير كافية")
-            return False
-
-        # ─── 4) ملف concat ───
-        concat_file = os.path.join(tmpdir, "concat.txt")
-        with open(concat_file, "w") as f:
-            for p in existing:
-                f.write(f"file '{p}'\n")
-
-        # ─── 5) دمج مع ffmpeg (محلي فقط) ───
-        ff = _get_ffmpeg_exe()
-        cmd = [
-            ff, "-nostdin", "-hide_banner", "-loglevel", "error",
-            "-f", "concat", "-safe", "0",
-            "-i", concat_file,
-            "-c", "copy", "-bsf:a", "aac_adtstoasc",
-            "-movflags", "+faststart",
-            "-y", str(out),
-        ]
-        try:
-            print(f"         🎬 دمج محلي بـ ffmpeg...")
-            r4 = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-            if (r4.returncode == 0 and os.path.exists(out)
-                    and os.path.getsize(out) > MIN_SIZE):
-                mb = os.path.getsize(out) / 1048576
-                print(f"         ✅ نجح: {mb:.1f}MB")
-                return True
-            err = (r4.stderr or "").strip()[-150:] if r4.stderr else "?"
-            print(f"         ⚠️ دمج فشل: {err}")
-            return False
-        except subprocess.TimeoutExpired:
-            print(f"         ⏰ دمج timeout")
-            return False
-
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
-
-
-# ═══════════════════════════════════════════════════════════════
-# ffmpeg HLS مباشرة (fallback)
+# ffmpeg HLS (احتياطي)
 # ═══════════════════════════════════════════════════════════════
 def _ffmpeg_hls(m3u8_url, out, iframe_url, cookies=None):
     cookies = cookies or {}
     cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
     origin = _origin(iframe_url)
 
-    # ★ لا نكرر User-Agent هنا (يُمرَّر عبر -user_agent)
     headers_parts = []
     if iframe_url:
         headers_parts.append(f"Referer: {iframe_url}")
@@ -520,13 +543,11 @@ def _ffmpeg_hls(m3u8_url, out, iframe_url, cookies=None):
 
     ff = _get_ffmpeg_exe()
 
-    strategies = [
+    for codec_args, name in [
         (["-c", "copy", "-bsf:a", "aac_adtstoasc",
           "-movflags", "+faststart"], "aac-ts"),
         (["-c", "copy", "-movflags", "+faststart"], "copy"),
-    ]
-
-    for codec_args, name in strategies:
+    ]:
         if os.path.exists(out):
             try: os.remove(out)
             except Exception: pass
@@ -563,87 +584,125 @@ def _ffmpeg_hls(m3u8_url, out, iframe_url, cookies=None):
 
 
 # ═══════════════════════════════════════════════════════════════
-# yt-dlp
+# curl_cffi (احتياطي)
 # ═══════════════════════════════════════════════════════════════
-def _ytdlp_worker(cmd, out):
-    try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, text=True,
-                                bufsize=1, preexec_fn=os.setsid)
-    except Exception as e:
-        return False, f"spawn: {str(e)[:80]}"
-    try:
-        for line in iter(proc.stdout.readline, ""):
-            if "PROGRESS:" in line:
-                try:
-                    pct = float(line.split("PROGRESS:", 1)[1].strip().split("|")[0]
-                                .replace("%", "").strip())
-                    if int(pct) % 25 == 0:
-                        print(f"            📊 {pct:.0f}%")
-                except Exception: pass
-    except Exception: pass
-    try: proc.wait(timeout=10)
-    except Exception:
-        try: os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except Exception: proc.kill()
-    if (proc.returncode == 0 and os.path.exists(out)
-            and os.path.getsize(out) > MIN_SIZE):
-        return True, "ok"
-    return False, f"code={proc.returncode}"
-
-
-def _ytdlp_hls(m3u8_url, out, iframe_url, cookies=None):
-    """
-    ★ تم الإصلاح: استخدام iframe_url بدلاً من config.SOURCE_BASE_URL
-    كـ Referer و Origin. هذا هو سبب فشل yt-dlp سابقاً.
-    """
+def _hls_via_curl(m3u8_url, out, iframe_url, cookies=None):
     cookies = cookies or {}
-    cookie_file = tempfile.mktemp(suffix=".txt")
-    try:
-        domain = urlparse(m3u8_url).hostname or ""
-        with open(cookie_file, "w") as f:
-            f.write("# Netscape HTTP Cookie File\n\n")
-            for k, v in cookies.items():
-                if k and v:
-                    f.write(f".{domain}\tTRUE\t/\tFALSE\t0\t{k}\t{v}\n")
+    headers = {
+        "User-Agent": UA,
+        "Accept": "*/*",
+        "Accept-Language": "ar,en;q=0.9",
+    }
+    if iframe_url:
+        headers["Referer"] = iframe_url
+        headers["Origin"] = _origin(iframe_url)
+    if cookies:
+        headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
 
-        # ★ الإصلاح الجوهري
-        referer = iframe_url or "https://u.3seq.com/"
-        origin = _origin(iframe_url) or "https://u.3seq.com"
+    print(f"         🌐 curl_cffi HLS...")
+
+    tmpdir = tempfile.mkdtemp(prefix="hls_curl_")
+    try:
+        try:
+            r = cffi_requests.get(m3u8_url, headers=headers,
+                                  impersonate="chrome120", timeout=30)
+        except Exception as e:
+            print(f"         ⚠️ m3u8 fetch: {str(e)[:100]}")
+            return False
+
+        if r.status_code != 200 or not r.text:
+            print(f"         ⚠️ m3u8 HTTP {r.status_code}")
+            return False
+
+        content = r.text
+        cur_url = m3u8_url
+
+        if "#EXT-X-STREAM-INF" in content:
+            variant_url = None
+            for line in content.splitlines():
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    variant_url = urljoin(cur_url, line)
+                    break
+            if variant_url:
+                try:
+                    r2 = cffi_requests.get(variant_url, headers=headers,
+                                           impersonate="chrome120", timeout=30)
+                    if r2.status_code == 200 and r2.text:
+                        content = r2.text
+                        cur_url = variant_url
+                except Exception:
+                    pass
+
+        segments = []
+        for line in content.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            segments.append(urljoin(cur_url, line))
+
+        if not segments:
+            return False
+
+        print(f"         📥 {len(segments)} مقطع...")
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        seg_paths = [os.path.join(tmpdir, f"seg_{i:05d}.ts")
+                     for i in range(len(segments))]
+
+        def _fetch_seg(args):
+            idx, seg_url, seg_path = args
+            try:
+                rr = cffi_requests.get(seg_url, headers=headers,
+                                       impersonate="chrome120", timeout=60)
+                if rr.status_code == 200 and rr.content:
+                    with open(seg_path, "wb") as f:
+                        f.write(rr.content)
+                    return True
+            except Exception:
+                pass
+            return False
+
+        done_count = 0
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            futures = [ex.submit(_fetch_seg, (i, s, seg_paths[i]))
+                       for i, s in enumerate(segments)]
+            for f in as_completed(futures):
+                if f.result(): done_count += 1
+
+        print(f"         ✅ {done_count}/{len(segments)}")
+
+        existing = [p for p in seg_paths
+                    if os.path.exists(p) and os.path.getsize(p) > 0]
+        if len(existing) < 3:
+            return False
+
+        concat_file = os.path.join(tmpdir, "concat.txt")
+        with open(concat_file, "w") as f:
+            for p in existing:
+                f.write(f"file '{p}'\n")
 
         ff = _get_ffmpeg_exe()
-
         cmd = [
-            "yt-dlp", "--no-warnings", "--no-playlist", "--no-part",
-            "--newline", "--progress",
-            "--progress-template", "download:PROGRESS:%(progress._percent_str)s",
-            "--hls-prefer-native",
-            "--user-agent", UA,
-            "--referer", referer,
-            "--add-header", f"Origin:{origin}",
-            "--add-header", "Accept-Language:ar,en;q=0.9",
-            "--cookies", cookie_file,
-            "--retries", "3", "--fragment-retries", "3",
-            "--socket-timeout", "30",
-            "--concurrent-fragments", "16",
-            "-f", "bv*[height<=360]+ba/b[height<=360]/bv*+ba/b",
-            "--merge-output-format", "mp4",
-            "-o", out, m3u8_url,
+            ff, "-nostdin", "-hide_banner", "-loglevel", "error",
+            "-f", "concat", "-safe", "0",
+            "-i", concat_file,
+            "-c", "copy", "-bsf:a", "aac_adtstoasc",
+            "-movflags", "+faststart",
+            "-y", str(out),
         ]
-        if ff != "ffmpeg":
-            cmd.extend(["--ffmpeg-location", ff])
-
         try:
-            ok, _ = run_with_timeout(_ytdlp_worker, args=(cmd, out),
-                                     timeout=YTDLP_TIMEOUT, default=(False, "timeout"))
-            return ok
-        except TimeoutError_:
-            subprocess.run(["pkill", "-9", "-f", "yt-dlp"],
-                           capture_output=True, timeout=5)
-            return False
+            r4 = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            if (r4.returncode == 0 and os.path.exists(out)
+                    and os.path.getsize(out) > MIN_SIZE):
+                mb = os.path.getsize(out) / 1048576
+                print(f"         ✅ نجح: {mb:.1f}MB")
+                return True
+        except subprocess.TimeoutExpired:
+            pass
+        return False
     finally:
-        try: os.remove(cookie_file)
-        except Exception: pass
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1052,22 +1111,21 @@ def _process_with_browser(url, out_path):
 
                         cookies = _get_cookies(sb)
 
-                        # ★ 1) curl_cffi أولاً (الحل الأقوى)
+                        # ★ 1) عبر المتصفح مباشرة (الأقوى — يستخدم جلسة المتصفح الحقيقية)
+                        for m_url in m3u8_urls[:2]:
+                            if _hls_via_browser(sb, m_url, str(out_path)):
+                                return (os.path.getsize(out_path), True)
+
+                        # ★ 2) curl_cffi
                         for m_url in m3u8_urls[:2]:
                             if _hls_via_curl(m_url, str(out_path),
                                              iframe_url, cookies):
                                 return (os.path.getsize(out_path), True)
 
-                        # ★ 2) ffmpeg مباشر
+                        # ★ 3) ffmpeg مباشر
                         for m_url in m3u8_urls[:2]:
                             if _ffmpeg_hls(m_url, str(out_path),
                                            iframe_url, cookies):
-                                return (os.path.getsize(out_path), True)
-
-                        # ★ 3) yt-dlp
-                        for m_url in m3u8_urls[:2]:
-                            if _ytdlp_hls(m_url, str(out_path),
-                                          iframe_url, cookies):
                                 return (os.path.getsize(out_path), True)
 
                         print(f"   ⏭️ فشل: {sname}")
@@ -1108,9 +1166,9 @@ def download_episode(series_name, episode_num, url,
     print(f"    ↳ تحميل {file_prefix}...")
     try:
         res = run_with_timeout(_process_with_browser, args=(url, raw),
-                                timeout=600, default=None)
+                                timeout=900, default=None)
     except TimeoutError_:
-        print(f"    ⏰ تجاوز التحميل 600s")
+        print(f"    ⏰ تجاوز التحميل 900s")
         for p in ["yt-dlp", "chrome", "ffmpeg"]:
             subprocess.run(["pkill", "-9", "-f", p],
                            capture_output=True, timeout=5)
