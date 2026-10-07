@@ -27,9 +27,8 @@ FFMPEG_HLS_TIMEOUT = int(os.environ.get("FFMPEG_HLS_TIMEOUT", "1800"))
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-# ═══ حالة الشبكة (تُملأ عبر CDP handler) ═══
-_REQ_IDS = {}          # url → requestId
-_RESP_BODIES = {}      # url → body (str أو bytes)
+_REQ_IDS = {}
+_RESP_BODIES = {}
 _NET_LOCK = threading.Lock()
 
 
@@ -77,82 +76,108 @@ def _get_ffmpeg_exe():
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ CDP Network Capture — الحل الأساسي
+# ★★★ مساعد CDP موحّد (يحل مشكلة SimpleNamespace)
+# ═══════════════════════════════════════════════════════════════
+def _cdp_cmd(sb, cmd, params=None):
+    """إرسال أمر CDP مع دعم إصدارات seleniumbase المختلفة."""
+    if params is None:
+        params = {}
+    try:
+        return sb.driver.execute_cdp_cmd(cmd, params)
+    except Exception:
+        pass
+    for meth in ("send_cdp_cmd", "execute_cdp_cmd"):
+        try:
+            fn = getattr(sb.cdp, meth, None)
+            if fn:
+                return fn(cmd, params)
+        except Exception:
+            pass
+    return None
+
+
+def _cdp_eval_async(sb, expr, timeout_ms=120000):
+    """تنفيذ JS مع انتظار Promise عبر Runtime.evaluate."""
+    return _cdp_cmd(sb, "Runtime.evaluate", {
+        "expression": expr,
+        "awaitPromise": True,
+        "returnByValue": True,
+        "timeout": int(timeout_ms),
+    })
+
+
+# ═══════════════════════════════════════════════════════════════
+# CDP Network Capture
 # ═══════════════════════════════════════════════════════════════
 def _enable_network_capture(sb):
-    """تفعيل Network domain وتسجيل handler لالتقاط requestId لكل URL."""
     global _REQ_IDS, _RESP_BODIES
     with _NET_LOCK:
         _REQ_IDS.clear()
         _RESP_BODIES.clear()
 
-    try:
-        sb.cdp.send_cdp_cmd("Network.enable", {})
-    except Exception as e:
-        print(f"      ⚠️ Network.enable: {str(e)[:80]}")
-
-    # محاولة تسجيل handler بعدة طرق (compat)
-    registered = False
-    for attempt in ("mycdp.network.ResponseReceived",
-                    "mycdp.network.RequestWillBeSent"):
+    # ★ محاولة تفعيل Network domain بعدة طرق
+    ok = False
+    for attempt in [
+        lambda: sb.driver.execute_cdp_cmd("Network.enable", {}),
+        lambda: sb.cdp.send_cdp_cmd("Network.enable", {}),
+        lambda: sb.cdp.execute_cdp_cmd("Network.enable", {}),
+    ]:
         try:
-            if attempt.endswith("ResponseReceived"):
-                import mycdp
-                event = mycdp.network.ResponseReceived
+            attempt()
+            ok = True
+            break
+        except Exception:
+            pass
+    if ok:
+        print("      ✅ Network.enable OK")
+    else:
+        print("      ⚠️ Network.enable فشل — سيعمل عبر add_handler")
 
-                async def _on_response(params):
-                    try:
-                        resp = params.get("response", {}) or {}
-                        url = resp.get("url", "")
-                        rid = params.get("requestId", "")
-                        if url and rid:
-                            with _NET_LOCK:
-                                _REQ_IDS[url] = rid
-                    except Exception:
-                        pass
+    # ★ تسجيل handler لالتقاط requestId
+    try:
+        import mycdp
+        event = mycdp.network.ResponseReceived
 
-                sb.cdp.add_handler(event, _on_response)
-                registered = True
-                print("      📡 CDP network capture enabled")
-                break
-        except Exception as e:
-            print(f"      ⚠️ handler [{attempt}]: {str(e)[:80]}")
+        async def _on_response(params):
+            try:
+                resp = params.get("response", {}) or {}
+                url = resp.get("url", "")
+                rid = params.get("requestId", "")
+                if url and rid:
+                    with _NET_LOCK:
+                        _REQ_IDS[url] = rid
+            except Exception:
+                pass
 
-    if not registered:
-        print("      ⚠️ لم يتم تسجيل CDP handler — سنستخدم netlog بدلاً")
+        sb.cdp.add_handler(event, _on_response)
+        print("      📡 CDP network capture enabled")
+    except Exception as e:
+        print(f"      ⚠️ add_handler: {str(e)[:80]}")
 
 
 def _get_response_body(sb, url):
-    """قراءة نص الاستجابة من ذاكرة المتصفح — بدون طلب جديد."""
     with _NET_LOCK:
         if url in _RESP_BODIES:
             return _RESP_BODIES[url]
         rid = _REQ_IDS.get(url)
-
     if not rid:
         return None
 
-    try:
-        result = sb.cdp.send_cdp_cmd("Network.getResponseBody", {
-            "requestId": rid
-        })
-        if result and "body" in result:
-            body = result["body"]
-            if result.get("base64Encoded"):
-                try:
-                    body = base64.b64decode(body)
-                except Exception:
-                    pass
-            with _NET_LOCK:
-                _RESP_BODIES[url] = body
-            return body
-    except Exception:
-        pass
+    result = _cdp_cmd(sb, "Network.getResponseBody", {"requestId": rid})
+    if result and "body" in result:
+        body = result["body"]
+        if result.get("base64Encoded"):
+            try:
+                body = base64.b64decode(body)
+            except Exception:
+                pass
+        with _NET_LOCK:
+            _RESP_BODIES[url] = body
+        return body
     return None
 
 
 def _wait_for_body(sb, url, timeout=15):
-    """ينتظر ظهور الاستجابة في ذاكرة المتصفح."""
     start = time.time()
     while time.time() - start < timeout:
         body = _get_response_body(sb, url)
@@ -163,10 +188,6 @@ def _wait_for_body(sb, url, timeout=15):
 
 
 def _fetch_segments_via_xhr(sb, urls, batch_timeout_ms=120000):
-    """
-    تحميل المقاطع عبر XHR من داخل الصفحة —
-    يستخدم جلسة المشغل الفعلية (كوكيز + بصمة TLS + هيدرات).
-    """
     expr = (
         "(async () => {"
         f"  const urls = {json.dumps(urls)};"
@@ -197,17 +218,7 @@ def _fetch_segments_via_xhr(sb, urls, batch_timeout_ms=120000):
         "  return out;"
         "})()"
     )
-    try:
-        result = sb.cdp.send_cdp_cmd("Runtime.evaluate", {
-            "expression": expr,
-            "awaitPromise": True,
-            "returnByValue": True,
-            "timeout": batch_timeout_ms,
-        })
-    except Exception as e:
-        print(f"         ⚠️ XHR batch: {str(e)[:80]}")
-        return None
-
+    result = _cdp_eval_async(sb, expr, timeout_ms=batch_timeout_ms)
     if not result or "result" not in result:
         return None
     val = result["result"].get("value")
@@ -217,18 +228,11 @@ def _fetch_segments_via_xhr(sb, urls, batch_timeout_ms=120000):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ HLS عبر CDP — الأقوى والأكيد
+# HLS عبر CDP
 # ═══════════════════════════════════════════════════════════════
 def _hls_via_cdp(sb, m3u8_url, out):
-    """
-    1) اقرأ m3u8 من ذاكرة المتصفح (بدون طلب جديد)
-    2) حلل المقاطع
-    3) حمّل كل مقطع عبر XHR من داخل الصفحة
-    4) ادمج محلياً بـ ffmpeg
-    """
     print(f"         🌐 CDP capture HLS...")
 
-    # 1) اقرأ m3u8 من ذاكرة المتصفح
     body = _wait_for_body(sb, m3u8_url, timeout=10)
     if not body:
         print(f"         ⚠️ m3u8 body غير متاح في ذاكرة المتصفح")
@@ -238,7 +242,6 @@ def _hls_via_cdp(sb, m3u8_url, out):
         try:
             body = body.decode("utf-8", errors="ignore")
         except Exception:
-            print(f"         ⚠️ m3u8 ليس نصاً")
             return False
 
     if "#EXTM3U" not in body:
@@ -248,7 +251,6 @@ def _hls_via_cdp(sb, m3u8_url, out):
     content = body
     cur_url = m3u8_url
 
-    # 2) إذا master playlist، ابحث عن variant
     if "#EXT-X-STREAM-INF" in content:
         variant_url = None
         for line in content.splitlines():
@@ -256,9 +258,8 @@ def _hls_via_cdp(sb, m3u8_url, out):
             if line and not line.startswith("#"):
                 variant_url = urljoin(cur_url, line)
                 break
-
         if variant_url:
-            print(f"         ↪️ variant: انتظار تحميله...")
+            print(f"         ↪️ variant: انتظار...")
             vbody = _wait_for_body(sb, variant_url, timeout=20)
             if vbody:
                 if isinstance(vbody, bytes):
@@ -267,13 +268,10 @@ def _hls_via_cdp(sb, m3u8_url, out):
                     content = vbody
                     cur_url = variant_url
                 else:
-                    print(f"         ⚠️ variant غير صالح")
                     return False
             else:
-                print(f"         ⚠️ لم يُجلب variant")
                 return False
 
-    # 3) حلل المقاطع
     segments = []
     for line in content.splitlines():
         line = line.strip()
@@ -288,7 +286,6 @@ def _hls_via_cdp(sb, m3u8_url, out):
 
     tmpdir = tempfile.mkdtemp(prefix="hls_cdp_")
     try:
-        # 4) حمّل المقاطع على دفعات (5 لكل دفعة)
         seg_paths = []
         BATCH = 5
         total = len(segments)
@@ -298,7 +295,6 @@ def _hls_via_cdp(sb, m3u8_url, out):
             batch = segments[idx:idx+BATCH]
             results = _fetch_segments_via_xhr(sb, batch, batch_timeout_ms=120000)
             if results is None:
-                print(f"         ⚠️ فشل الدفعة عند {idx}")
                 idx += BATCH
                 continue
 
@@ -323,10 +319,8 @@ def _hls_via_cdp(sb, m3u8_url, out):
         print(f"         ✅ {len(seg_paths)}/{total} مقطع")
 
         if len(seg_paths) < 3:
-            print(f"         ⚠️ مقاطع غير كافية")
             return False
 
-        # 5) دمج
         concat_file = os.path.join(tmpdir, "concat.txt")
         with open(concat_file, "w") as f:
             for p in seg_paths:
@@ -338,8 +332,7 @@ def _hls_via_cdp(sb, m3u8_url, out):
             "-f", "concat", "-safe", "0",
             "-i", concat_file,
             "-c", "copy", "-bsf:a", "aac_adtstoasc",
-            "-movflags", "+faststart",
-            "-y", str(out),
+            "-movflags", "+faststart", "-y", str(out),
         ]
         try:
             print(f"         🎬 دمج محلي...")
@@ -353,18 +346,18 @@ def _hls_via_cdp(sb, m3u8_url, out):
             print(f"         ⚠️ دمج فشل: {err}")
             return False
         except subprocess.TimeoutExpired:
-            print(f"         ⏰ دمج timeout")
             return False
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 # ═══════════════════════════════════════════════════════════════
-# حقن JS لاعتراض m3u8 (كما هو)
+# interceptor JS
 # ═══════════════════════════════════════════════════════════════
 _INTERCEPTOR_JS = r"""
 (function() {
     window.__captured_m3u8 = window.__captured_m3u8 || [];
+    window.__captured_log = window.__captured_log || [];
 
     function record(url) {
         try {
@@ -491,7 +484,6 @@ _INTERCEPTOR_JS = r"""
         window.__patch_jw();
         window.__patch_vjs();
     }, 500);
-
 })();
 """
 
@@ -627,7 +619,7 @@ def _scan_for_m3u8(sb, netlog_read):
 
 
 # ═══════════════════════════════════════════════════════════════
-# نقرات عدوانية (كما هو)
+# ★★★ نقرات عدوانية — محسّنة (5 نقرات)
 # ═══════════════════════════════════════════════════════════════
 def _aggressive_play(sb):
     try:
@@ -644,12 +636,15 @@ def _aggressive_play(sb):
         """)
     except Exception: pass
 
+    # 1) نقرات على selectors جاهزة
     for sel in ["video", ".jw-icon-playback", ".jw-display-icon-container",
-                ".vjs-big-play-button", "[class*='play']", "#play"]:
+                ".vjs-big-play-button", "[class*='play']", "#play",
+                "button[aria-label*='Play']", ".play-button"]:
         for _ in range(2):
             try: sb.cdp.click_if_visible(sel)
             except Exception: pass
 
+    # 2) ★ 5 نقرات على الفيديو نفسه (لأن الفيديو يحتاج نقرتين)
     try:
         rect = sb.cdp.execute_script("""
             (function(){
@@ -661,7 +656,7 @@ def _aggressive_play(sb):
             })();
         """)
         if rect and rect.get("x", 0) > 0:
-            for _ in range(2):
+            for i in range(5):  # ★ 5 نقرات
                 sb.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
                     "type": "mousePressed", "x": rect['x'], "y": rect['y'],
                     "button": "left", "clickCount": 1,
@@ -670,22 +665,35 @@ def _aggressive_play(sb):
                     "type": "mouseReleased", "x": rect['x'], "y": rect['y'],
                     "button": "left", "clickCount": 1,
                 })
-                sb.cdp.sleep(0.3)
+                sb.cdp.sleep(0.5)
     except Exception: pass
 
+    # 3) نقرات برمجية
     try:
         sb.cdp.execute_script("""
             (function(){try{
                 if(typeof jwplayer!=='undefined'){
                     var p=jwplayer();
-                    if(p){ if(p.play)p.play(true); if(p.setMute)p.setMute(true); }
+                    if(p){
+                        if(p.play)p.play(true);
+                        if(p.setMute)p.setMute(true);
+                        if(p.setVolume)p.setVolume(0);
+                    }
                 }
                 if(typeof videojs!=='undefined'){
                     var p2 = videojs.getPlayers();
-                    for (var k in p2) { try { p2[k].play(); p2[k].muted(true); } catch(e){} }
+                    for (var k in p2) {
+                        try { p2[k].play(); p2[k].muted(true); } catch(e){}
+                    }
                 }
                 var v=document.querySelector('video');
-                if(v){ v.muted=true; if(v.play)v.play().catch(function(){}); }
+                if(v){
+                    v.muted=true;
+                    if(v.play)v.play().catch(function(){});
+                    v.click();
+                    setTimeout(function(){ try { v.click(); } catch(e){} }, 300);
+                    setTimeout(function(){ try { v.play(); } catch(e){} }, 500);
+                }
             }catch(e){}})();
         """)
     except Exception: pass
@@ -702,7 +710,7 @@ def _get_cookies(sb):
 
 
 # ═══════════════════════════════════════════════════════════════
-# curl_cffi (احتياطي)
+# curl_cffi احتياطي
 # ═══════════════════════════════════════════════════════════════
 def _hls_via_curl(m3u8_url, out, iframe_url, cookies=None):
     cookies = cookies or {}
@@ -805,8 +813,7 @@ def _hls_via_curl(m3u8_url, out, iframe_url, cookies=None):
             "-f", "concat", "-safe", "0",
             "-i", concat_file,
             "-c", "copy", "-bsf:a", "aac_adtstoasc",
-            "-movflags", "+faststart",
-            "-y", str(out),
+            "-movflags", "+faststart", "-y", str(out),
         ]
         try:
             r4 = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
@@ -823,7 +830,7 @@ def _hls_via_curl(m3u8_url, out, iframe_url, cookies=None):
 
 
 # ═══════════════════════════════════════════════════════════════
-# الضغط (كما هو)
+# الضغط
 # ═══════════════════════════════════════════════════════════════
 def _get_duration(path):
     try:
@@ -909,7 +916,7 @@ def _compress_twopass(inp, out, max_size_mb, duration, ff):
 
 
 # ═══════════════════════════════════════════════════════════════
-# CF bypass (كما هو)
+# CF bypass
 # ═══════════════════════════════════════════════════════════════
 def _bypass_cloudflare(sb, iframe_url, timeout_seconds=30):
     print(f"      🔄 CF bypass ({timeout_seconds}s)...")
@@ -967,7 +974,6 @@ def _process_with_browser(url, out_path):
             try:
                 sb.activate_cdp_mode()
 
-                # ★ تفعيل التقاط الشبكة أولاً
                 _enable_network_capture(sb)
                 _install_interceptor(sb)
 
@@ -1118,7 +1124,9 @@ def _process_with_browser(url, out_path):
                                 else: break
                             except Exception: break
 
-                        for _ in range(15):
+                        # ★ انتظار المشغل (20 محاولة)
+                        player_found = False
+                        for _ in range(20):
                             sb.cdp.sleep(1)
                             try:
                                 p = sb.cdp.execute_script(
@@ -1128,15 +1136,25 @@ def _process_with_browser(url, out_path):
                                 )
                                 if p in ("jw", "vjs", "h5"):
                                     print(f"      ✅ {p}")
+                                    player_found = True
                                     break
                             except Exception: pass
+
+                        if not player_found:
+                            print(f"      ⚠️ المشغل لم يظهر")
+
+                        # ★ نقرات لتشغيل الفيديو
+                        _aggressive_play(sb)
 
                         print(f"      🎬 البحث عن m3u8 ({M3U8_SEARCH_TIMEOUT}s)...")
                         search_start = time.time()
                         m3u8_urls = []
+                        attempt = 0
+
                         while time.time() - search_start < M3U8_SEARCH_TIMEOUT:
-                            _aggressive_play(sb)
-                            sb.cdp.sleep(1.5)
+                            attempt += 1
+                            _aggressive_play(sb)  # ★ كل دورة
+                            sb.cdp.sleep(2)
                             found = _scan_for_m3u8(sb, _read)
                             if found:
                                 m3u8_urls = found
@@ -1154,15 +1172,14 @@ def _process_with_browser(url, out_path):
                         for u in m3u8_urls[:3]:
                             print(f"         · {u[:100]}")
 
-                        # ★ انتظر قليلاً ليُخزّن المتصفح الاستجابات
                         sb.cdp.sleep(2)
 
-                        # ★ 1) CDP capture (الأقوى)
+                        # 1) CDP capture
                         for m_url in m3u8_urls[:2]:
                             if _hls_via_cdp(sb, m_url, str(out_path)):
                                 return (os.path.getsize(out_path), True)
 
-                        # ★ 2) curl_cffi
+                        # 2) curl_cffi
                         cookies = _get_cookies(sb)
                         for m_url in m3u8_urls[:2]:
                             if _hls_via_curl(m_url, str(out_path),
