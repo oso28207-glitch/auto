@@ -145,8 +145,27 @@
         // إظهار التحميل
         if (loading) loading.classList.remove('hidden');
 
-        // تحميل الفيديو
-        if (window.Hls && Hls.isSupported()) {
+        // ── تحميل الفيديو ──
+        // كشف نوع البث: قائمة HLS (.m3u8) مقابل ملف خام (MP4 من خادم البث)
+        const isHls = /\.m3u8(\?|#|$)/i.test(url);
+
+        // التشغيل المباشر (ملف MP4 خام) — يعمل مع خادم البث عبر /stream
+        function nativePlay() {
+            try { v.removeAttribute('src'); v.load(); } catch (e) {}
+            v.src = url;
+            v.addEventListener('loadedmetadata', function onMeta() {
+                v.removeEventListener('loadedmetadata', onMeta);
+                if (loading) loading.classList.add('hidden');
+                v.play().catch(function () {});
+            });
+            v.addEventListener('error', function onErr() {
+                v.removeEventListener('error', onErr);
+                if (loading) loading.classList.add('hidden');
+                showUnavailable();
+            });
+        }
+
+        if (isHls && window.Hls && Hls.isSupported()) {
             hls = new Hls({
                 maxBufferLength: 30,
                 maxMaxBufferLength: 60,
@@ -167,23 +186,15 @@
             hls.on(Hls.Events.ERROR, function (event, data) {
                 if (data && data.fatal) {
                     console.error('HLS fatal error:', data);
-                    if (loading) loading.classList.add('hidden');
+                    // خطة بديلة: جرّب التشغيل المباشر بدل الانهيار
+                    try { hls.destroy(); } catch (e) {}
+                    hls = null;
+                    nativePlay();
                 }
             });
-        } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
-            v.src = url;
-            v.addEventListener('loadedmetadata', function onMeta() {
-                v.removeEventListener('loadedmetadata', onMeta);
-                if (loading) loading.classList.add('hidden');
-                v.play().catch(function () {});
-            });
         } else {
-            v.src = url;
-            v.addEventListener('loadedmetadata', function onMeta() {
-                v.removeEventListener('loadedmetadata', onMeta);
-                if (loading) loading.classList.add('hidden');
-                v.play().catch(function () {});
-            });
+            // ملف خام (MP4) أو متصفح يدعم HLS أصلاً (Safari)
+            nativePlay();
         }
     }
 

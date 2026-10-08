@@ -107,6 +107,41 @@ class Config:
         return 5
 
     @classmethod
+    def priority_of_series(cls, series) -> int:
+        """
+        أولوية حسب الاسم + التصنيف (category) + النوع (genre).
+        ★ يضمن أن المسلسلات التركية المدبلجة تأتي أولاً حتى لو لم يحتوِ اسمها كلمة "تركي"،
+          بالاعتماد على تصنيف المصدر مثل: moslslat-turkiaa-modblga.
+        """
+        if isinstance(series, dict):
+            name = series.get("name") or series.get("display_name") or ""
+            category = series.get("category") or ""
+            genre = series.get("genre") or ""
+        else:
+            name, category, genre = str(series or ""), "", ""
+
+        hay = f"{name} {category} {genre}".lower()
+
+        is_dubbed = ("مدبلج" in hay) or any(
+            k in hay for k in ("modblga", "modblja", "modblge", "dubbed", "dub"))
+        is_turkish = ("تركي" in hay) or any(
+            k in hay for k in ("turkish", "turkiaa", "turk"))
+        is_movie = (
+            name.startswith("فيلم") or name.startswith("افلام") or
+            name.startswith("أفلام") or "افلام" in name[:10] or
+            "أفلام" in name[:10] or "aflam" in hay or "movie" in hay
+        )
+        if is_turkish and is_dubbed and not is_movie:
+            return 1
+        if is_dubbed and not is_movie:
+            return 2
+        if is_dubbed and is_movie:
+            return 3
+        if not is_movie:
+            return 4
+        return 5
+
+    @classmethod
     def validate(cls):
         missing = []
         if not cls.API_ID: missing.append("API_ID")

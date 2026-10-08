@@ -400,7 +400,8 @@ def _build_site_from_tg():
 def _sort_for_download(all_series):
     def sort_key(s):
         name = s.get("name", "")
-        return (config.priority_of(name),
+        # ★ الأولوية حسب الاسم + التصنيف (المسلسلات التركية المدبلجة أولاً)
+        return (config.priority_of_series(s),
                 SOURCE_ORDER.get(s.get("_src", "z"), 9),
                 name)
 
@@ -408,7 +409,7 @@ def _sort_for_download(all_series):
 
     prio_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
     for s in all_series:
-        prio_counts[config.priority_of(s.get("name", ""))] += 1
+        prio_counts[config.priority_of_series(s)] += 1
 
     print(f"\n📊 إجمالي: {len(all_series)} مسلسل", flush=True)
     print(f"   1️⃣ مسلسلات تركية مدبلجة: {prio_counts[1]}", flush=True)
@@ -420,7 +421,7 @@ def _sort_for_download(all_series):
 
     for prio in [1, 2]:
         top = [s for s in all_series
-               if config.priority_of(s.get("name", "")) == prio][:5]
+               if config.priority_of_series(s) == prio][:5]
         if top:
             print(f"   🔝 أولوية {prio} (أول 5):", flush=True)
             for s in top:
@@ -528,16 +529,34 @@ async def _process_series(series, existing_tg, uploaded, skipped_log):
 
         print(f"\n   ── الحلقة {n} ──", flush=True)
 
-        r = download_episode(name, n, u)
-        if not r or not Path(r).exists():
-            raise RuntimeError(f"فشل تحميل {name} حلقة {n}")
+        # ★ التحميل: عند فشل حلقة نُسجّل ونتابع (لا نُسقط التشغيل كاملاً)
+        try:
+            r = download_episode(name, n, u)
+        except Exception as e:
+            print(f"   ⚠️ استثناء في تحميل الحلقة {n}: {str(e)[:150]}", flush=True)
+            r = None
 
-        info = await uploader.upload(
-            file_path=r,
-            item_name=name,
-            media_type="series",
-            part_number=n,
-        )
+        if not r or not Path(r).exists():
+            print(f"   ⚠️ فشل تحميل الحلقة {n} — تخطّي ومتابعة", flush=True)
+            skipped_log.setdefault(name, []).append({
+                "episode": n, "reason": "download_failed",
+            })
+            continue
+
+        # ★ الرفع: عند فشل حلقة نُسجّل ونتابع
+        try:
+            info = await uploader.upload(
+                file_path=r,
+                item_name=name,
+                media_type="series",
+                part_number=n,
+            )
+        except Exception as e:
+            print(f"   ⚠️ فشل رفع الحلقة {n}: {str(e)[:150]}", flush=True)
+            skipped_log.setdefault(name, []).append({
+                "episode": n, "reason": "upload_failed",
+            })
+            continue
 
         uploaded[f"{name}|ep{n}"] = {
             "url": u,
@@ -676,6 +695,7 @@ async def _main_async(clean=False):
                     if item.get("is_new"):
                         ok_total += 1
             except Exception as e:
+                # ★ لا نُسقط التشغيل كاملاً بسبب مسلسل واحد — نُسجّل ونتابع
                 print(f"\n❌ خطأ في [{name}]: {str(e)[:200]}", flush=True)
                 traceback.print_exc()
 
@@ -685,7 +705,7 @@ async def _main_async(clean=False):
                 })
                 _save(UPLOADED, uploaded)
                 _save(SKIPPED_LOG, skipped_log)
-                raise
+                continue
 
             _save(STATE, {
                 "series": out_series,
