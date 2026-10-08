@@ -26,10 +26,18 @@ from pathlib import Path
 
 from config import config, DATA_DIR, MEDIA_DIR, DOCS_DIR
 from downloader import download_episode
-from names import norm as _norm, base_norm as _base_norm, similarity as _similarity
+from names import (
+    norm as _norm,
+    base_norm as _base_norm,
+    similarity as _similarity,
+    canonical_category as _canonical_category,
+)
 from telegram_checker import (
     fetch_existing_episodes,
     is_episode_uploaded,
+    get_message_id,
+    get_file_id,
+    get_size,
     get_stats as tg_stats,
 )
 from uploader import uploader
@@ -333,10 +341,14 @@ def _build_tg_series(existing_tg, all_series=None):
             display_name = entry.get("display_name", norm_name)
             episodes = sorted(entry.get("episodes", set()))
             message_ids = entry.get("message_ids", {})
+            file_ids = entry.get("file_ids", {})
+            sizes = entry.get("sizes", {})
         else:
             display_name = norm_name
             episodes = sorted(entry)
             message_ids = {}
+            file_ids = {}
+            sizes = {}
 
         # مطابقة المصدر لجلب poster + category
         poster = ""
@@ -348,19 +360,35 @@ def _build_tg_series(existing_tg, all_series=None):
             if poster:
                 matched += 1
 
+        # ★ تصنيف عربي موحّد (الاسم له الأولوية عند التعارض مع تصنيف المصدر)
+        category = _canonical_category(display_name, source_category)
+
         eps_list = []
         for ep in episodes:
             mid = message_ids.get(ep, 0) if isinstance(message_ids, dict) else 0
+            fid = file_ids.get(ep, "") if isinstance(file_ids, dict) else ""
+            sz = sizes.get(ep, 0) if isinstance(sizes, dict) else 0
+            try:
+                mid = int(mid or 0)
+            except Exception:
+                mid = 0
+            try:
+                sz = int(sz or 0)
+            except Exception:
+                sz = 0
             eps_list.append({
                 "num": ep,
                 "url": f"https://t.me/{channel_id}/{mid}" if mid else "",
+                "file_id": fid or "",
+                "size": sz,
+                "mid": mid,
             })
 
         series_list.append({
             "name": display_name,
             "display_name": display_name,
             "poster": poster,
-            "category": source_category,
+            "category": category,
             "genre": "",
             "source": "telegram",
             "episodes": eps_list,
@@ -450,10 +478,14 @@ def _filter_new_episodes(series, existing_tg, uploaded, skipped_log):
             continue
 
         if existing_tg and is_episode_uploaded(existing_tg, name, n):
+            # ★ نسجّل file_id/size/mid حتى تكون الحلقة قابلة للبث مباشرة من التليجرام
             uploaded[local_key] = {
                 "url": e.get("url", ""),
                 "done": True,
                 "source": "telegram",
+                "message_id": get_message_id(existing_tg, name, n),
+                "file_id": get_file_id(existing_tg, name, n),
+                "size": get_size(existing_tg, name, n),
             }
             newly_marked.append(local_key)
             continue

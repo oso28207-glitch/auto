@@ -73,10 +73,29 @@ def _extract_series_episode(caption: str):
     return series_name, ep_num
 
 
+def _extract_media_info(msg):
+    """يستخرج (file_id, file_size) من وسائط الرسالة (فيديو/مستند/أنيميشن/صوت)."""
+    for attr in ("video", "document", "animation", "audio", "voice"):
+        m = getattr(msg, attr, None)
+        if m and getattr(m, "file_id", None):
+            try:
+                size = int(getattr(m, "file_size", 0) or 0)
+            except Exception:
+                size = 0
+            return m.file_id, size
+    return "", 0
+
+
 def _normalize_name(name: str) -> str:
     if not name:
         return ""
     n = name.strip()
+    # ★ إزالة التشكيل (harakat) والتطويل (tatweel)
+    n = re.sub(r"[\u064B-\u065F\u0670\u0640]", "", n)
+    # ★ توحيد الحروف العربية: الهمزات → ا ، ى/ئ → ي ، ؤ → و ، ة → ه
+    n = (n.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+          .replace("ٱ", "ا").replace("ى", "ي").replace("ئ", "ي")
+          .replace("ؤ", "و").replace("ة", "ه"))
     n = re.sub(r"\s+", " ", n)
     n = re.sub(r"^مسلسل\s+", "", n)
     n = re.sub(r"\s+الموسم\s+.*$", "", n)
@@ -203,10 +222,18 @@ async def _scan_channel(app: Client, channel: str, result: dict) -> int:
                 "display_name": series_name,
                 "episodes": set(),
                 "message_ids": {},
+                "file_ids": {},
+                "sizes": {},
             })
 
             if not entry["display_name"] and series_name:
                 entry["display_name"] = series_name
+
+            # ★ التقاط file_id + size لجعل الحلقة قابلة للبث مباشرة من التليجرام
+            fid, fsize = _extract_media_info(msg)
+            if fid:
+                entry.setdefault("file_ids", {})[ep_num] = fid
+                entry.setdefault("sizes", {})[ep_num] = fsize
 
             entry["episodes"].add(ep_num)
             entry["message_ids"][ep_num] = msg.id
@@ -314,6 +341,47 @@ def get_message_id(existing: dict, series_name: str, ep_num: int) -> int:
     return 0
 
 
+def _match_entry(existing: dict, series_name: str):
+    """يُرجع (entry) المطابق للاسم (تطبيع كامل ثم احتواء نصّي)."""
+    if not existing:
+        return None
+    normalized = _normalize_name(series_name)
+    if not normalized:
+        return None
+    if normalized in existing:
+        return existing[normalized]
+    for key, entry in existing.items():
+        if not key:
+            continue
+        if len(key) >= 5 and len(normalized) >= 5:
+            if key in normalized or normalized in key:
+                return entry
+    return None
+
+
+def get_file_id(existing: dict, series_name: str, ep_num: int) -> str:
+    """يُرجع file_id للحلقة من نتيجة فحص التليجرام (أو "")."""
+    entry = _match_entry(existing, series_name)
+    if isinstance(entry, dict):
+        fids = entry.get("file_ids", {})
+        if isinstance(fids, dict):
+            return fids.get(ep_num, "") or ""
+    return ""
+
+
+def get_size(existing: dict, series_name: str, ep_num: int) -> int:
+    """يُرجع حجم ملف الحلقة (bytes) من نتيجة فحص التليجرام (أو 0)."""
+    entry = _match_entry(existing, series_name)
+    if isinstance(entry, dict):
+        sizes = entry.get("sizes", {})
+        if isinstance(sizes, dict):
+            try:
+                return int(sizes.get(ep_num, 0) or 0)
+            except Exception:
+                return 0
+    return 0
+
+
 def to_serializable(existing: dict) -> dict:
     if not existing:
         return {}
@@ -325,6 +393,8 @@ def to_serializable(existing: dict) -> dict:
                 "display_name": key,
                 "episodes": sorted(entry),
                 "message_ids": {},
+                "file_ids": {},
+                "sizes": {},
             }
         elif isinstance(entry, dict):
             eps = entry.get("episodes", set())
@@ -334,6 +404,8 @@ def to_serializable(existing: dict) -> dict:
                 "display_name": entry.get("display_name", key),
                 "episodes": eps,
                 "message_ids": entry.get("message_ids", {}),
+                "file_ids": entry.get("file_ids", {}),
+                "sizes": entry.get("sizes", {}),
             }
     return out
 

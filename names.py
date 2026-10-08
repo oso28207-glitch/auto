@@ -121,6 +121,85 @@ def similarity(a: str, b: str) -> float:
     return len(ta & tb) / len(ta | tb)
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# التصنيف الموحّد (canonical category)
+#   يحوّل أي إشارة (اسم العمل أو تصنيف المصدر: slug عربي/إنجليزي) إلى وسم
+#   عربي واحد ثابت، مع إعطاء الاسم الأولوية عند التعارض.
+# ══════════════════════════════════════════════════════════════════════════
+_MOVIE_KEYS = ("فيلم", "أفلام", "افلام", "movie", "film", "aflam")
+_TURK_KEYS = ("تركي", "turk")
+_IND_KEYS = ("هندي", "hndia", "india")
+_KOR_KEYS = ("كوري", "korea", "korean")
+_LATIN_KEYS = ("لاتيني", "latin")
+_ANIME_KEYS = ("انمي", "أنمي", "انيمى", "anime", "كرتون", "cartoon")
+_DUB_KEYS = ("مدبلج", "dubbed", "modblga", "modblja", "modblge", "modbla", "dub")
+_TRANS_KEYS = ("مترجم", "ترجم", "subtitle", "sub")
+
+
+def _has(hay: str, keys) -> bool:
+    return any(k in hay for k in keys)
+
+
+def canonical_category(name: str = "", category: str = "") -> str:
+    """يُرجع تصنيفاً عربياً موحّداً واحداً من:
+        مسلسلات تركية مدبلجة | مسلسلات مدبلجة | مسلسلات هندية مدبلجة |
+        مسلسلات أنمي مدبلجة | مسلسلات كورية مدبلجة | أفلام مدبلجة |
+        مسلسلات مترجمة | أفلام | مسلسلات وأفلام
+    """
+    n = (name or "").lower()
+    c = (category or "").lower()
+
+    # إشارات الاسم (الأعلى موثوقية)
+    n_movie = _has(n, _MOVIE_KEYS)
+    n_turk = _has(n, _TURK_KEYS)
+    n_ind = _has(n, _IND_KEYS)
+    n_kor = _has(n, _KOR_KEYS)
+    n_anime = _has(n, _ANIME_KEYS)
+    n_dub = _has(n, _DUB_KEYS)
+    n_trans = _has(n, _TRANS_KEYS)
+
+    # إشارات تصنيف المصدر
+    c_movie = _has(c, _MOVIE_KEYS)
+    c_turk = _has(c, _TURK_KEYS)
+    c_ind = _has(c, _IND_KEYS)
+    c_kor = _has(c, _KOR_KEYS)
+    c_anime = _has(c, _ANIME_KEYS)
+    c_dub = _has(c, _DUB_KEYS)
+    c_trans = _has(c, _TRANS_KEYS)
+
+    is_movie = n_movie or c_movie
+    is_turk = n_turk or c_turk
+    is_ind = n_ind or c_ind
+    is_kor = n_kor or c_kor
+    is_anime = n_anime or c_anime
+    is_dub = n_dub or c_dub
+    is_trans = n_trans or c_trans
+
+    # الاسم له الأولوية عند التعارض (مثال: "فيلينتا مدبلج" + تصنيف "مترجمة" ⇒ مدبلج)
+    if n_dub:
+        is_trans = False
+    if n_trans and not n_dub:
+        is_dub = False
+
+    if is_movie and is_dub:
+        return "أفلام مدبلجة"
+    if is_turk and is_dub:
+        return "مسلسلات تركية مدبلجة"
+    if is_ind and is_dub:
+        return "مسلسلات هندية مدبلجة"
+    if is_kor and is_dub:
+        return "مسلسلات كورية مدبلجة"
+    if is_anime and is_dub:
+        return "مسلسلات أنمي مدبلجة"
+    if is_dub:
+        return "مسلسلات مدبلجة"
+    if is_trans:
+        return "مسلسلات مترجمة"
+    if is_movie:
+        return "أفلام"
+    return "مسلسلات وأفلام"
+
+
 if __name__ == "__main__":
     tests = [
         ("حياتي الرائعة الموسم 1", "مسلسل حياتي الرائعة"),

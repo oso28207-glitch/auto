@@ -21,7 +21,7 @@ from urllib.parse import urljoin, urlparse
 from curl_cffi import requests as cffi
 
 from config import config, DATA_DIR, DOCS_DIR
-from names import norm as _norm, base_norm as _base_norm
+from names import norm as _norm, base_norm as _base_norm, canonical_category as _canonical_category
 
 POSTERS = DOCS_DIR / "posters"
 POSTERS.mkdir(parents=True, exist_ok=True)
@@ -237,6 +237,33 @@ def _load_stream_map():
                 "mid": int(v.get("message_id") or 0),
             }
 
+    # ★ مصدر التليجرام المفحوص (tg_series.json): يملأ الحلقات الناقصة دون استبدال الموجود
+    tg = _load_json(TG_SERIES, {})
+    for s in (tg.get("series") or []):
+        name = s.get("name") or ""
+        if not name:
+            continue
+        d = {}
+        for e in (s.get("episodes") or []):
+            try:
+                num = int(e.get("num"))
+            except Exception:
+                continue
+            fid = e.get("file_id")
+            size = e.get("size")
+            if fid and size:
+                try:
+                    d[num] = {
+                        "fid": fid, "size": int(size),
+                        "mid": int(e.get("mid") or 0),
+                    }
+                except Exception:
+                    pass
+        if d:
+            bucket = raw.setdefault(name, {})
+            for num, info in d.items():
+                bucket.setdefault(num, info)
+
     # فهرسة بعدة مفاتيح مطبَّعة لتحسين المطابقة
     #   exact : مفتاح مطبَّع كامل (يتضمّن الموسم)
     #   base  : مفتاح بدون رقم الموسم (احتياطي)
@@ -279,20 +306,31 @@ CARD = """<a class="card" href="watch/{slug}.html" title="{name}">
 
 
 def _cat_label(category: str) -> str:
-    """يحوّل تصنيف المصدر (slug) إلى وسم عربي نظيف."""
+    """يحوّل أي تصنيف (slug أو عربي) إلى وسم عربي نظيف واحد."""
     c = (category or "").strip().lower()
     if not c:
         return ""
-    if "turkiaa" in c or "turk" in c or "تركي" in c:
-        return "تركي مدبلج"
-    if "modblga" in c or "modblja" in c or "modblge" in c or "مدبلج" in c or "dub" in c:
-        return "مدبلج"
-    if "aflam" in c or "فيلم" in c or "movie" in c:
+    is_movie = any(k in c for k in ["فيلم", "أفلام", "افلام", "movie", "film", "aflam"])
+    is_turk = any(k in c for k in ["تركي", "turk"])
+    is_ind = any(k in c for k in ["هندي", "hndia", "india"])
+    is_anime = any(k in c for k in ["انمي", "أنمي", "anime", "كرتون", "cartoon"])
+    is_kor = any(k in c for k in ["كوري", "korea", "korean"])
+    is_dub = any(k in c for k in ["مدبلج", "dub", "modblga", "modblja", "modblge"])
+    is_trans = any(k in c for k in ["مترجم", "sub"])
+    if is_movie:
         return "فيلم"
-    if "مترجم" in c:
-        return "مترجم"
-    if "hndia" in c or "هندي" in c:
+    if is_turk and is_dub:
+        return "تركي مدبلج"
+    if is_ind and is_dub:
         return "هندي مدبلج"
+    if is_anime and is_dub:
+        return "أنمي مدبلج"
+    if is_kor and is_dub:
+        return "كوري مدبلج"
+    if is_dub:
+        return "مدبلج"
+    if is_trans:
+        return "مترجم"
     return ""
 
 
@@ -502,12 +540,16 @@ def _index_html(series, ch, built_at):
 # ═══════════════════════════════════════════════════════════════════
 def _load_tg_series():
     data = _load_json(TG_SERIES, None)
-    if data and data.get("series"):
-        return data["series"]
-    data = _load_json(DATA_DIR / "series.json", None)
-    if data and data.get("series"):
-        return data["series"]
-    return []
+    if not (data and data.get("series")):
+        data = _load_json(DATA_DIR / "series.json", None)
+    series = (data or {}).get("series") or []
+    # ★ توحيد التصنيفات عند التحميل (حتى لو كانت البيانات المخزّنة قديمة/مختلطة)
+    for s in series:
+        try:
+            s["category"] = _canonical_category(s.get("name", ""), s.get("category", ""))
+        except Exception:
+            pass
+    return series
 
 
 def build_site():

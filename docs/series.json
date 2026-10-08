@@ -1,5 +1,5 @@
 {
-  "built_at": "2026-10-08T22:56:53.259528",
+  "built_at": "2026-10-08T21:31:40.589302",
   "series": [
     {
       "name": "احتمال حب",
@@ -38,7 +38,7 @@
       "episodes_count": 97,
       "eps": 97,
       "genre": "",
-      "category": "moslslat-turkiaa-modblga",
+      "category": "مسلسلات تركية مدبلجة",
       "last_updated": ""
     },
     {
@@ -48,7 +48,7 @@
       "episodes_count": 122,
       "eps": 122,
       "genre": "",
-      "category": "moslslat-turkiaa-modblga",
+      "category": "مسلسلات تركية مدبلجة",
       "last_updated": ""
     },
     {
@@ -58,7 +58,7 @@
       "episodes_count": 30,
       "eps": 30,
       "genre": "",
-      "category": "moslslat-turkiaa-modblga",
+      "category": "مسلسلات تركية مدبلجة",
       "last_updated": ""
     },
     {
@@ -68,7 +68,7 @@
       "episodes_count": 8,
       "eps": 8,
       "genre": "",
-      "category": "moslslat-turkiaa-modblga",
+      "category": "مسلسلات تركية مدبلجة",
       "last_updated": ""
     },
     {
@@ -78,7 +78,7 @@
       "episodes_count": 37,
       "eps": 37,
       "genre": "",
-      "category": "goda-akbar-modblge",
+      "category": "مسلسلات مدبلجة",
       "last_updated": ""
     },
     {
@@ -98,7 +98,7 @@
       "episodes_count": 164,
       "eps": 164,
       "genre": "",
-      "category": "مسلسلات مترجمة",
+      "category": "مسلسلات مدبلجة",
       "last_updated": ""
     },
     {
@@ -108,7 +108,7 @@
       "episodes_count": 10,
       "eps": 10,
       "genre": "",
-      "category": "مسلسلات مترجمة",
+      "category": "مسلسلات مدبلجة",
       "last_updated": ""
     },
     {
@@ -118,17 +118,7 @@
       "episodes_count": 10,
       "eps": 10,
       "genre": "",
-      "category": "مسلسلات تركية مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "فتاة النافذة الموسم 3",
-      "slug": "فتاة-النافذة-الموسم-3-0f263a7a",
-      "poster": "posters/placeholder.jpg",
-      "episodes_count": 44,
-      "eps": 44,
-      "genre": "",
-      "category": "",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -138,17 +128,7 @@
       "episodes_count": 55,
       "eps": 55,
       "genre": "",
-      "category": "مسلسلات تركية مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "النص الثاني الموسم 1",
-      "slug": "النص-الثاني-الموسم-1-4ca8aaae",
-      "poster": "posters/النص-الثاني-الموسم-1-4ca8aaae.png",
-      "episodes_count": 15,
-      "eps": 15,
-      "genre": "",
-      "category": "",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -162,36 +142,6 @@
       "last_updated": ""
     },
     {
-      "name": "المداح الموسم 6",
-      "slug": "المداح-الموسم-6-1d9f0c3b",
-      "poster": "posters/المداح-الموسم-6-1d9f0c3b.png",
-      "episodes_count": 30,
-      "eps": 30,
-      "genre": "",
-      "category": "",
-      "last_updated": ""
-    },
-    {
-      "name": "صحاب الارض الموسم 1",
-      "slug": "صحاب-الارض-الموسم-1-058968cb",
-      "poster": "posters/صحاب-الارض-الموسم-1-058968cb.png",
-      "episodes_count": 15,
-      "eps": 15,
-      "genre": "",
-      "category": "",
-      "last_updated": ""
-    },
-    {
-      "name": "حد اقصى الموسم 1",
-      "slug": "حد-اقصى-الموسم-1-30b58646",
-      "poster": "posters/حد-اقصى-الموسم-1-30b58646.png",
-      "episodes_count": 15,
-      "eps": 15,
-      "genre": "",
-      "category": "",
-      "last_updated": ""
-    },
-    {
       "name": "المصيدة الموسم 1",
       "slug": "المصيدة-الموسم-1-c91cc330",
       "poster": "posters/المصيدة-الموسم-1-c91cc330.jpg",
@@ -199,46 +149,6 @@
       "eps": 15,
       "genre": "",
       "category": "مسلسلات مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "عين سحرية الموسم 1",
-      "slug": "عين-سحرية-الموسم-1-040c4912",
-      "poster": "posters/عين-سحرية-الموسم-1-040c4912.png",
-      "episodes_count": 15,
-      "eps": 15,
-      "genre": "",
-      "category": "",
-      "last_updated": ""
-    },
-    {
-      "name": "الست موناليزا الموسم 1",
-      "slug": "الست-موناليزا-الموسم-1-71f7113f",
-      "poster": "posters/الست-موناليزا-الموسم-1-71f7113f.png",
-      "episodes_count": 15,
-      "eps": 15,
-      "genre": "",
-      "category": "",
-      "last_updated": ""
-    },
-    {
-      "name": "مناعة الموسم 1",
-      "slug": "مناعة-الموسم-1-42fd3452",
-      "poster": "posters/مناعة-الموسم-1-42fd3452.png",
-      "episodes_count": 15,
-      "eps": 15,
-      "genre": "",
-      "category": "",
-      "last_updated": ""
-    },
-    {
-      "name": "اتنين غيرنا الموسم 1",
-      "slug": "اتنين-غيرنا-الموسم-1-b8560d1b",
-      "poster": "posters/اتنين-غيرنا-الموسم-1-b8560d1b.png",
-      "episodes_count": 15,
-      "eps": 15,
-      "genre": "",
-      "category": "",
       "last_updated": ""
     },
     {
@@ -252,23 +162,13 @@
       "last_updated": ""
     },
     {
-      "name": "التفاح الحرام الموسم 6",
-      "slug": "التفاح-الحرام-الموسم-6-89d43715",
-      "poster": "posters/placeholder.jpg",
-      "episodes_count": 99,
-      "eps": 99,
-      "genre": "",
-      "category": "",
-      "last_updated": ""
-    },
-    {
       "name": "لعبة الحظ الموسم 1",
       "slug": "لعبة-الحظ-الموسم-1-702e2e43",
       "poster": "posters/لعبة-الحظ-الموسم-1-702e2e43.jpg",
       "episodes_count": 58,
       "eps": 58,
       "genre": "",
-      "category": "مسلسلات تركية مترجمة",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -278,7 +178,7 @@
       "episodes_count": 17,
       "eps": 17,
       "genre": "",
-      "category": "مسلسلات تركية مترجمة",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -289,16 +189,6 @@
       "eps": 10,
       "genre": "",
       "category": "مسلسلات مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "النص",
-      "slug": "النص-09cff955",
-      "poster": "posters/النص-09cff955.png",
-      "episodes_count": 15,
-      "eps": 15,
-      "genre": "",
-      "category": "",
       "last_updated": ""
     },
     {
@@ -412,13 +302,123 @@
       "last_updated": ""
     },
     {
+      "name": "فتاة النافذة الموسم 3",
+      "slug": "فتاة-النافذة-الموسم-3-0f263a7a",
+      "poster": "posters/placeholder.jpg",
+      "episodes_count": 44,
+      "eps": 44,
+      "genre": "",
+      "category": "مسلسلات وأفلام",
+      "last_updated": ""
+    },
+    {
+      "name": "النص الثاني الموسم 1",
+      "slug": "النص-الثاني-الموسم-1-4ca8aaae",
+      "poster": "posters/النص-الثاني-الموسم-1-4ca8aaae.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات وأفلام",
+      "last_updated": ""
+    },
+    {
+      "name": "المداح الموسم 6",
+      "slug": "المداح-الموسم-6-1d9f0c3b",
+      "poster": "posters/المداح-الموسم-6-1d9f0c3b.png",
+      "episodes_count": 30,
+      "eps": 30,
+      "genre": "",
+      "category": "مسلسلات وأفلام",
+      "last_updated": ""
+    },
+    {
+      "name": "صحاب الارض الموسم 1",
+      "slug": "صحاب-الارض-الموسم-1-058968cb",
+      "poster": "posters/صحاب-الارض-الموسم-1-058968cb.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات وأفلام",
+      "last_updated": ""
+    },
+    {
+      "name": "حد اقصى الموسم 1",
+      "slug": "حد-اقصى-الموسم-1-30b58646",
+      "poster": "posters/حد-اقصى-الموسم-1-30b58646.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات وأفلام",
+      "last_updated": ""
+    },
+    {
+      "name": "عين سحرية الموسم 1",
+      "slug": "عين-سحرية-الموسم-1-040c4912",
+      "poster": "posters/عين-سحرية-الموسم-1-040c4912.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات وأفلام",
+      "last_updated": ""
+    },
+    {
+      "name": "الست موناليزا الموسم 1",
+      "slug": "الست-موناليزا-الموسم-1-71f7113f",
+      "poster": "posters/الست-موناليزا-الموسم-1-71f7113f.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات وأفلام",
+      "last_updated": ""
+    },
+    {
+      "name": "مناعة الموسم 1",
+      "slug": "مناعة-الموسم-1-42fd3452",
+      "poster": "posters/مناعة-الموسم-1-42fd3452.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات وأفلام",
+      "last_updated": ""
+    },
+    {
+      "name": "اتنين غيرنا الموسم 1",
+      "slug": "اتنين-غيرنا-الموسم-1-b8560d1b",
+      "poster": "posters/اتنين-غيرنا-الموسم-1-b8560d1b.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات وأفلام",
+      "last_updated": ""
+    },
+    {
+      "name": "التفاح الحرام الموسم 6",
+      "slug": "التفاح-الحرام-الموسم-6-89d43715",
+      "poster": "posters/placeholder.jpg",
+      "episodes_count": 99,
+      "eps": 99,
+      "genre": "",
+      "category": "مسلسلات وأفلام",
+      "last_updated": ""
+    },
+    {
+      "name": "النص",
+      "slug": "النص-09cff955",
+      "poster": "posters/النص-09cff955.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات وأفلام",
+      "last_updated": ""
+    },
+    {
       "name": "بدون سابق انذار",
       "slug": "بدون-سابق-انذار-6e4ab02b",
       "poster": "posters/بدون-سابق-انذار-6e4ab02b.png",
       "episodes_count": 15,
       "eps": 15,
       "genre": "",
-      "category": "",
+      "category": "مسلسلات وأفلام",
       "last_updated": ""
     },
     {
@@ -428,7 +428,7 @@
       "episodes_count": 10,
       "eps": 10,
       "genre": "",
-      "category": "",
+      "category": "مسلسلات وأفلام",
       "last_updated": ""
     }
   ]

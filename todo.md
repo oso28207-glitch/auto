@@ -1,48 +1,26 @@
-# TODO — إصلاح مشروع Shoof (auto-main)
+# TODO — إصلاح مستودع Shoof (auto) — الجولة الثانية
 
-## 1. التحليل والفحص
-- [x] قراءة كل السكربتات الأساسية (run_all, build_site, config, sources/*, downloader, uploader)
-- [x] فحص ملفات data/*.json و docs/ الحالية
-- [x] اختبار المصادر مباشرة
-- [x] تحديد كل الأخطاء
+## 1. مقارنة الأعمال بالتيليجرام (إصلاح رسالة "الحلقة لم تُرفع")
+- [x] telegram_checker: التقاط file_id + size لكل حلقة أثناء فحص القنوات (shoofcima, shoofFilm)
+- [x] telegram_checker: إضافة file_ids/sizes إلى البنية + to_serializable + get_file_id/get_size
+- [x] run_all._build_tg_series: تضمين file_id + size + mid في كل حلقة
+- [x] build_site._load_stream_map: قراءة tg_series.json كمصدر إضافي للبث (file_id)
+- [x] telegram_checker._normalize_name: توحيد الهمزات/الياء/التاء المربوطة + إزالة التشكيل (مطابقة أقوى)
+- [x] التحقق: كل حلقة موجودة على التيليجرام تصبح قابلة للتشغيل
 
-## 2. توحيد ضغط الفيديو إلى 240 بكسل
-- [x] config.py: COMPRESS_SCALE = 240
-- [x] automation.yml: COMPRESS_SCALE=240
-- [x] import_channels.yml: التأكد من 240
+## 2. إصلاح التصنيفات
+- [x] names.canonical_category: تصنيف عربي موحّد (تركي مدبلج/مدبلج/هندي/أنمي/كوري/أفلام مدبلجة/مترجم)
+- [x] run_all._build_tg_series: استخدام canonical_category(name, source_category)
+- [x] build_site._cat_label: ترتيب صحيح (فيلم قبل مدبلج، هندي/أنمي)
+- [x] التحقق من التصنيفات (11/11 حالة صحيحة)
 
-## 3. إصلاح جلب الصور من المواقع الخارجية (u3seq, yam)
-- [x] sources/yam.py: استخراج البوستر من data-echo (lazy-load) + إصلاح الزحف
-- [x] sources/u3seq.py: curl_cffi + safari17_0 لتجاوز Cloudflare + بوستر من صفحة المنشور
-- [x] مصادر/yam v6: ترقيم كامل 95 صفحة + زحف التصنيفات المدبلجة → 1176 مسلسل بصور (95992 حلقة)
-- [x] تحسين المطابقة بين أسماء تليجرام وأسماء المصادر (names.py) + search.php fallback
+## 3. ترتيب التنزيل + إكمال الحلقات الناقصة
+- [x] التأكد من ترتيب الحلقات تصاعدياً (1,2,3...) داخل كل مسلسل
+- [x] _filter_new_episodes: تسجيل file_id/size/mid عند اعتبار الحلقة موجودة على التيليجرام
+- [x] التحقق من المنطق الكامل (فرز تصاعدي + مقارنة التيليجرام)
 
-## 4. إصلاح بناء الموقع (build_site.py + عرض الموقع)
-- [x] إصلاح مسارات الصور (posters/... للـ index، ../posters/... للـ watch)
-- [x] إنشاء docs/posters/placeholder.jpg حقيقي
-- [x] ضمان وجود style.css + watch.js في docs/
-- [x] إعادة كتابة صفحات المشاهدة لتطابق watch.js
-- [x] ربط الحلقات بالمشغل (stream عبر API_BASE باستخدام file_id)
-- [x] كتابة docs/videos.json + docs/config.js
-- [x] إصلاح تصنيف الأقسام (slug مدبلج/تركي) + شارات نظيفة
-- [x] **إصلاح خطأ JS `e.trim is not a function`** (watch.js: تمرير كائن للحلقة غير القابلة للبث إلى hls.js)
-- [x] إضافة رسالة "الحلقة غير متاحة" بدل انهيار المشغل
-- [x] إضافة cache-busting (?v=3) لكل الأصول
-
-## 5. إصلاح الأتمتة على GitHub Actions
-- [x] توحيد automation.yml و import_channels.yml
-- [x] إصلاح requirements.txt (curl_cffi, requests)
-- [x] التأكد من عمل run_all.py تلقائياً
-
-## 6. إصلاح السكربتات القديمة/المتعارضة
-- [x] config.py: إضافة الخصائص الناقصة
-- [x] إصلاح تعارض uploader signature في orchestrator.py
-- [x] إصلاح builder.py / import_from_channels.py
-
-## 7. الاختبار والتسليم
-- [x] اختبار yam fetch (1176 مسلسل، كلها بصور)
-- [x] اختبار u3seq fetch (32 مسلسل، كلها بصور)
-- [x] بناء الموقع محلياً والتحقق من العرض (43 عمل، 1508 حلقة، 36 صورة)
-- [x] التحقق من إصلاح خطأ watch.js في المتصفح (لا أخطاء JS)
-- [x] فحص صحة كل سكربتات Python
-- [ ] ضغط المستودع وتسليمه
+## 4. التحقق والتسليم
+- [x] اختبار محلي (محاكاة فحص التيليجرام + بناء الخريطة) — 4/4 نجحت
+- [x] التحقق من سلامة بيانات data/ الحقيقية (tg_series.json = 43 مسلسل)
+- [x] حذف الملفات المؤقتة (_diag.py, _verify.py)
+- [ ] تسليم الملخص
