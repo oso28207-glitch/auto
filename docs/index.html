@@ -1,1179 +1,355 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="شاهد أحدث المسلسلات التركية والمكسيكية والهندية مترجمة">
+<!DOCTYPE html><html lang="ar" dir="rtl"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Shoof — شاهد أحدث المسلسلات</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
-</head>
-<body>
-
-<header class="topbar">
-    <div class="brand" onclick="location.href='index.html'">SHOOF</div>
-    <nav class="main-nav">
-        <a href="#" class="active" data-cat="الرئيسية">الرئيسية</a>
-        <a href="#" data-cat="تركية">تركية</a>
-        <a href="#" data-cat="مكسيكية">مكسيكية</a>
-        <a href="#" data-cat="هندية">هندية</a>
-        <a href="#" data-cat="أخرى">أخرى</a>
-    </nav>
-    <div class="search-box">
-        <input type="search" id="search-input" placeholder="🔍 ابحث عن مسلسل...">
-        <div id="search-results" class="search-results hidden"></div>
-    </div>
-    <a href="https://t.me/shoofcima" class="tg-btn" target="_blank" rel="noopener">📡 قناتنا</a>
-</header>
-
-<main>
-    <div class="hero">
-        <div class="hero-content">
-            <h1>مرحباً بك في SHOOF</h1>
-            <p>أحدث المسلسلات التركية والمكسيكية والهندية مترجمة بجودة عالية</p>
-            <button class="hero-btn" onclick="scrollToRows()">ابدأ المشاهدة</button>
-        </div>
-    </div>
-    <div id="rows-container">
-        
-        <section class="row" data-category="أحدث الإضافات">
-            <div class="row-header">
-                <h2>أحدث الإضافات</h2>
-                <button class="row-toggle" onclick="toggleRow(this)">عرض الكل</button>
-            </div>
-            <div class="carousel">
-<a class="card" href="watch/اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضان-2026-a1d0b69cda.html" data-name="اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">21 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-على-قد-الحب-اهواك-تي-في-مشاهدة-افلام-ومسلسلا-d40d810590.html" data-name="مسلسل على قد الحب - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل على قد الحب - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل على قد الحب - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-حد-أقصى-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رم-aa5dce2616.html" data-name="مسلسل حد أقصى - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل حد أقصى - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل حد أقصى - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-اللون-الأزرق-اهواك-تي-في-مشاهدة-افلام-ومسلسل-81d4e403ef.html" data-name="مسلسل اللون الأزرق - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل اللون الأزرق - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل اللون الأزرق - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-قطر-صغنطوط-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-9c5c0ff057.html" data-name="مسلسل قطر صغنطوط - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل قطر صغنطوط - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل قطر صغنطوط - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-صحاب-الارض-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-dbbaf4bc30.html" data-name="مسلسل صحاب الارض - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل صحاب الارض - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل صحاب الارض - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-بخمس-أرواح-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-35f847d799.html" data-name="مسلسل بخمس أرواح - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل بخمس أرواح - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل بخمس أرواح - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-مولانا-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمض-c5e7c84df0.html" data-name="مسلسل مولانا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل مولانا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل مولانا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-بالحرام-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رم-18cd9009db.html" data-name="مسلسل بالحرام - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل بالحرام - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل بالحرام - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-كان-ياما-كان-اهواك-تي-في-مشاهدة-افلام-ومسلسل-5e9ce232c6.html" data-name="مسلسل كان ياما كان - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل كان ياما كان - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل كان ياما كان - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-أولاد-الراعي-اهواك-تي-في-مشاهدة-افلام-ومسلسل-2c96941f23.html" data-name="مسلسل أولاد الراعي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل أولاد الراعي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل أولاد الراعي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-اتنين-غيرنا-اهواك-تي-في-مشاهدة-افلام-ومسلسلا-a3aa891fbd.html" data-name="مسلسل اتنين غيرنا  - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل اتنين غيرنا  - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل اتنين غيرنا  - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-فرصة-اخيرة-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-d9b2d301d1.html" data-name="مسلسل فرصة اخيرة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل فرصة اخيرة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل فرصة اخيرة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-بيبو-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضان-8da8c98e40.html" data-name="مسلسل بيبو - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل بيبو - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل بيبو - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-حكاية-نرجس-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-875867e48f.html" data-name="مسلسل حكاية نرجس - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل حكاية نرجس - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل حكاية نرجس - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-كلهم-بيحبوا-مودي-اهواك-تي-في-مشاهدة-افلام-وم-03040cdaef.html" data-name="مسلسل كلهم بيحبوا مودي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل كلهم بيحبوا مودي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل كلهم بيحبوا مودي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-سوا-سوا-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رم-71c10a1b23.html" data-name="مسلسل سوا سوا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل سوا سوا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل سوا سوا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-عين-سحرية-اهواك-تي-في-مشاهدة-افلام-ومسلسلات--e4f6e19124.html" data-name="مسلسل عين سحرية - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل عين سحرية - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل عين سحرية - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-بابا-وماما-جيران-اهواك-تي-في-مشاهدة-افلام-وم-038d209d1f.html" data-name="مسلسل بابا وماما جيران - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل بابا وماما جيران - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل بابا وماما جيران - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-وننسى-اللي-كان-اهواك-تي-في-مشاهدة-افلام-ومسل-7e4ba1023a.html" data-name="مسلسل وننسى اللي كان - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل وننسى اللي كان - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل وننسى اللي كان - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-راس-الافعى-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-38a2c6339d.html" data-name="مسلسل راس الافعى - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل راس الافعى - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل راس الافعى - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-النص-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضان-04ddb2e41d.html" data-name="مسلسل النص - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل النص - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل النص - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-عرض-وطلب-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-ر-847f733a26.html" data-name="مسلسل عرض وطلب - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل عرض وطلب - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل عرض وطلب - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-النص-التاني-اهواك-تي-في-مشاهدة-افلام-ومسلسلا-676cb784de.html" data-name="مسلسل النص التاني - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل النص التاني - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل النص التاني - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-مناعة-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضا-cc1eda9b8a.html" data-name="مسلسل مناعة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل مناعة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل مناعة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-المتر-سمير-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-0d8daed725.html" data-name="مسلسل المتر سمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل المتر سمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل المتر سمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-درش-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضان--481dc4f96b.html" data-name="مسلسل درش - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل درش - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل درش - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-هي-كيميا-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-ر-83094fbb4a.html" data-name="مسلسل هي كيميا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل هي كيميا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل هي كيميا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-فخر-الدلتا-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-9d9411e873.html" data-name="مسلسل فخر الدلتا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل فخر الدلتا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل فخر الدلتا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-الست-موناليزا-اهواك-تي-في-مشاهدة-افلام-ومسلس-f23d40c0ad.html" data-name="مسلسل الست موناليزا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل الست موناليزا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل الست موناليزا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-</div>
-        </section>
-        
-        <section class="row" data-category="الأكثر مشاهدة">
-            <div class="row-header">
-                <h2>الأكثر مشاهدة</h2>
-                <button class="row-toggle" onclick="toggleRow(this)">عرض الكل</button>
-            </div>
-            <div class="carousel">
-<a class="card" href="watch/الصفحة-الرئيسية-d4e81bd29b.html" data-name="الصفحة الرئيسية" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="الصفحة الرئيسية" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">الصفحة الرئيسية</div>
-    <div class="card-meta">21 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/جديد-الأفلام-33e2d8f5ee.html" data-name="جديد الأفلام" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="جديد الأفلام" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">جديد الأفلام</div>
-    <div class="card-meta">21 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-القصة-الكاملة-ما-لم-يحك-عن-بني-مزار-اهواك-تي-93cd89e4f0.html" data-name="مسلسل القصة الكاملة - ما لم يحك عن بني مزار - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل القصة الكاملة - ما لم يحك عن بني مزار - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل القصة الكاملة - ما لم يحك عن بني مزار - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">3 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-خمسين-خمسين-اهواك-تي-في-مشاهدة-افلام-ومسلسلا-ed2bfbc315.html" data-name="مسلسل خمسين خمسين - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل خمسين خمسين - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل خمسين خمسين - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">8 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-بنج-كلي-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رم-808e347daa.html" data-name="مسلسل بنج كلي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل بنج كلي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل بنج كلي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-تحت-السن-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-ر-4f06e87466.html" data-name="مسلسل تحت السن - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل تحت السن - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل تحت السن - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">12 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-القصة-الكاملة-لعبة-جهنم-اهواك-تي-في-مشاهدة-ا-f8404df208.html" data-name="مسلسل القصة الكاملة - لعبة جهنم - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل القصة الكاملة - لعبة جهنم - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل القصة الكاملة - لعبة جهنم - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">3 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-حب-ع-ورق-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-ر-904d57ef73.html" data-name="مسلسل حب ع ورق - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل حب ع ورق - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل حب ع ورق - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">85 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-الفرنساوي-اهواك-تي-في-مشاهدة-افلام-ومسلسلات--8f17120946.html" data-name="مسلسل الفرنساوي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل الفرنساوي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل الفرنساوي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">10 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-ميدتيرم-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رم-9df69e1270.html" data-name="مسلسل ميدتيرم - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل ميدتيرم - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل ميدتيرم - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-بنات-عمير-اهواك-تي-في-مشاهدة-افلام-ومسلسلات--e53ae04e37.html" data-name="مسلسل بنات عمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل بنات عمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل بنات عمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-للعدالة-وجه-اخر-اهواك-تي-في-مشاهدة-افلام-ومس-5c5fae29cd.html" data-name="مسلسل للعدالة وجه اخر - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل للعدالة وجه اخر - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل للعدالة وجه اخر - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-ورد-على-فل-وياسمين-اهواك-تي-في-مشاهدة-افلام--f1c3c3c531.html" data-name="مسلسل ورد على فل وياسمين - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل ورد على فل وياسمين - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل ورد على فل وياسمين - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-ليل-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضان--7b783ad9d7.html" data-name="مسلسل ليل - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل ليل - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل ليل - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">90 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-اللعبة-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمض-edab02efe5.html" data-name="مسلسل اللعبة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل اللعبة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل اللعبة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">31 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-الكينج-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمض-0646ab2b66.html" data-name="مسلسل الكينج - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل الكينج - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل الكينج - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-المداح-أسطورة-النهاية-اهواك-تي-في-مشاهدة-افل-3671fb60a2.html" data-name="مسلسل المداح : أسطورة النهاية - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل المداح : أسطورة النهاية - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل المداح : أسطورة النهاية - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-علي-كلاي-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-ر-62a2ae851f.html" data-name="مسلسل علي كلاي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل علي كلاي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل علي كلاي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-إفراج-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضا-f010e11421.html" data-name="مسلسل إفراج - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل إفراج - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل إفراج - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/سوتس-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضان-2026-26880b53dd.html" data-name="سوتس - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="سوتس - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">سوتس - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/موضوع-عائلي-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضا-5d80f0e783.html" data-name="موضوع عائلي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="موضوع عائلي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">موضوع عائلي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">12 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-الست-موناليزا-اهواك-تي-في-مشاهدة-افلام-ومسلس-f23d40c0ad.html" data-name="مسلسل الست موناليزا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل الست موناليزا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل الست موناليزا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-فخر-الدلتا-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-9d9411e873.html" data-name="مسلسل فخر الدلتا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل فخر الدلتا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل فخر الدلتا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-هي-كيميا-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-ر-83094fbb4a.html" data-name="مسلسل هي كيميا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل هي كيميا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل هي كيميا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-درش-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضان--481dc4f96b.html" data-name="مسلسل درش - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل درش - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل درش - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-المتر-سمير-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-0d8daed725.html" data-name="مسلسل المتر سمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل المتر سمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل المتر سمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-مناعة-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضا-cc1eda9b8a.html" data-name="مسلسل مناعة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل مناعة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل مناعة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-النص-التاني-اهواك-تي-في-مشاهدة-افلام-ومسلسلا-676cb784de.html" data-name="مسلسل النص التاني - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل النص التاني - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل النص التاني - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-عرض-وطلب-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-ر-847f733a26.html" data-name="مسلسل عرض وطلب - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل عرض وطلب - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل عرض وطلب - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-النص-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضان-04ddb2e41d.html" data-name="مسلسل النص - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل النص - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل النص - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-</div>
-        </section>
-        
-        <section class="row" data-category="أخرى">
-            <div class="row-header">
-                <h2>أخرى</h2>
-                <button class="row-toggle" onclick="toggleRow(this)">عرض الكل</button>
-            </div>
-            <div class="carousel">
-<a class="card" href="watch/الصفحة-الرئيسية-d4e81bd29b.html" data-name="الصفحة الرئيسية" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="الصفحة الرئيسية" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">الصفحة الرئيسية</div>
-    <div class="card-meta">21 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/جديد-الأفلام-33e2d8f5ee.html" data-name="جديد الأفلام" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="جديد الأفلام" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">جديد الأفلام</div>
-    <div class="card-meta">21 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-القصة-الكاملة-ما-لم-يحك-عن-بني-مزار-اهواك-تي-93cd89e4f0.html" data-name="مسلسل القصة الكاملة - ما لم يحك عن بني مزار - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل القصة الكاملة - ما لم يحك عن بني مزار - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل القصة الكاملة - ما لم يحك عن بني مزار - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">3 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-خمسين-خمسين-اهواك-تي-في-مشاهدة-افلام-ومسلسلا-ed2bfbc315.html" data-name="مسلسل خمسين خمسين - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل خمسين خمسين - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل خمسين خمسين - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">8 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-بنج-كلي-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رم-808e347daa.html" data-name="مسلسل بنج كلي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل بنج كلي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل بنج كلي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-تحت-السن-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-ر-4f06e87466.html" data-name="مسلسل تحت السن - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل تحت السن - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل تحت السن - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">12 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-القصة-الكاملة-لعبة-جهنم-اهواك-تي-في-مشاهدة-ا-f8404df208.html" data-name="مسلسل القصة الكاملة - لعبة جهنم - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل القصة الكاملة - لعبة جهنم - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل القصة الكاملة - لعبة جهنم - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">3 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-حب-ع-ورق-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-ر-904d57ef73.html" data-name="مسلسل حب ع ورق - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل حب ع ورق - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل حب ع ورق - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">85 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-الفرنساوي-اهواك-تي-في-مشاهدة-افلام-ومسلسلات--8f17120946.html" data-name="مسلسل الفرنساوي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل الفرنساوي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل الفرنساوي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">10 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-ميدتيرم-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رم-9df69e1270.html" data-name="مسلسل ميدتيرم - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل ميدتيرم - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل ميدتيرم - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-بنات-عمير-اهواك-تي-في-مشاهدة-افلام-ومسلسلات--e53ae04e37.html" data-name="مسلسل بنات عمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل بنات عمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل بنات عمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-للعدالة-وجه-اخر-اهواك-تي-في-مشاهدة-افلام-ومس-5c5fae29cd.html" data-name="مسلسل للعدالة وجه اخر - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل للعدالة وجه اخر - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل للعدالة وجه اخر - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-ورد-على-فل-وياسمين-اهواك-تي-في-مشاهدة-افلام--f1c3c3c531.html" data-name="مسلسل ورد على فل وياسمين - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل ورد على فل وياسمين - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل ورد على فل وياسمين - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-ليل-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضان--7b783ad9d7.html" data-name="مسلسل ليل - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل ليل - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل ليل - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">90 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-اللعبة-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمض-edab02efe5.html" data-name="مسلسل اللعبة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل اللعبة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل اللعبة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">31 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-الكينج-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمض-0646ab2b66.html" data-name="مسلسل الكينج - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل الكينج - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل الكينج - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-المداح-أسطورة-النهاية-اهواك-تي-في-مشاهدة-افل-3671fb60a2.html" data-name="مسلسل المداح : أسطورة النهاية - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل المداح : أسطورة النهاية - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل المداح : أسطورة النهاية - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-علي-كلاي-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-ر-62a2ae851f.html" data-name="مسلسل علي كلاي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل علي كلاي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل علي كلاي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-إفراج-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضا-f010e11421.html" data-name="مسلسل إفراج - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل إفراج - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل إفراج - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/سوتس-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضان-2026-26880b53dd.html" data-name="سوتس - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="سوتس - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">سوتس - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/موضوع-عائلي-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضا-5d80f0e783.html" data-name="موضوع عائلي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="موضوع عائلي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">موضوع عائلي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">12 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-الست-موناليزا-اهواك-تي-في-مشاهدة-افلام-ومسلس-f23d40c0ad.html" data-name="مسلسل الست موناليزا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل الست موناليزا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل الست موناليزا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-فخر-الدلتا-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-9d9411e873.html" data-name="مسلسل فخر الدلتا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل فخر الدلتا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل فخر الدلتا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-هي-كيميا-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-ر-83094fbb4a.html" data-name="مسلسل هي كيميا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل هي كيميا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل هي كيميا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-درش-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضان--481dc4f96b.html" data-name="مسلسل درش - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل درش - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل درش - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-المتر-سمير-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-0d8daed725.html" data-name="مسلسل المتر سمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل المتر سمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل المتر سمير - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-مناعة-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضا-cc1eda9b8a.html" data-name="مسلسل مناعة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل مناعة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل مناعة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-النص-التاني-اهواك-تي-في-مشاهدة-افلام-ومسلسلا-676cb784de.html" data-name="مسلسل النص التاني - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل النص التاني - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل النص التاني - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-عرض-وطلب-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-ر-847f733a26.html" data-name="مسلسل عرض وطلب - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل عرض وطلب - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل عرض وطلب - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-النص-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضان-04ddb2e41d.html" data-name="مسلسل النص - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل النص - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل النص - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-راس-الافعى-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-38a2c6339d.html" data-name="مسلسل راس الافعى - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل راس الافعى - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل راس الافعى - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-وننسى-اللي-كان-اهواك-تي-في-مشاهدة-افلام-ومسل-7e4ba1023a.html" data-name="مسلسل وننسى اللي كان - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل وننسى اللي كان - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل وننسى اللي كان - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">30 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-بابا-وماما-جيران-اهواك-تي-في-مشاهدة-افلام-وم-038d209d1f.html" data-name="مسلسل بابا وماما جيران - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل بابا وماما جيران - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل بابا وماما جيران - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-عين-سحرية-اهواك-تي-في-مشاهدة-افلام-ومسلسلات--e4f6e19124.html" data-name="مسلسل عين سحرية - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل عين سحرية - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل عين سحرية - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-سوا-سوا-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رم-71c10a1b23.html" data-name="مسلسل سوا سوا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل سوا سوا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل سوا سوا - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-كلهم-بيحبوا-مودي-اهواك-تي-في-مشاهدة-افلام-وم-03040cdaef.html" data-name="مسلسل كلهم بيحبوا مودي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل كلهم بيحبوا مودي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل كلهم بيحبوا مودي - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-حكاية-نرجس-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-875867e48f.html" data-name="مسلسل حكاية نرجس - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل حكاية نرجس - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل حكاية نرجس - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-بيبو-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-رمضان-8da8c98e40.html" data-name="مسلسل بيبو - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل بيبو - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل بيبو - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-فرصة-اخيرة-اهواك-تي-في-مشاهدة-افلام-ومسلسلات-d9b2d301d1.html" data-name="مسلسل فرصة اخيرة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل فرصة اخيرة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل فرصة اخيرة - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-
-<a class="card" href="watch/مسلسل-اتنين-غيرنا-اهواك-تي-في-مشاهدة-افلام-ومسلسلا-a3aa891fbd.html" data-name="مسلسل اتنين غيرنا  - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" data-genre="أخرى">
-    <div class="poster-wrap">
-        <img src="../posters/placeholder.jpg" alt="مسلسل اتنين غيرنا  - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026" loading="lazy"
-             onerror="this.onerror=null;this.src='../posters/placeholder.jpg'">
-        <div class="play-overlay">▶</div>
-        <div class="badges"></div>
-    </div>
-    <div class="card-title">مسلسل اتنين غيرنا  - اهواك تي في - مشاهدة افلام ومسلسلات رمضان 2026</div>
-    <div class="card-meta">15 حلقة • أخرى</div>
-</a>
-</div>
-        </section>
-        
-    </div>
-</main>
-
-<footer class="footer">
-    <div>Shoof © 2026 — جميع الحقوق محفوظة</div>
-    <div class="footer-links">
-        <a href="https://t.me/shoofcima" target="_blank">قناة تيليجرام</a>
-        <span>•</span>
-        <a href="https://github.com/oso28207-glitch/auto" target="_blank">GitHub</a>
-    </div>
-</footer>
-
-<script src="app.js"></script>
-</body>
-</html>
+<link rel="stylesheet" href="style.css"></head><body>
+<header class="topbar"><div class="brand">SHOOF</div>
+<nav><a href="#">الرئيسية</a><a href="#series">المسلسلات</a></nav>
+<a href="https://t.me/shoofcima" class="tg">📡 قناتنا</a></header>
+<main><section class="row"><h2>🎙️ مسلسلات مدبلجة</h2><div class="grid"><a class="card" href="watch/المحافظ-مدبلج-الموسم-4-7c44f5a2.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="المحافظ مدبلج الموسم 4" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">المحافظ مدبلج الموسم 4</div>
+  <div class="meta">10 حلقة</div>
+</a><a class="card" href="watch/جودا-اكبر-مدبلج-6ba87130.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="جودا اكبر مدبلج" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">جودا اكبر مدبلج</div>
+  <div class="meta">37 حلقة</div>
+</a><a class="card" href="watch/فيلينتا-مدبلج-الموسم-1-bbe0090c.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="فيلينتا مدبلج الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">فيلينتا مدبلج الموسم 1</div>
+  <div class="meta">164 حلقة</div>
+</a></div></section><section class="row"><h2>📺 مسلسلات وأفلام</h2><div class="grid"><a class="card" href="watch/ابن-سينا-العبقري-الصغير-c2978f7d.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="ابن سينا العبقري الصغير" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">ابن سينا العبقري الصغير</div>
+  <div class="meta">5 حلقة</div>
+</a><a class="card" href="watch/اتنين-غيرنا-الموسم-1-b8560d1b.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="اتنين غيرنا الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">اتنين غيرنا الموسم 1</div>
+  <div class="meta">15 حلقة</div>
+</a><a class="card" href="watch/احتمال-حب-1072df4b.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="احتمال حب" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">احتمال حب</div>
+  <div class="meta">64 حلقة</div>
+</a><a class="card" href="watch/اسود-باهت-9f142df1.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="اسود باهت" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">اسود باهت</div>
+  <div class="meta">15 حلقة</div>
+</a><a class="card" href="watch/البيت-بيتك-2-bf87aa44.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="البيت بيتك 2" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">البيت بيتك 2</div>
+  <div class="meta">10 حلقة</div>
+</a><a class="card" href="watch/التفاح-الحرام-الموسم-6-89d43715.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="التفاح الحرام الموسم 6" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">التفاح الحرام الموسم 6</div>
+  <div class="meta">99 حلقة</div>
+</a><a class="card" href="watch/الحب-ورطة-الموسم-1-a4ce82f3.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="الحب ورطة الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">الحب ورطة الموسم 1</div>
+  <div class="meta">30 حلقة</div>
+</a><a class="card" href="watch/الخياط-الموسم-3-a1976b25.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="الخياط الموسم 3" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">الخياط الموسم 3</div>
+  <div class="meta">8 حلقة</div>
+</a><a class="card" href="watch/الست-موناليزا-الموسم-1-71f7113f.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="الست موناليزا الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">الست موناليزا الموسم 1</div>
+  <div class="meta">15 حلقة</div>
+</a><a class="card" href="watch/الف-ليلة-وليلة-جودر-d4cffb96.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="الف ليلة وليلة: جودر" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">الف ليلة وليلة: جودر</div>
+  <div class="meta">15 حلقة</div>
+</a><a class="card" href="watch/الف-ليله-وليله-ab5d5306.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="الف ليله وليله" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">الف ليله وليله</div>
+  <div class="meta">29 حلقة</div>
+</a><a class="card" href="watch/المداح-الموسم-6-1d9f0c3b.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="المداح الموسم 6" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">المداح الموسم 6</div>
+  <div class="meta">30 حلقة</div>
+</a><a class="card" href="watch/المصيدة-الموسم-1-c91cc330.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="المصيدة الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">المصيدة الموسم 1</div>
+  <div class="meta">15 حلقة</div>
+</a><a class="card" href="watch/النص-09cff955.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="النص" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">النص</div>
+  <div class="meta">15 حلقة</div>
+</a><a class="card" href="watch/النص-الثاني-الموسم-1-4ca8aaae.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="النص الثاني الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">النص الثاني الموسم 1</div>
+  <div class="meta">15 حلقة</div>
+</a><a class="card" href="watch/اوراق-النسيان-128efc13.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="اوراق النسيان" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">اوراق النسيان</div>
+  <div class="meta">17 حلقة</div>
+</a><a class="card" href="watch/بدون-سابق-انذار-6e4ab02b.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="بدون سابق انذار" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">بدون سابق انذار</div>
+  <div class="meta">15 حلقة</div>
+</a><a class="card" href="watch/بـ-100-وش-4187362d.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="بـ 100 وش" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">بـ 100 وش</div>
+  <div class="meta">30 حلقة</div>
+</a><a class="card" href="watch/حب-للايجار-الموسم-2-48f489a0.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="حب للايجار الموسم 2" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">حب للايجار الموسم 2</div>
+  <div class="meta">122 حلقة</div>
+</a><a class="card" href="watch/حد-اقصى-الموسم-1-30b58646.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="حد اقصى الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">حد اقصى الموسم 1</div>
+  <div class="meta">15 حلقة</div>
+</a><a class="card" href="watch/حياتي-الرائعة-الموسم-1-636f3702.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="حياتي الرائعة الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">حياتي الرائعة الموسم 1</div>
+  <div class="meta">97 حلقة</div>
+</a><a class="card" href="watch/ساعته-وتاريخه-a15b7c02.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="ساعته وتاريخه" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">ساعته وتاريخه</div>
+  <div class="meta">26 حلقة</div>
+</a><a class="card" href="watch/صحاب-الارض-الموسم-1-058968cb.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="صحاب الارض الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">صحاب الارض الموسم 1</div>
+  <div class="meta">15 حلقة</div>
+</a><a class="card" href="watch/ضربة-معلم-60261bea.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="ضربة معلم" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">ضربة معلم</div>
+  <div class="meta">45 حلقة</div>
+</a><a class="card" href="watch/عين-سحرية-الموسم-1-040c4912.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="عين سحرية الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">عين سحرية الموسم 1</div>
+  <div class="meta">15 حلقة</div>
+</a><a class="card" href="watch/فتاة-النافذة-الموسم-3-0f263a7a.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="فتاة النافذة الموسم 3" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">فتاة النافذة الموسم 3</div>
+  <div class="meta">44 حلقة</div>
+</a><a class="card" href="watch/فن-الحرب-الموسم-1-896957fa.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="فن الحرب الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">فن الحرب الموسم 1</div>
+  <div class="meta">30 حلقة</div>
+</a><a class="card" href="watch/فى-كل-اسبوع-يوم-جمعة-3abbba53.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="فى كل اسبوع يوم جمعة" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">فى كل اسبوع يوم جمعة</div>
+  <div class="meta">10 حلقة</div>
+</a><a class="card" href="watch/كارثة-طبيعية-96cb1dff.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="كارثة طبيعية" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">كارثة طبيعية</div>
+  <div class="meta">10 حلقة</div>
+</a><a class="card" href="watch/كذبتي-الحلوه-الموسم-1-23f85344.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="كذبتي الحلوه الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">كذبتي الحلوه الموسم 1</div>
+  <div class="meta">83 حلقة</div>
+</a><a class="card" href="watch/لعبة-الحظ-الموسم-1-702e2e43.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="لعبة الحظ الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">لعبة الحظ الموسم 1</div>
+  <div class="meta">58 حلقة</div>
+</a><a class="card" href="watch/لعبة-حب-الموسم-1-def62dab.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="لعبة حب الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">لعبة حب الموسم 1</div>
+  <div class="meta">90 حلقة</div>
+</a><a class="card" href="watch/مسلسل-الاخ-الكبير-959a4b35.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="مسلسل الاخ الكبير" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">مسلسل الاخ الكبير</div>
+  <div class="meta">45 حلقة</div>
+</a><a class="card" href="watch/مسلسل-الخفقان-2b7c7d34.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="مسلسل الخفقان" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">مسلسل الخفقان</div>
+  <div class="meta">33 حلقة</div>
+</a><a class="card" href="watch/مسلسل-ما-زلت-في-17-45d36468.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="مسلسل ما زلت في 17" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">مسلسل ما زلت في 17</div>
+  <div class="meta">60 حلقة</div>
+</a><a class="card" href="watch/مسلسل-منورة-باهلها-951b3a2d.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="مسلسل منورة باهلها" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">مسلسل منورة باهلها</div>
+  <div class="meta">10 حلقة</div>
+</a><a class="card" href="watch/مملكة-الحرير-b8e9566f.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="مملكة الحرير" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">مملكة الحرير</div>
+  <div class="meta">10 حلقة</div>
+</a><a class="card" href="watch/مناعة-الموسم-1-42fd3452.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="مناعة الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">مناعة الموسم 1</div>
+  <div class="meta">15 حلقة</div>
+</a><a class="card" href="watch/موعد-مع-الماضي-4902bc42.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="موعد مع الماضي" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">موعد مع الماضي</div>
+  <div class="meta">8 حلقة</div>
+</a><a class="card" href="watch/ورود-وذنوب-الموسم-1-03578c81.html">
+  <div class="poster-wrap">
+    <img src="../posters/placeholder.jpg" alt="ورود وذنوب الموسم 1" loading="lazy"
+         onerror="this.src='../posters/placeholder.jpg'">
+    <div class="play">▶</div>
+  </div>
+  <div class="title">ورود وذنوب الموسم 1</div>
+  <div class="meta">55 حلقة</div>
+</a></div></section></main>
+<footer class="footer">Shoof © 2026</footer>
+</body></html>
