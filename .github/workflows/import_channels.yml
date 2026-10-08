@@ -1,0 +1,122 @@
+name: Import Old Series from Telegram
+
+on:
+  # تشغيل يدوي فقط
+  workflow_dispatch:
+    inputs:
+      channels:
+        description: 'القنوات (مفصولة بفاصلة)'
+        required: false
+        default: 'shoofcima,shoofFilm'
+      limit:
+        description: 'حد الرسائل لكل قناة'
+        required: false
+        default: '5000'
+      dry_run:
+        description: 'معاينة فقط بدون حفظ (true/false)'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: shoof-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 1
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -1
+
+      - name: 📦 Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip check || true
+
+      - name: 🔑 Create .env
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          SESSION_STRING: ${{ secrets.SESSION_STRING }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          SOURCE_BASE_URL: ${{ secrets.SOURCE_BASE_URL }}
+          SOURCE_CATEGORY: ${{ secrets.SOURCE_CATEGORY }}
+          API_BASE: ${{ secrets.API_BASE }}
+          CHECK_CHANNELS: ${{ secrets.CHECK_CHANNELS }}
+        run: |
+          {
+            echo "API_ID=${API_ID}"
+            echo "API_HASH=${API_HASH}"
+            echo "SESSION_STRING=${SESSION_STRING}"
+            echo "CHANNEL_ID=${CHANNEL_ID}"
+            echo "SOURCE_BASE_URL=${SOURCE_BASE_URL:-https://u.3seq.com}"
+            echo "SOURCE_CATEGORY=${SOURCE_CATEGORY:-712}"
+            echo "API_BASE=${API_BASE}"
+            echo "CHECK_CHANNELS=${CHECK_CHANNELS:-shoofcima,shoofFilm}"
+            echo "COMPRESS_SCALE=240"
+            echo "COMPRESS_CRF=28"
+            echo "AUTO_BUILD=true"
+          } > .env
+          grep -v -E "API_HASH|SESSION_STRING|API_ID" .env
+
+      - name: 📡 Import from channels
+        run: |
+          python import_from_channels.py \
+            --channels "${{ github.event.inputs.channels || 'shoofcima,shoofFilm' }}" \
+            --limit "${{ github.event.inputs.limit || '5000' }}" \
+            ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
+
+      - name: 💾 Commit state + docs
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add -f data/state.json data/state.backup.json docs/ 2>/dev/null || true
+
+          if git diff --staged --quiet; then
+            echo "لا تغييرات"
+          else
+            git commit -m "📥 استيراد من القنوات: $(date -u +'%Y-%m-%d %H:%M')"
+
+            # محاولات push متعددة
+            for i in 1 2 3; do
+              git push && break || {
+                echo "محاولة $i فشلت، pull --rebase..."
+                git pull --rebase --autostash || true
+                sleep 5
+              }
+            done
+          fi
+
+      - name: 🔍 Verify
+        if: always()
+        run: |
+          echo "── docs/ ──"
+          ls -la docs/ || true
+          if [ -f docs/series.json ]; then
+            echo "── عدد المسلسلات في series.json ──"
+            python -c "import json; d=json.load(open('docs/series.json')); print(f'{len(d)} مسلسل')"
+          fi
+          if [ -f docs/videos.json ]; then
+            echo "── عدد الفيديوهات ──"
+            python -c "import json; d=json.load(open('docs/videos.json')); print(f'{len(d)} فيديو')"
+          fi

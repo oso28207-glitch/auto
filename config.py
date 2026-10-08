@@ -8,35 +8,114 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 MEDIA_DIR = DATA_DIR / "media"
 DOCS_DIR = BASE_DIR / "docs"
-ASSETS_DIR = BASE_DIR / "assets"  # تم إصلاح الخطأ هنا
+ASSETS_DIR = BASE_DIR / "assets"
 
-for d in (DATA_DIR, MEDIA_DIR, DOCS_DIR, ASSETS_DIR):
+for d in (DATA_DIR, MEDIA_DIR, DOCS_DIR, DOCS_DIR / "posters", DOCS_DIR / "watch"):
     d.mkdir(parents=True, exist_ok=True)
 
+
 class Config:
-    API_ID = int(os.environ.get("API_ID", "0"))
+    # Telegram
+    API_ID = int(os.environ.get("API_ID", "0") or "0")
     API_HASH = os.environ.get("API_HASH", "").strip()
     SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
     CHANNEL_ID = os.environ.get("CHANNEL_ID", "").strip()
-    CHECK_CHANNELS = os.environ.get("CHECK_CHANNELS", "shoofcima,shoofFilm").strip()
-    
-    # إعدادات المصادر الخارجية
-    SOURCE_URL = os.environ.get("SOURCE_URL", "https://example.com").rstrip("/")
-    
-    # إعدادات الضغط (240p)
-    COMPRESS_SCALE = int(os.environ.get("COMPRESS_SCALE", "240"))
-    COMPRESS_CRF = int(os.environ.get("COMPRESS_CRF", "28"))
+
+    CHECK_CHANNELS = os.environ.get(
+        "CHECK_CHANNELS", "shoofcima,shoofFilm"
+    ).strip()
+    CHECK_CHANNEL_LIMIT = int(os.environ.get("CHECK_CHANNEL_LIMIT", "3000"))
+    CHECK_CACHE_TTL = int(os.environ.get("CHECK_CACHE_TTL", "3600"))
+
+    ENABLED_SOURCES = os.environ.get("ENABLED_SOURCES", "u3seq,yam").strip()
+
+    U3SEQ_BASE_URL = os.environ.get("SOURCE_BASE_URL", "https://u.3seq.cam").rstrip("/")
+    U3SEQ_CATEGORY = int(os.environ.get("SOURCE_CATEGORY", "0"))
+    U3SEQ_MAX_PAGES = int(os.environ.get("SOURCE_MAX_PAGES", "20"))
+    SOURCE_BASE_URL = U3SEQ_BASE_URL
+    SOURCE_CATEGORY = U3SEQ_CATEGORY
+    SOURCE_MAX_PAGES = U3SEQ_MAX_PAGES
+
+    YAM_BASE_URL = os.environ.get("YAM_BASE_URL", "https://yam.ahwaktv.net").rstrip("/")
+    YAM_SERIES_PATH = os.environ.get("YAM_SERIES_PATH", "/moslslat.php")
+    YAM_MAX_PAGES = int(os.environ.get("YAM_MAX_PAGES", "95"))
+    YAM_CATEGORY_PAGES = int(os.environ.get("YAM_CATEGORY_PAGES", "40"))
+    YAM_SERIES_FETCH_LIMIT = int(os.environ.get("YAM_SERIES_FETCH_LIMIT", "900"))
+    YAM_WORKERS = int(os.environ.get("YAM_WORKERS", "10"))
+    YAM_CATEGORIES = os.environ.get(
+        "YAM_CATEGORIES",
+        "moslslat-turkiaa-modblga,moslslat-modblga,aflam-dub,"
+        "moslslat-hndia-modblja,goda-akbar-modblge,mn-elnazra-elthania-modblge",
+    ).strip()
+
+    EGYBEST_BASE_URL = os.environ.get("EGYBEST_BASE_URL", "https://egybesstt.baby").rstrip("/")
+    EGYBEST_SERIES_PATH = os.environ.get("EGYBEST_SERIES_PATH", "/all-series.php")
+
+    MAX_EPISODES_PER_RUN = int(os.environ.get("MAX_EPISODES_PER_RUN", "0"))
+    MAX_RUNTIME_SECONDS = int(os.environ.get("MAX_RUNTIME_SECONDS", "9900"))
+    SKIP_COMPRESS = os.environ.get("SKIP_COMPRESS", "false").lower() == "true"
+    KEEP_MEDIA = os.environ.get("KEEP_MEDIA", "false").lower() == "true"
+
+    # ── خصائص السكربتات القديمة (run.py / orchestrator.py / builder.py) ──
+    API_BASE = os.environ.get(
+        "API_BASE", "https://auto-production-08b0.up.railway.app"
+    ).rstrip("/")
+    AUTO_BUILD = os.environ.get("AUTO_BUILD", "true").lower() == "true"
+    CHECK_INTERVAL = int(os.environ.get("CHECK_INTERVAL", "3600"))
+    REALTIME_PUSH = os.environ.get("REALTIME_PUSH", "false").lower() == "true"
+    REALTIME_PUSH_INTERVAL = int(os.environ.get("REALTIME_PUSH_INTERVAL", "600"))
+
+    # إعدادات الضغط الثابتة
     COMPRESS_PRESET = os.environ.get("COMPRESS_PRESET", "veryfast")
-    COMPRESS_AUDIO_BITRATE = os.environ.get("COMPRESS_AUDIO_BITRATE", "48k")
-    COMPRESS_MAX_SIZE_MB = int(os.environ.get("COMPRESS_MAX_SIZE_MB", "80"))
-    
-    MAX_RUNTIME_SECONDS = int(os.environ.get("MAX_RUNTIME_SECONDS", "10800")) # 3 ساعات
+    COMPRESS_CRF = int(os.environ.get("COMPRESS_CRF", "28"))
+    COMPRESS_THREADS = int(os.environ.get("COMPRESS_THREADS", "2"))
+    COMPRESS_SCALE = int(os.environ.get("COMPRESS_SCALE", "240"))
+    COMPRESS_AUDIO_BITRATE = os.environ.get("COMPRESS_AUDIO_BITRATE", "32k")
+    COMPRESS_MAX_SIZE_MB = int(os.environ.get("COMPRESS_MAX_SIZE_MB", "100"))
+
+    M3U8_SEARCH_TIMEOUT = int(os.environ.get("M3U8_SEARCH_TIMEOUT", "25"))
+    OPEN_TIMEOUT = int(os.environ.get("OPEN_TIMEOUT", "10"))
+    EPISODE_TIMEOUT = int(os.environ.get("EPISODE_TIMEOUT", "2400"))
+
+    @classmethod
+    def priority_of(cls, name: str) -> int:
+        """
+        1 = مسلسلات تركية مدبلجة (الأولوية القصوى)
+        2 = مسلسلات مدبلجة أخرى
+        3 = أفلام مدبلجة
+        4 = مسلسلات عادية
+        5 = أفلام عادية
+        """
+        n = (name or "").strip()
+        is_dubbed = ("مدبلج" in n) or any(
+            k in n.lower() for k in ("modblga", "modblja", "modblge", "dubbed", "dub"))
+        is_turkish = ("تركي" in n) or ("تركية" in n) or any(
+            k in n.lower() for k in ("turkish", "turkiaa", "turk"))
+        is_movie = (
+            n.startswith("فيلم") or n.startswith("افلام") or
+            n.startswith("أفلام") or "افلام" in n[:10] or "أفلام" in n[:10] or
+            "aflam" in n.lower() or "movie" in n.lower()
+        )
+        if is_turkish and is_dubbed and not is_movie:
+            return 1
+        if is_dubbed and not is_movie:
+            return 2
+        if is_dubbed and is_movie:
+            return 3
+        if not is_movie:
+            return 4
+        return 5
 
     @classmethod
     def validate(cls):
-        missing = [k for k, v in {"API_ID": cls.API_ID, "API_HASH": cls.API_HASH, 
-                                   "SESSION_STRING": cls.SESSION_STRING, "CHANNEL_ID": cls.CHANNEL_ID}.items() if not v]
+        missing = []
+        if not cls.API_ID: missing.append("API_ID")
+        if not cls.API_HASH: missing.append("API_HASH")
+        if not cls.SESSION_STRING: missing.append("SESSION_STRING")
+        if not cls.CHANNEL_ID: missing.append("CHANNEL_ID")
         if missing:
-            raise Exception(f"متغيرات بيئة مفقودة: {', '.join(missing)}")
+            raise Exception(f"متغيرات مفقودة: {', '.join(missing)}")
+        return True
+
 
 config = Config()

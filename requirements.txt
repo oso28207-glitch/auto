@@ -1,5 +1,30 @@
+# ═══════════════════════════════════════════════════════════════
+# Shoof — متطلبات التشغيل (GitHub Actions)
+# ═══════════════════════════════════════════════════════════════
+
+# ── Telegram ──
 pyrogram==2.0.106
 tgcrypto==1.2.5
-python-dotenv==1.0.1
-requests==2.31.0
-beautifulsoup4==4.12.2
+
+# ── بيئة ──
+python-dotenv>=1.0.0
+
+# ── الشبكة / تجاوز Cloudflare (u3seq, yam, الصور) ──
+curl_cffi>=0.7.4
+requests>=2.31.0
+
+# ── التنزيل (HLS / m3u8) ──
+yt-dlp[default]>=2024.12.13
+
+# ── المتصفح (استخراج m3u8) ──
+seleniumbase>=4.30.0
+
+# ── تحليل HTML ──
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+
+# ── الصور (placeholder + معاينة) ──
+Pillow>=10.0.0
+
+# ── ffmpeg المدمج (احتياطي) ──
+imageio-ffmpeg>=0.4.9

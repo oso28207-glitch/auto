@@ -1,22 +1,64 @@
 <!DOCTYPE html><html lang="ar" dir="rtl"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>المداح الموسم 6 — Shoof</title>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../style.css">
+<meta name="theme-color" content="#0a0a0a">
+<title>المداح الموسم 6 — شوف</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../style.css?v=3">
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
 </head><body class="watch-page">
 <header class="topbar">
-<a href="../index.html" class="back">←</a>
-<div class="brand">SHOOF</div>
-<div class="wtitle">المداح الموسم 6</div>
+  <a href="../index.html" class="back" title="رجوع">←</a>
+  <div class="brand">شوف</div>
+  <div class="wtitle">المداح الموسم 6</div>
+  <a href="https://t.me/shoofcima" class="tg-btn" target="_blank" rel="noopener">📡 القناة</a>
 </header>
 <main class="watch-main">
-<div class="player-wrap"><video id="v" controls playsinline poster="../"></video>
-<div id="count" class="countdown hidden">الحلقة التالية بعد <span id="cn">10</span> <button onclick="next()">الآن</button></div>
-</div>
-<div class="info"><h1>المداح الموسم 6</h1><div class="meta"><span class="badge">30 حلقة</span></div>
-<div class="controls"><button onclick="prev()">⏮ السابقة</button><button onclick="next()">التالية ⏭</button></div></div>
-<div class="eps"><h2>الحلقات</h2><div id="grid" class="grid"></div></div>
+  <section class="player-section">
+    <div class="player-wrap">
+      <video id="v" controls playsinline preload="metadata"
+             poster="../posters/المداح-الموسم-6-1d9f0c3b.png"></video>
+      <div id="player-loading" class="player-loading hidden">
+        <div class="spinner"></div><p>جارٍ التحميل...</p>
+      </div>
+      <div id="count" class="autoplay-countdown hidden">
+        <span class="countdown-text">الحلقة التالية بعد
+          <span id="cn">10</span> ثانية</span>
+        <button class="countdown-btn" onclick="window.playNext()">شاهد الآن</button>
+        <button class="countdown-cancel" onclick="window.cancelAutoplay()">إلغاء</button>
+      </div>
+    </div>
+    <div class="player-info">
+      <h1>المداح الموسم 6</h1>
+      <div class="info-meta">
+        <span class="badge eps">30 حلقة</span>
+        <span class="badge genre" id="current-ep-badge">الحلقة 1</span>
+      </div>
+      <div class="player-controls">
+        <button id="btn-prev">⏮ السابقة</button>
+        <button id="btn-autoplay" class="active">🔁 تشغيل تلقائي: مفعّل</button>
+        <button id="btn-next">التالية ⏭</button>
+      </div>
+    </div>
+  </section>
+  <section class="episodes-section">
+    <div class="episodes-header">
+      <h2>الحلقات</h2>
+      <div class="episodes-filter">
+        <input id="ep-search" type="search" placeholder="ابحث عن رقم الحلقة...">
+      </div>
+    </div>
+    <div id="grid" class="episodes-grid"></div>
+  </section>
 </main>
-<script>const S = [{"num": 1, "url": "https://t.me/shoofcima/842"}, {"num": 2, "url": "https://t.me/shoofcima/843"}, {"num": 3, "url": "https://t.me/shoofcima/844"}, {"num": 4, "url": "https://t.me/shoofcima/845"}, {"num": 5, "url": "https://t.me/shoofcima/846"}, {"num": 6, "url": "https://t.me/shoofcima/847"}, {"num": 7, "url": "https://t.me/shoofcima/848"}, {"num": 8, "url": "https://t.me/shoofcima/849"}, {"num": 9, "url": "https://t.me/shoofcima/850"}, {"num": 10, "url": "https://t.me/shoofcima/851"}, {"num": 11, "url": "https://t.me/shoofcima/852"}, {"num": 12, "url": "https://t.me/shoofcima/853"}, {"num": 13, "url": "https://t.me/shoofcima/854"}, {"num": 14, "url": "https://t.me/shoofcima/855"}, {"num": 15, "url": "https://t.me/shoofcima/856"}, {"num": 16, "url": "https://t.me/shoofcima/857"}, {"num": 17, "url": "https://t.me/shoofcima/858"}, {"num": 18, "url": "https://t.me/shoofcima/859"}, {"num": 19, "url": "https://t.me/shoofcima/860"}, {"num": 20, "url": "https://t.me/shoofcima/861"}, {"num": 21, "url": "https://t.me/shoofcima/862"}, {"num": 22, "url": "https://t.me/shoofcima/863"}, {"num": 23, "url": "https://t.me/shoofcima/864"}, {"num": 24, "url": "https://t.me/shoofcima/865"}, {"num": 25, "url": "https://t.me/shoofcima/941"}, {"num": 26, "url": "https://t.me/shoofcima/942"}, {"num": 27, "url": "https://t.me/shoofcima/973"}, {"num": 28, "url": "https://t.me/shoofcima/999"}, {"num": 29, "url": "https://t.me/shoofcima/1000"}, {"num": 30, "url": "https://t.me/shoofcima/1001"}];const C = "https://t.me/shoofcima";</script>
-<script src="../watch.js"></script></body></html>
+<footer class="footer">
+  <div>شوف — منصة المشاهدة</div>
+  <div class="footer-links">
+    <a href="../index.html">الرئيسية</a>
+    <a href="https://t.me/shoofcima" target="_blank" rel="noopener">قناة تيليجرام</a>
+  </div>
+</footer>
+<script>window.S = [{"num": 1, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDSmrD0OCcwCGgBmDH6i_vfUrjmyEnAALHGwACFvYoUaMx8FjKe_BNHgQ&size=56343303&mid=842"}, {"num": 2, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDS2rD0OBEri9m4_mFVIhKy4hht7FUAALIGwACFvYoUXBU3Ppb9mebHgQ&size=40635902&mid=843"}, {"num": 3, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDTGrD0OD_s48AAcLw8cGaG66ZBv8UngACyxsAAhb2KFEZHUZLAAH3rcoeBA&size=39680490&mid=844"}, {"num": 4, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDTWrD0OAsA_yi7EBYtTh6EaFcNO5YAALMGwACFvYoUej7HE7cZubZHgQ&size=31284389&mid=845"}, {"num": 5, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDTmrD0OAvoeVFN4BcIfPqFOrmwvBdAALOGwACFvYoUSu1Ubcj8GlzHgQ&size=38846773&mid=846"}, {"num": 6, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDT2rD0OC9wJQAAenRR83rYqkPRlkjxAAC0BsAAhb2KFHsucifnnnPJR4E&size=39072921&mid=847"}, {"num": 7, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDUGrD0OBxRgeZl9XRfB3dgTtvUepvAALRGwACFvYoUZdYTlbXQEa8HgQ&size=38696968&mid=848"}, {"num": 8, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDUWrD0ODfj0pc2S-MEC8gnQT_KUEDAALZGwACFvYoUbln36MlAyt7HgQ&size=38528556&mid=849"}, {"num": 9, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDUmrD0OB9_Ern1OHJlOajNxVbS8L6AALeGwACFvYoUdhePQKRzNXmHgQ&size=28519136&mid=850"}, {"num": 10, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDU2rD0OAF9q09oOik-bf9gMRQlfiMAALiGwACFvYoUWL65_ma5SweHgQ&size=38888055&mid=851"}, {"num": 11, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDVGrD0OB1BP2elFTO8A96ssVEQ68BAALkGwACFvYoUbdhcnD_PawKHgQ&size=39186457&mid=852"}, {"num": 12, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDVWrD0OCNyJhNcss_MM2UAoZ8wqilAALlGwACFvYoUfSvyQGs-Qh_HgQ&size=37083194&mid=853"}, {"num": 13, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDVmrD0ODGQRlNtKMGLyt3DFx9QVHDAALmGwACFvYoUYCdbHQHjuVQHgQ&size=29713202&mid=854"}, {"num": 14, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDV2rD0OBHeJJPdeaiW4ayXVjkKk7sAALpGwACFvYoUbLAKMyPb8QpHgQ&size=28105209&mid=855"}, {"num": 15, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDWGrD0OCwN74vQkfoKPnqeARFGmAGAALcHwACI214UR0vTgkVjBJjHgQ&size=36544208&mid=856"}, {"num": 16, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDWWrD0OBSMhiiAAFi5vXY4qeFBDExpAAC3R8AAiNteFHiS_4Tot2aCx4E&size=36094329&mid=857"}, {"num": 17, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDWmrD0ODCFtEt2FbeDu-FmtViHgfhAALjHwACI214UWRNNKIzXqNLHgQ&size=37231588&mid=858"}, {"num": 18, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDW2rD0OCfBbL8EWR9aDlk130UL4_0AALlHwACI214UZeUuivVby_PHgQ&size=27089911&mid=859"}, {"num": 19, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDXGrD0OAM5ZKfVzh8NgZLCPRlRk9qAALnHwACI214UagKYXaSYQa6HgQ&size=29567174&mid=860"}, {"num": 20, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDXWrD0ODxcOD57ScxUGL64cWUVUydAALpHwACI214UU6FesICTA20HgQ&size=27092437&mid=861"}, {"num": 21, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDXmrD0OCHkJ7r-pFRbNCUn1GgdnZcAALqHwACI214UeZ_9pZqniogHgQ&size=36498133&mid=862"}, {"num": 22, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDX2rD0OALNPOjpHwIme1CfypeRp-YAAI9HwACI22IUQU9QyzPMphlHgQ&size=28232136&mid=863"}, {"num": 23, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDYGrD0OCQux5HXfshyx5dSAbd6lpmAAJoHwACI22IUViipvudhC6GHgQ&size=28843018&mid=864"}, {"num": 24, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDYWrD0OBWBzdbO7iLdh2nw2bpkubDAAJ-IAAClGiQUS9KrmUprEL4HgQ&size=29600810&mid=865"}, {"num": 25, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDrWrD0N1RY53mkh5RhVagv5kUgbYVAAKEHQAC1mygUdSiXD64bqoLHgQ&size=36136679&mid=941"}, {"num": 26, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDrmrD0N2iL6jf979jvJubl9wO4FffAALbGwAC1myoUVvuGRyE451FHgQ&size=37590995&mid=942"}, {"num": 27, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAIDzWrD0N1g6In2jZ_nWXEM4CgMGMvCAAIIHAACQDKwUZTpyr5P5xSSHgQ&size=29679714&mid=973"}, {"num": 28, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAID52rD0Nsti0fb95DQZqWagsodMQc1AAKNHAACu9jQUQJMtBR0AursHgQ&size=26542826&mid=999"}, {"num": 29, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAID6GrD0NvRFrAl4RMmJyMD4RfCrvnJAAKOHAACu9jQUWtkkv-t9LQHHgQ&size=29794914&mid=1000"}, {"num": 30, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAyEGAATS7MsnAAID6WrD0Nu6L6_Fxvrg3euVHdEsVRWvAAKQHAACu9jQUUt2gtP4fy9WHgQ&size=31329865&mid=1001"}]; window.C = "https://t.me/shoofcima"; window.PLAYABLE = 30;</script>
+<script src="../watch.js?v=3"></script>
+</body></html>

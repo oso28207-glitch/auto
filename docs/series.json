@@ -1,305 +1,435 @@
 {
+  "built_at": "2026-10-08T19:32:14.105772",
   "series": [
     {
-      "name": "المحافظ مدبلج الموسم 4",
-      "slug": "المحافظ-مدبلج-الموسم-4-7c44f5a2",
-      "poster": "posters/placeholder.jpg",
-      "eps": 10,
-      "category": ""
+      "name": "ابن سينا العبقري الصغير",
+      "slug": "ابن-سينا-العبقري-الصغير-c2978f7d",
+      "poster": "posters/ابن-سينا-العبقري-الصغير-c2978f7d.jpg",
+      "episodes_count": 9,
+      "eps": 9,
+      "genre": "",
+      "category": "moslslat-turkiaa-modblga",
+      "last_updated": ""
+    },
+    {
+      "name": "حياتي الرائعة الموسم 1",
+      "slug": "حياتي-الرائعة-الموسم-1-636f3702",
+      "poster": "posters/حياتي-الرائعة-الموسم-1-636f3702.jpg",
+      "episodes_count": 97,
+      "eps": 97,
+      "genre": "",
+      "category": "moslslat-turkiaa-modblga",
+      "last_updated": ""
+    },
+    {
+      "name": "لعبة الحظ الموسم 1",
+      "slug": "لعبة-الحظ-الموسم-1-702e2e43",
+      "poster": "posters/لعبة-الحظ-الموسم-1-702e2e43.jpg",
+      "episodes_count": 58,
+      "eps": 58,
+      "genre": "",
+      "category": "moslslat-turkiaa-modblga",
+      "last_updated": ""
+    },
+    {
+      "name": "حب للايجار الموسم 2",
+      "slug": "حب-للايجار-الموسم-2-48f489a0",
+      "poster": "posters/حب-للايجار-الموسم-2-48f489a0.jpg",
+      "episodes_count": 122,
+      "eps": 122,
+      "genre": "",
+      "category": "moslslat-turkiaa-modblga",
+      "last_updated": ""
+    },
+    {
+      "name": "الحب ورطة الموسم 1",
+      "slug": "الحب-ورطة-الموسم-1-a4ce82f3",
+      "poster": "posters/الحب-ورطة-الموسم-1-a4ce82f3.jpg",
+      "episodes_count": 30,
+      "eps": 30,
+      "genre": "",
+      "category": "moslslat-turkiaa-modblga",
+      "last_updated": ""
+    },
+    {
+      "name": "الخياط الموسم 3",
+      "slug": "الخياط-الموسم-3-a1976b25",
+      "poster": "posters/الخياط-الموسم-3-a1976b25.jpg",
+      "episodes_count": 8,
+      "eps": 8,
+      "genre": "",
+      "category": "moslslat-turkiaa-modblga",
+      "last_updated": ""
     },
     {
       "name": "جودا اكبر مدبلج",
       "slug": "جودا-اكبر-مدبلج-6ba87130",
-      "poster": "posters/placeholder.jpg",
+      "poster": "posters/جودا-اكبر-مدبلج-6ba87130.jpg",
+      "episodes_count": 37,
       "eps": 37,
-      "category": ""
+      "genre": "",
+      "category": "goda-akbar-modblge",
+      "last_updated": ""
+    },
+    {
+      "name": "كذبتي الحلوه الموسم 1",
+      "slug": "كذبتي-الحلوه-الموسم-1-23f85344",
+      "poster": "posters/كذبتي-الحلوه-الموسم-1-23f85344.jpg",
+      "episodes_count": 83,
+      "eps": 83,
+      "genre": "",
+      "category": "مسلسلات مدبلجة",
+      "last_updated": ""
     },
     {
       "name": "فيلينتا مدبلج الموسم 1",
       "slug": "فيلينتا-مدبلج-الموسم-1-bbe0090c",
-      "poster": "posters/placeholder.jpg",
+      "poster": "posters/فيلينتا-مدبلج-الموسم-1-bbe0090c.jpg",
+      "episodes_count": 164,
       "eps": 164,
-      "category": ""
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
     },
     {
-      "name": "ابن سينا العبقري الصغير",
-      "slug": "ابن-سينا-العبقري-الصغير-c2978f7d",
-      "poster": "posters/placeholder.jpg",
-      "eps": 8,
-      "category": ""
-    },
-    {
-      "name": "اتنين غيرنا الموسم 1",
-      "slug": "اتنين-غيرنا-الموسم-1-b8560d1b",
-      "poster": "posters/placeholder.jpg",
-      "eps": 15,
-      "category": "مسلسل اتنين غيرنا"
+      "name": "المحافظ مدبلج الموسم 4",
+      "slug": "المحافظ-مدبلج-الموسم-4-7c44f5a2",
+      "poster": "posters/المحافظ-مدبلج-الموسم-4-7c44f5a2.jpg",
+      "episodes_count": 10,
+      "eps": 10,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
     },
     {
       "name": "احتمال حب",
       "slug": "احتمال-حب-1072df4b",
       "poster": "posters/placeholder.jpg",
+      "episodes_count": 64,
       "eps": 64,
-      "category": ""
-    },
-    {
-      "name": "اسود باهت",
-      "slug": "اسود-باهت-9f142df1",
-      "poster": "posters/placeholder.jpg",
-      "eps": 15,
-      "category": ""
-    },
-    {
-      "name": "البيت بيتك 2",
-      "slug": "البيت-بيتك-2-bf87aa44",
-      "poster": "posters/placeholder.jpg",
-      "eps": 10,
-      "category": ""
-    },
-    {
-      "name": "التفاح الحرام الموسم 6",
-      "slug": "التفاح-الحرام-الموسم-6-89d43715",
-      "poster": "posters/placeholder.jpg",
-      "eps": 99,
-      "category": ""
-    },
-    {
-      "name": "الحب ورطة الموسم 1",
-      "slug": "الحب-ورطة-الموسم-1-a4ce82f3",
-      "poster": "posters/placeholder.jpg",
-      "eps": 30,
-      "category": ""
-    },
-    {
-      "name": "الخياط الموسم 3",
-      "slug": "الخياط-الموسم-3-a1976b25",
-      "poster": "posters/placeholder.jpg",
-      "eps": 8,
-      "category": ""
-    },
-    {
-      "name": "الست موناليزا الموسم 1",
-      "slug": "الست-موناليزا-الموسم-1-71f7113f",
-      "poster": "posters/placeholder.jpg",
-      "eps": 15,
-      "category": "مسلسل الست موناليزا"
-    },
-    {
-      "name": "الف ليلة وليلة: جودر",
-      "slug": "الف-ليلة-وليلة-جودر-d4cffb96",
-      "poster": "posters/placeholder.jpg",
-      "eps": 15,
-      "category": ""
-    },
-    {
-      "name": "الف ليله وليله",
-      "slug": "الف-ليله-وليله-ab5d5306",
-      "poster": "posters/placeholder.jpg",
-      "eps": 29,
-      "category": ""
-    },
-    {
-      "name": "المداح الموسم 6",
-      "slug": "المداح-الموسم-6-1d9f0c3b",
-      "poster": "posters/placeholder.jpg",
-      "eps": 30,
-      "category": ""
-    },
-    {
-      "name": "المصيدة الموسم 1",
-      "slug": "المصيدة-الموسم-1-c91cc330",
-      "poster": "posters/placeholder.jpg",
-      "eps": 15,
-      "category": ""
-    },
-    {
-      "name": "النص",
-      "slug": "النص-09cff955",
-      "poster": "posters/placeholder.jpg",
-      "eps": 15,
-      "category": "مسلسل النص"
-    },
-    {
-      "name": "النص الثاني الموسم 1",
-      "slug": "النص-الثاني-الموسم-1-4ca8aaae",
-      "poster": "posters/placeholder.jpg",
-      "eps": 15,
-      "category": ""
-    },
-    {
-      "name": "اوراق النسيان",
-      "slug": "اوراق-النسيان-128efc13",
-      "poster": "posters/placeholder.jpg",
-      "eps": 17,
-      "category": ""
-    },
-    {
-      "name": "بدون سابق انذار",
-      "slug": "بدون-سابق-انذار-6e4ab02b",
-      "poster": "posters/placeholder.jpg",
-      "eps": 15,
-      "category": ""
-    },
-    {
-      "name": "بـ 100 وش",
-      "slug": "بـ-100-وش-4187362d",
-      "poster": "posters/placeholder.jpg",
-      "eps": 30,
-      "category": ""
-    },
-    {
-      "name": "حب للايجار الموسم 2",
-      "slug": "حب-للايجار-الموسم-2-48f489a0",
-      "poster": "posters/placeholder.jpg",
-      "eps": 122,
-      "category": ""
-    },
-    {
-      "name": "حد اقصى الموسم 1",
-      "slug": "حد-اقصى-الموسم-1-30b58646",
-      "poster": "posters/placeholder.jpg",
-      "eps": 15,
-      "category": ""
-    },
-    {
-      "name": "حياتي الرائعة الموسم 1",
-      "slug": "حياتي-الرائعة-الموسم-1-636f3702",
-      "poster": "posters/placeholder.jpg",
-      "eps": 97,
-      "category": ""
-    },
-    {
-      "name": "ساعته وتاريخه",
-      "slug": "ساعته-وتاريخه-a15b7c02",
-      "poster": "posters/placeholder.jpg",
-      "eps": 26,
-      "category": ""
-    },
-    {
-      "name": "صحاب الارض الموسم 1",
-      "slug": "صحاب-الارض-الموسم-1-058968cb",
-      "poster": "posters/placeholder.jpg",
-      "eps": 15,
-      "category": "مسلسل صحاب الارض"
-    },
-    {
-      "name": "ضربة معلم",
-      "slug": "ضربة-معلم-60261bea",
-      "poster": "posters/placeholder.jpg",
-      "eps": 45,
-      "category": ""
-    },
-    {
-      "name": "عين سحرية الموسم 1",
-      "slug": "عين-سحرية-الموسم-1-040c4912",
-      "poster": "posters/placeholder.jpg",
-      "eps": 15,
-      "category": "مسلسل عين سحرية"
-    },
-    {
-      "name": "فتاة النافذة الموسم 3",
-      "slug": "فتاة-النافذة-الموسم-3-0f263a7a",
-      "poster": "posters/placeholder.jpg",
-      "eps": 44,
-      "category": ""
-    },
-    {
-      "name": "فن الحرب الموسم 1",
-      "slug": "فن-الحرب-الموسم-1-896957fa",
-      "poster": "posters/placeholder.jpg",
-      "eps": 30,
-      "category": ""
-    },
-    {
-      "name": "فى كل اسبوع يوم جمعة",
-      "slug": "فى-كل-اسبوع-يوم-جمعة-3abbba53",
-      "poster": "posters/placeholder.jpg",
-      "eps": 10,
-      "category": ""
-    },
-    {
-      "name": "كارثة طبيعية",
-      "slug": "كارثة-طبيعية-96cb1dff",
-      "poster": "posters/placeholder.jpg",
-      "eps": 10,
-      "category": ""
-    },
-    {
-      "name": "كذبتي الحلوه الموسم 1",
-      "slug": "كذبتي-الحلوه-الموسم-1-23f85344",
-      "poster": "posters/placeholder.jpg",
-      "eps": 83,
-      "category": ""
-    },
-    {
-      "name": "لعبة الحظ الموسم 1",
-      "slug": "لعبة-الحظ-الموسم-1-702e2e43",
-      "poster": "posters/placeholder.jpg",
-      "eps": 58,
-      "category": ""
-    },
-    {
-      "name": "لعبة حب الموسم 1",
-      "slug": "لعبة-حب-الموسم-1-def62dab",
-      "poster": "posters/placeholder.jpg",
-      "eps": 90,
-      "category": ""
-    },
-    {
-      "name": "مسلسل الاخ الكبير",
-      "slug": "مسلسل-الاخ-الكبير-959a4b35",
-      "poster": "posters/placeholder.jpg",
-      "eps": 45,
-      "category": ""
+      "genre": "",
+      "category": "",
+      "last_updated": ""
     },
     {
       "name": "مسلسل الخفقان",
       "slug": "مسلسل-الخفقان-2b7c7d34",
       "poster": "posters/placeholder.jpg",
+      "episodes_count": 33,
       "eps": 33,
-      "category": ""
+      "genre": "",
+      "category": "",
+      "last_updated": ""
     },
     {
       "name": "مسلسل ما زلت في 17",
       "slug": "مسلسل-ما-زلت-في-17-45d36468",
       "poster": "posters/placeholder.jpg",
+      "episodes_count": 60,
       "eps": 60,
-      "category": ""
+      "genre": "",
+      "category": "",
+      "last_updated": ""
     },
     {
-      "name": "مسلسل منورة باهلها",
-      "slug": "مسلسل-منورة-باهلها-951b3a2d",
+      "name": "فتاة النافذة الموسم 3",
+      "slug": "فتاة-النافذة-الموسم-3-0f263a7a",
       "poster": "posters/placeholder.jpg",
-      "eps": 10,
-      "category": ""
-    },
-    {
-      "name": "مملكة الحرير",
-      "slug": "مملكة-الحرير-b8e9566f",
-      "poster": "posters/placeholder.jpg",
-      "eps": 10,
-      "category": ""
-    },
-    {
-      "name": "مناعة الموسم 1",
-      "slug": "مناعة-الموسم-1-42fd3452",
-      "poster": "posters/placeholder.jpg",
-      "eps": 15,
-      "category": "مسلسل مناعة"
-    },
-    {
-      "name": "موعد مع الماضي",
-      "slug": "موعد-مع-الماضي-4902bc42",
-      "poster": "posters/placeholder.jpg",
-      "eps": 8,
-      "category": ""
+      "episodes_count": 44,
+      "eps": 44,
+      "genre": "",
+      "category": "",
+      "last_updated": ""
     },
     {
       "name": "ورود وذنوب الموسم 1",
       "slug": "ورود-وذنوب-الموسم-1-03578c81",
-      "poster": "posters/placeholder.jpg",
+      "poster": "posters/ورود-وذنوب-الموسم-1-03578c81.jpg",
+      "episodes_count": 55,
       "eps": 55,
-      "category": ""
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "النص الثاني الموسم 1",
+      "slug": "النص-الثاني-الموسم-1-4ca8aaae",
+      "poster": "posters/النص-الثاني-الموسم-1-4ca8aaae.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسل النص",
+      "last_updated": ""
+    },
+    {
+      "name": "فن الحرب الموسم 1",
+      "slug": "فن-الحرب-الموسم-1-896957fa",
+      "poster": "posters/فن-الحرب-الموسم-1-896957fa.jpg",
+      "episodes_count": 30,
+      "eps": 30,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "المداح الموسم 6",
+      "slug": "المداح-الموسم-6-1d9f0c3b",
+      "poster": "posters/المداح-الموسم-6-1d9f0c3b.png",
+      "episodes_count": 30,
+      "eps": 30,
+      "genre": "",
+      "category": "مسلسل المداح : أسطورة النهاية",
+      "last_updated": ""
+    },
+    {
+      "name": "صحاب الارض الموسم 1",
+      "slug": "صحاب-الارض-الموسم-1-058968cb",
+      "poster": "posters/صحاب-الارض-الموسم-1-058968cb.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسل صحاب الارض",
+      "last_updated": ""
+    },
+    {
+      "name": "حد اقصى الموسم 1",
+      "slug": "حد-اقصى-الموسم-1-30b58646",
+      "poster": "posters/حد-اقصى-الموسم-1-30b58646.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسل حد أقصى",
+      "last_updated": ""
+    },
+    {
+      "name": "المصيدة الموسم 1",
+      "slug": "المصيدة-الموسم-1-c91cc330",
+      "poster": "posters/المصيدة-الموسم-1-c91cc330.jpg",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "عين سحرية الموسم 1",
+      "slug": "عين-سحرية-الموسم-1-040c4912",
+      "poster": "posters/عين-سحرية-الموسم-1-040c4912.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسل عين سحرية",
+      "last_updated": ""
+    },
+    {
+      "name": "الست موناليزا الموسم 1",
+      "slug": "الست-موناليزا-الموسم-1-71f7113f",
+      "poster": "posters/الست-موناليزا-الموسم-1-71f7113f.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسل الست موناليزا",
+      "last_updated": ""
+    },
+    {
+      "name": "مناعة الموسم 1",
+      "slug": "مناعة-الموسم-1-42fd3452",
+      "poster": "posters/مناعة-الموسم-1-42fd3452.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسل مناعة",
+      "last_updated": ""
+    },
+    {
+      "name": "اتنين غيرنا الموسم 1",
+      "slug": "اتنين-غيرنا-الموسم-1-b8560d1b",
+      "poster": "posters/اتنين-غيرنا-الموسم-1-b8560d1b.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسل اتنين غيرنا",
+      "last_updated": ""
+    },
+    {
+      "name": "لعبة حب الموسم 1",
+      "slug": "لعبة-حب-الموسم-1-def62dab",
+      "poster": "posters/لعبة-حب-الموسم-1-def62dab.jpg",
+      "episodes_count": 90,
+      "eps": 90,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "التفاح الحرام الموسم 6",
+      "slug": "التفاح-الحرام-الموسم-6-89d43715",
+      "poster": "posters/placeholder.jpg",
+      "episodes_count": 99,
+      "eps": 99,
+      "genre": "",
+      "category": "",
+      "last_updated": ""
+    },
+    {
+      "name": "اوراق النسيان",
+      "slug": "اوراق-النسيان-128efc13",
+      "poster": "posters/placeholder.jpg",
+      "episodes_count": 17,
+      "eps": 17,
+      "genre": "",
+      "category": "",
+      "last_updated": ""
+    },
+    {
+      "name": "كارثة طبيعية",
+      "slug": "كارثة-طبيعية-96cb1dff",
+      "poster": "posters/كارثة-طبيعية-96cb1dff.jpg",
+      "episodes_count": 10,
+      "eps": 10,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "النص",
+      "slug": "النص-09cff955",
+      "poster": "posters/النص-09cff955.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسل النص",
+      "last_updated": ""
+    },
+    {
+      "name": "اسود باهت",
+      "slug": "اسود-باهت-9f142df1",
+      "poster": "posters/اسود-باهت-9f142df1.jpg",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "ساعته وتاريخه",
+      "slug": "ساعته-وتاريخه-a15b7c02",
+      "poster": "posters/ساعته-وتاريخه-a15b7c02.jpg",
+      "episodes_count": 26,
+      "eps": 26,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "مملكة الحرير",
+      "slug": "مملكة-الحرير-b8e9566f",
+      "poster": "posters/مملكة-الحرير-b8e9566f.jpg",
+      "episodes_count": 10,
+      "eps": 10,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "موعد مع الماضي",
+      "slug": "موعد-مع-الماضي-4902bc42",
+      "poster": "posters/موعد-مع-الماضي-4902bc42.jpg",
+      "episodes_count": 8,
+      "eps": 8,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "بـ 100 وش",
+      "slug": "بـ-100-وش-4187362d",
+      "poster": "posters/بـ-100-وش-4187362d.jpg",
+      "episodes_count": 30,
+      "eps": 30,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "فى كل اسبوع يوم جمعة",
+      "slug": "فى-كل-اسبوع-يوم-جمعة-3abbba53",
+      "poster": "posters/فى-كل-اسبوع-يوم-جمعة-3abbba53.jpg",
+      "episodes_count": 10,
+      "eps": 10,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "مسلسل منورة باهلها",
+      "slug": "مسلسل-منورة-باهلها-951b3a2d",
+      "poster": "posters/مسلسل-منورة-باهلها-951b3a2d.jpg",
+      "episodes_count": 10,
+      "eps": 10,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "ضربة معلم",
+      "slug": "ضربة-معلم-60261bea",
+      "poster": "posters/ضربة-معلم-60261bea.jpg",
+      "episodes_count": 45,
+      "eps": 45,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "مسلسل الاخ الكبير",
+      "slug": "مسلسل-الاخ-الكبير-959a4b35",
+      "poster": "posters/مسلسل-الاخ-الكبير-959a4b35.jpg",
+      "episodes_count": 45,
+      "eps": 45,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "الف ليلة وليلة: جودر",
+      "slug": "الف-ليلة-وليلة-جودر-d4cffb96",
+      "poster": "posters/الف-ليلة-وليلة-جودر-d4cffb96.jpg",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "الف ليله وليله",
+      "slug": "الف-ليله-وليله-ab5d5306",
+      "poster": "posters/الف-ليله-وليله-ab5d5306.jpg",
+      "episodes_count": 29,
+      "eps": 29,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "بدون سابق انذار",
+      "slug": "بدون-سابق-انذار-6e4ab02b",
+      "poster": "posters/بدون-سابق-انذار-6e4ab02b.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسل بدون سابق انذار",
+      "last_updated": ""
+    },
+    {
+      "name": "البيت بيتك 2",
+      "slug": "البيت-بيتك-2-bf87aa44",
+      "poster": "posters/placeholder.jpg",
+      "episodes_count": 10,
+      "eps": 10,
+      "genre": "",
+      "category": "",
+      "last_updated": ""
     }
   ]
 }

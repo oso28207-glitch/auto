@@ -1,76 +1,103 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const contentDiv = document.getElementById('content');
-    const modal = document.getElementById('modal');
-    const modalTitle = document.getElementById('modal-title');
-    const modalEpisodes = document.getElementById('modal-episodes');
-    const closeBtn = document.querySelector('.close');
+/* app.js — سلوك الصفحة الرئيسية */
+(function() {
+    'use strict';
 
-    fetch('series.json')
-        .then(response => response.json())
-        .then(data => {
-            contentDiv.innerHTML = '';
-            
-            // تجميع الأعمال حسب التصنيف
-            const categories = {};
-            data.forEach(item => {
-                if (!categories[item.category]) categories[item.category] = [];
-                categories[item.category].push(item);
-            });
+    // شريط علوي شفاف عند التمرير
+    const topbar = document.querySelector('.topbar');
+    window.addEventListener('scroll', () => {
+        if (window.scrollY > 50) topbar.classList.add('scrolled');
+        else topbar.classList.remove('scrolled');
+    }, { passive: true });
 
-            // عرض كل تصنيف
-            for (const [category, items] of Object.entries(categories)) {
-                const row = document.createElement('div');
-                row.className = 'category-row';
-                
-                const title = document.createElement('div');
-                title.className = 'category-title';
-                title.textContent = category;
-                row.appendChild(title);
+    // بحث فوري
+    const searchInput = document.getElementById('search-input');
+    const searchResults = document.getElementById('search-results');
+    let seriesData = null;
+    let searchTimer = null;
 
-                const grid = document.createElement('div');
-                grid.className = 'series-grid';
+    async function loadSeries() {
+        if (seriesData) return seriesData;
+        try {
+            const r = await fetch('series.json');
+            const data = await r.json();
+            seriesData = data.series || [];
+            return seriesData;
+        } catch (e) {
+            return [];
+        }
+    }
 
-                items.forEach(item => {
-                    const card = document.createElement('div');
-                    card.className = 'series-card';
-                    card.innerHTML = `
-                        <img src="${item.poster || 'https://via.placeholder.com/300x450?text=No+Poster'}" alt="${item.name}" loading="lazy">
-                        <div class="series-info">
-                            <h3>${item.name}</h3>
-                        </div>
-                    `;
-                    card.addEventListener('click', () => openModal(item));
-                    grid.appendChild(card);
+    searchInput?.addEventListener('input', (e) => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => doSearch(e.target.value), 180);
+    });
+
+    async function doSearch(q) {
+        q = (q || '').trim().toLowerCase();
+        if (q.length < 2) {
+            searchResults.classList.add('hidden');
+            return;
+        }
+        const items = await loadSeries();
+        const matches = items.filter(s =>
+            s.name.toLowerCase().includes(q)
+        ).slice(0, 10);
+
+        if (matches.length === 0) {
+            searchResults.innerHTML = '<div class="result" style="color:#999">لا نتائج</div>';
+        } else {
+            searchResults.innerHTML = matches.map(s => `
+                <a class="result" href="watch/${s.slug}.html">
+                    <img src="${s.poster}" alt="${s.name}" loading="lazy">
+                    <div>
+                        <div style="font-weight:600">${s.name}</div>
+                        <div style="font-size:12px;color:#999">${s.episodes_count} حلقة • ${s.genre}</div>
+                    </div>
+                </a>
+            `).join('');
+        }
+        searchResults.classList.remove('hidden');
+    }
+
+    // إغلاق النتائج عند النقر خارجها
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.search-box')) {
+            searchResults?.classList.add('hidden');
+        }
+    });
+
+    // تصفية بالتصنيف
+    document.querySelectorAll('.main-nav a[data-cat]').forEach(a => {
+        a.addEventListener('click', (e) => {
+            e.preventDefault();
+            const cat = a.dataset.cat;
+            document.querySelectorAll('.main-nav a').forEach(x => x.classList.remove('active'));
+            a.classList.add('active');
+
+            const rows = document.querySelectorAll('.row');
+            if (cat === 'الرئيسية') {
+                rows.forEach(r => r.style.display = '');
+            } else {
+                rows.forEach(r => {
+                    r.style.display = r.dataset.category === cat ? '' : 'none';
                 });
-
-                row.appendChild(grid);
-                contentDiv.appendChild(row);
             }
-        })
-        .catch(err => {
-            contentDiv.innerHTML = '<div class="loading">حدث خطأ في تحميل البيانات. تأكد من وجود ملف series.json</div>';
-            console.error(err);
         });
+    });
 
-    function openModal(item) {
-        modalTitle.textContent = item.name;
-        modalEpisodes.innerHTML = '';
-        
-        item.episodes.forEach(ep => {
-            const btn = document.createElement('a');
-            btn.className = 'ep-btn';
-            btn.textContent = `حلقة ${ep.ep_num}`;
-            // ملاحظة: روابط تليجرام المباشرة تحتاج إلى معالج أو بوت، هذا رابط أساسي
-            btn.href = `https://t.me/c/${window.location.hostname.includes('github') ? '' : ''}/${ep.msg_id}`; 
-            btn.target = "_blank";
-            modalEpisodes.appendChild(btn);
-        });
-        
-        modal.style.display = 'block';
-    }
+    // تمرير سلس
+    window.scrollToRows = function() {
+        document.getElementById('rows-container')?.scrollIntoView({ behavior: 'smooth' });
+    };
 
-    closeBtn.onclick = () => modal.style.display = 'none';
-    window.onclick = (event) => {
-        if (event.target == modal) modal.style.display = 'none';
-    }
-});
+    // toggle row
+    window.toggleRow = function(btn) {
+        const row = btn.closest('.row');
+        const carousel = row.querySelector('.carousel');
+        const expanded = carousel.classList.toggle('expanded');
+        btn.textContent = expanded ? 'عرض أقل' : 'عرض الكل';
+        carousel.style.maxHeight = expanded ? 'none' : '';
+    };
+
+    console.log('Shoof app.js loaded');
+})();

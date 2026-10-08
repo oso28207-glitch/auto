@@ -1,0 +1,235 @@
+name: 🎬 Shoof Automation
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'
+  workflow_dispatch:
+    inputs:
+      clean:
+        description: 'تنظيف كامل قبل البدء'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+  push:
+    branches: [main]
+    paths:
+      - 'downloader.py'
+      - 'run_all.py'
+      - 'build_site.py'
+      - 'names.py'
+      - 'telegram_checker.py'
+      - 'uploader.py'
+      - 'config.py'
+      - 'sources/**'
+      - 'requirements.txt'
+      - '.github/workflows/automation.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: shoof
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: '3.11'
+  TZ: 'Africa/Cairo'
+  PYTHONUNBUFFERED: '1'
+  DISPLAY: ':99'
+
+jobs:
+  automate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+
+    steps:
+      # ═══════════════════════════════════════════════════════
+      # 1) Checkout
+      # ═══════════════════════════════════════════════════════
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # ═══════════════════════════════════════════════════════
+      # 2) Python
+      # ═══════════════════════════════════════════════════════
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      # ═══════════════════════════════════════════════════════
+      # 3) ffmpeg
+      # ═══════════════════════════════════════════════════════
+      - name: 🎞️ Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -1
+
+      # ═══════════════════════════════════════════════════════
+      # 4) Chrome + Xvfb
+      # ═══════════════════════════════════════════════════════
+      - name: 🌐 Install Chrome + Xvfb
+        run: |
+          sudo apt-get install -y -qq xvfb wget
+          wget -q -O /tmp/chrome.deb \
+            https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt-get install -y -qq /tmp/chrome.deb
+          rm -f /tmp/chrome.deb
+          sudo Xvfb :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+          sleep 2
+          google-chrome --version
+
+      # ═══════════════════════════════════════════════════════
+      # 5) pip install
+      # ═══════════════════════════════════════════════════════
+      - name: 📚 Install Python packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip check || true
+
+      # ═══════════════════════════════════════════════════════
+      # 6) .env
+      # ═══════════════════════════════════════════════════════
+      - name: 📝 Create .env
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          SESSION_STRING: ${{ secrets.SESSION_STRING }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+        run: |
+          cat > .env << 'EOF'
+          API_ID=${API_ID}
+          API_HASH=${API_HASH}
+          SESSION_STRING=${SESSION_STRING}
+          CHANNEL_ID=${CHANNEL_ID}
+          ENABLED_SOURCES=u3seq,yam,egybest
+          SOURCE_BASE_URL=https://u.3seq.cam
+          SOURCE_CATEGORY=0
+          SOURCE_MAX_PAGES=20
+          YAM_BASE_URL=https://yam.ahwaktv.net
+          YAM_SERIES_PATH=/moslslat.php
+          YAM_MAX_PAGES=95
+          YAM_CATEGORY_PAGES=40
+          YAM_SERIES_FETCH_LIMIT=900
+          YAM_CATEGORIES=moslslat-turkiaa-modblga,moslslat-modblga,aflam-dub,moslslat-hndia-modblja,goda-akbar-modblge,mn-elnazra-elthania-modblge
+          EGYBEST_BASE_URL=https://egybesstt.baby
+          EGYBEST_SERIES_PATH=/all-series.php
+          CHECK_CHANNELS=shoofcima,shoofFilm
+          CHECK_CHANNEL_LIMIT=3000
+          CHECK_CACHE_TTL=3600
+          MAX_EPISODES_PER_RUN=0
+          MAX_RUNTIME_SECONDS=9900
+          SKIP_COMPRESS=false
+          COMPRESS_SCALE=240
+          COMPRESS_CRF=28
+          COMPRESS_PRESET=veryfast
+          COMPRESS_THREADS=2
+          COMPRESS_AUDIO_BITRATE=32k
+          COMPRESS_MAX_SIZE_MB=100
+          M3U8_SEARCH_TIMEOUT=25
+          OPEN_TIMEOUT=10
+          EPISODE_TIMEOUT=2400
+          EOF
+
+          sed -i "s|\${API_ID}|${API_ID}|g" .env
+          sed -i "s|\${API_HASH}|${API_HASH}|g" .env
+          sed -i "s|\${SESSION_STRING}|${SESSION_STRING}|g" .env
+          sed -i "s|\${CHANNEL_ID}|${CHANNEL_ID}|g" .env
+
+          echo "════════════════════════════════════════════════"
+          echo "📋 محتوى .env (بدون الأسرار):"
+          grep -v -E "API_HASH|SESSION_STRING|API_ID|CHANNEL_ID" .env
+          echo "════════════════════════════════════════════════"
+
+      # ═══════════════════════════════════════════════════════
+      # 7) Diagnostics
+      # ═══════════════════════════════════════════════════════
+      - name: 🔍 Diagnostics
+        run: |
+          echo "════════════════════════════════════════════════"
+          echo "🔧 الأدوات المتوفرة:"
+          echo "   ffmpeg:       $(which ffmpeg)"
+          echo "   yt-dlp:       $(which yt-dlp || echo '❌')"
+          echo "   python:       $(which python)"
+          echo "   chrome:       $(which google-chrome)"
+          echo "════════════════════════════════════════════════"
+          if pgrep -x Xvfb > /dev/null; then
+            echo "   ✅ Xvfb يعمل"
+          fi
+          yt-dlp --version || echo "⚠️ yt-dlp لا يعمل"
+
+      # ═══════════════════════════════════════════════════════
+      # 8) Run Automation
+      #    ★ بدون || true: عند الخطأ يتوقف الـ workflow
+      # ═══════════════════════════════════════════════════════
+      - name: 🚀 Run Automation
+        id: run_auto
+        run: |
+          if [ "${{ github.event.inputs.clean }}" = "true" ]; then
+            echo "🧹 تشغيل مع تنظيف شامل..."
+            python run_all.py --clean
+          else
+            python run_all.py
+          fi
+
+      # ═══════════════════════════════════════════════════════
+      # 9) Save & Push (final)
+      #    ★ if: always() — يدفع حتى لو فشل التحميل
+      # ═══════════════════════════════════════════════════════
+      - name: 💾 Save & Push (final)
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add -f data/ docs/ 2>/dev/null || true
+
+          if git diff --staged --quiet; then
+            echo "✅ لا تغييرات"
+            exit 0
+          fi
+
+          git commit -m "🤖 تحديث نهائي: $(date -u +'%Y-%m-%d %H:%M UTC')" || true
+
+          for i in 1 2 3; do
+            if git push; then
+              echo "✅ push ناجح (محاولة $i)"
+              break
+            fi
+
+            echo "⚠️ محاولة $i فشلت — pull ثم دمج..."
+            git pull --rebase --autostash || true
+
+            # حل تعارضات data/ و docs/ بـ ours (الأحدث)
+            git checkout --ours data/ 2>/dev/null || true
+            git checkout --ours docs/ 2>/dev/null || true
+            git add data/ docs/ 2>/dev/null || true
+
+            GIT_EDITOR=true git rebase --continue 2>/dev/null || true
+
+            sleep 5
+          done
+
+      # ═══════════════════════════════════════════════════════
+      # 10) حفظ السجل عند الفشل
+      # ═══════════════════════════════════════════════════════
+      - name: 📤 Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-log-${{ github.run_number }}
+          path: |
+            data/*.json
+            data/*.log
+          retention-days: 7
+          if-no-files-found: ignore

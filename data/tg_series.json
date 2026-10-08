@@ -3,8 +3,8 @@
     {
       "name": "ابن سينا العبقري الصغير",
       "display_name": "ابن سينا العبقري الصغير",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/987234e85-1.jpg",
+      "category": "moslslat-turkiaa-modblga",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -39,15 +39,19 @@
         {
           "num": 8,
           "url": "https://t.me/shoofcima/1624"
+        },
+        {
+          "num": 9,
+          "url": "https://t.me/shoofcima/1625"
         }
       ],
-      "episodes_count": 8
+      "episodes_count": 9
     },
     {
       "name": "جودا اكبر مدبلج",
       "display_name": "جودا اكبر مدبلج",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/fbd209978-1.jpg",
+      "category": "goda-akbar-modblge",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -866,8 +870,8 @@
     {
       "name": "حياتي الرائعة الموسم 1",
       "display_name": "حياتي الرائعة الموسم 1",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/fe2e24258-1.jpg",
+      "category": "moslslat-turkiaa-modblga",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -1452,8 +1456,8 @@
     {
       "name": "ورود وذنوب الموسم 1",
       "display_name": "ورود وذنوب الموسم 1",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/d29820537-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -1683,8 +1687,8 @@
     {
       "name": "النص الثاني الموسم 1",
       "display_name": "النص الثاني الموسم 1",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/custom-logo.png",
+      "category": "مسلسل النص",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -1754,8 +1758,8 @@
     {
       "name": "فن الحرب الموسم 1",
       "display_name": "فن الحرب الموسم 1",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/cbf2c04a4-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -1885,8 +1889,8 @@
     {
       "name": "المداح الموسم 6",
       "display_name": "المداح الموسم 6",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/custom-logo.png",
+      "category": "مسلسل المداح : أسطورة النهاية",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -2016,7 +2020,7 @@
     {
       "name": "صحاب الارض الموسم 1",
       "display_name": "صحاب الارض الموسم 1",
-      "poster": "",
+      "poster": "https://yam.ahwaktv.net/uploads/custom-logo.png",
       "category": "مسلسل صحاب الارض",
       "genre": "",
       "source": "telegram",
@@ -2087,8 +2091,8 @@
     {
       "name": "حد اقصى الموسم 1",
       "display_name": "حد اقصى الموسم 1",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/custom-logo.png",
+      "category": "مسلسل حد أقصى",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -2158,8 +2162,8 @@
     {
       "name": "المصيدة الموسم 1",
       "display_name": "المصيدة الموسم 1",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/cb9e05a42-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -2229,7 +2233,7 @@
     {
       "name": "عين سحرية الموسم 1",
       "display_name": "عين سحرية الموسم 1",
-      "poster": "",
+      "poster": "https://yam.ahwaktv.net/uploads/custom-logo.png",
       "category": "مسلسل عين سحرية",
       "genre": "",
       "source": "telegram",
@@ -2300,7 +2304,7 @@
     {
       "name": "الست موناليزا الموسم 1",
       "display_name": "الست موناليزا الموسم 1",
-      "poster": "",
+      "poster": "https://yam.ahwaktv.net/uploads/custom-logo.png",
       "category": "مسلسل الست موناليزا",
       "genre": "",
       "source": "telegram",
@@ -2371,7 +2375,7 @@
     {
       "name": "مناعة الموسم 1",
       "display_name": "مناعة الموسم 1",
-      "poster": "",
+      "poster": "https://yam.ahwaktv.net/uploads/custom-logo.png",
       "category": "مسلسل مناعة",
       "genre": "",
       "source": "telegram",
@@ -2442,7 +2446,7 @@
     {
       "name": "اتنين غيرنا الموسم 1",
       "display_name": "اتنين غيرنا الموسم 1",
-      "poster": "",
+      "poster": "https://yam.ahwaktv.net/uploads/custom-logo.png",
       "category": "مسلسل اتنين غيرنا",
       "genre": "",
       "source": "telegram",
@@ -2513,8 +2517,8 @@
     {
       "name": "لعبة حب الموسم 1",
       "display_name": "لعبة حب الموسم 1",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/6d03f50fe-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -3291,8 +3295,8 @@
     {
       "name": "لعبة الحظ الموسم 1",
       "display_name": "لعبة الحظ الموسم 1",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/ed980f39c-1.jpg",
+      "category": "moslslat-turkiaa-modblga",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -3534,8 +3538,8 @@
     {
       "name": "كذبتي الحلوه الموسم 1",
       "display_name": "كذبتي الحلوه الموسم 1",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/ae5039dbb-1.jpg",
+      "category": "مسلسلات مدبلجة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -3877,8 +3881,8 @@
     {
       "name": "حب للايجار الموسم 2",
       "display_name": "حب للايجار الموسم 2",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/4e35ab86-1.jpg",
+      "category": "moslslat-turkiaa-modblga",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -4376,8 +4380,8 @@
     {
       "name": "الحب ورطة الموسم 1",
       "display_name": "الحب ورطة الموسم 1",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/fbd110625-1.jpg",
+      "category": "moslslat-turkiaa-modblga",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -4507,8 +4511,8 @@
     {
       "name": "فيلينتا مدبلج الموسم 1",
       "display_name": "فيلينتا مدبلج الموسم 1",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/7a44fb0b6-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -5174,8 +5178,8 @@
     {
       "name": "الخياط الموسم 3",
       "display_name": "الخياط الموسم 3",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/7b85a06d4-1.jpg",
+      "category": "moslslat-turkiaa-modblga",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -5217,8 +5221,8 @@
     {
       "name": "المحافظ مدبلج الموسم 4",
       "display_name": "المحافظ مدبلج الموسم 4",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/7ea889d0c-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -5347,8 +5351,8 @@
     {
       "name": "كارثة طبيعية",
       "display_name": "كارثة طبيعية",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/1a3a555ae-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -5398,7 +5402,7 @@
     {
       "name": "النص",
       "display_name": "النص",
-      "poster": "",
+      "poster": "https://yam.ahwaktv.net/uploads/custom-logo.png",
       "category": "مسلسل النص",
       "genre": "",
       "source": "telegram",
@@ -5469,8 +5473,8 @@
     {
       "name": "اسود باهت",
       "display_name": "اسود باهت",
-      "poster": "",
-      "category": "",
+      "poster": "https://ahwaktv.net/uploads/thumbs/c94bea478-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -5540,8 +5544,8 @@
     {
       "name": "ساعته وتاريخه",
       "display_name": "ساعته وتاريخه",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/3b43b20fb-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -5655,8 +5659,8 @@
     {
       "name": "مملكة الحرير",
       "display_name": "مملكة الحرير",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/29440f3eb-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -5706,8 +5710,8 @@
     {
       "name": "موعد مع الماضي",
       "display_name": "موعد مع الماضي",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/b69d5e508-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -5749,8 +5753,8 @@
     {
       "name": "بـ 100 وش",
       "display_name": "بـ 100 وش",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/e56780d57-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -5880,8 +5884,8 @@
     {
       "name": "فى كل اسبوع يوم جمعة",
       "display_name": "فى كل اسبوع يوم جمعة",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/08e01a5ed-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -5931,8 +5935,8 @@
     {
       "name": "مسلسل منورة باهلها",
       "display_name": "مسلسل منورة باهلها",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/eef729102-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -5982,8 +5986,8 @@
     {
       "name": "ضربة معلم",
       "display_name": "ضربة معلم",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/d104e6040-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -6173,8 +6177,8 @@
     {
       "name": "مسلسل الاخ الكبير",
       "display_name": "مسلسل الاخ الكبير",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/c99991801-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -6364,8 +6368,8 @@
     {
       "name": "الف ليلة وليلة: جودر",
       "display_name": "الف ليلة وليلة: جودر",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/cd13ed045-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -6435,8 +6439,8 @@
     {
       "name": "الف ليله وليله",
       "display_name": "الف ليله وليله",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/abbaa26f8-1.jpg",
+      "category": "مسلسلات مترجمة",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -6562,8 +6566,8 @@
     {
       "name": "بدون سابق انذار",
       "display_name": "بدون سابق انذار",
-      "poster": "",
-      "category": "",
+      "poster": "https://yam.ahwaktv.net/uploads/custom-logo.png",
+      "category": "مسلسل بدون سابق انذار",
       "genre": "",
       "source": "telegram",
       "episodes": [
@@ -6682,5 +6686,5 @@
       "episodes_count": 10
     }
   ],
-  "built_at": "2026-10-08T15:37:44.579676+00:00"
+  "built_at": "2026-10-08T19:23:17.847632+00:00"
 }

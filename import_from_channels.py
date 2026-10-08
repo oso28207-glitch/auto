@@ -366,8 +366,8 @@ async def main():
     if not args.dry_run and total_imported > 0:
         print(f"\n🏗️  بناء الموقع...")
         try:
-            from builder import build_incremental
-            build_incremental(changed_series=list(all_series)[:10])
+            from build_site import build_site
+            build_site()
             print(f"✅ تم بناء الموقع بنجاح")
 
             # اطبع إحصاءات الموقع

@@ -1,52 +1,71 @@
 """
-sources/u3seq.py — جلب المسلسلات من u.3seq.cam
-═══════════════════════════════════════════════════════════
+sources/u3seq.py — جلب المسلسلات من u.3seq.cam / u.3seq.com
+════════════════════════════════════════════════════════════
 يعتمد على WordPress REST API:
   GET /wp-json/wp/v2/posts?per_page=100&page=N
 
-★ v2: إضافة
-    - poster (من featured_media._embedded)
-    - category (من wp:term._embedded)
-    - last_updated (تاريخ آخر منشور في المسلسل)
-    - fallback: HTML scraping لجلب og:image عند الحاجة
-
-★ لا نرسل categories عندما تكون 0.
+★ v3 (إصلاح جذري لتجاوز Cloudflare):
+    - كان cloudscraper يفشل دائماً بـ 403.
+    - الحل: استخدام curl_cffi مع impersonate="safari17_0"
+      (يعمل بينما chrome120/124/131 محجوبة على .cam).
+    - تدوير الـ impersonations + تدوير النطاق (.cam/.com) تلقائياً.
+    - استخراج البوستر من صفحة المنشور (img.img-responsive) لأن
+      featured_media = 0 في هذا الموقع (لا يوجد صورة بارزة).
+    - استخراج التصنيف من wp:term (taxonomy=category).
 """
 
 import re
 import time
 from typing import List, Dict, Any, Optional
 from urllib.parse import urljoin
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import cloudscraper
+from curl_cffi import requests as cffi
 from bs4 import BeautifulSoup
 
 from config import config
 from errors import SourceError
 
-# ═══════════════════════════════════════════════════════════════
-# cloudscraper
-# ═══════════════════════════════════════════════════════════════
-_scraper = None
+# ═══════════════════════════════════════════════════════════════════
+# إعدادات المتصفح (تجاوز Cloudflare)
+# ═══════════════════════════════════════════════════════════════════
+# safari17_0 يعمل على .cam — والباقي كاحتياط
+IMPERSONATIONS = ["safari17_0", "chrome120", "chrome110", "chrome104", "chrome99"]
+
+UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+)
+
+# نطاقات بديلة (fallback)
+_ALT_DOMAINS = ["https://u.3seq.com", "https://u.3seq.cam"]
 
 
-def _get_scraper():
-    global _scraper
-    if _scraper is None:
-        _scraper = cloudscraper.create_scraper(
-            browser={
-                "browser": "chrome",
-                "platform": "windows",
-                "mobile": False,
-            },
-            delay=5,
-        )
-    return _scraper
+def _bases() -> List[str]:
+    """قائمة النطاقات التي سنجربها بالترتيب."""
+    out = []
+    if config.SOURCE_BASE_URL:
+        out.append(config.SOURCE_BASE_URL.rstrip("/"))
+    for alt in _ALT_DOMAINS:
+        if alt not in out:
+            out.append(alt)
+    return out
 
 
-# ═══════════════════════════════════════════════════════════════
+def _headers(referer: str = "") -> Dict[str, str]:
+    return {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                  "image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
+        "Referer": referer or (config.SOURCE_BASE_URL or "https://u.3seq.com") + "/",
+        "User-Agent": UA,
+        "Upgrade-Insecure-Requests": "1",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
 # استخراج نصي
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 def _extract_ep(text: str) -> int:
     if not text:
         return 0
@@ -55,6 +74,8 @@ def _extract_ep(text: str) -> int:
         r"[Ee]pisode\s*(\d+)",
         r"حلقة\s*(\d+)",
         r"Ep\.?\s*(\d+)",
+        r"episode-?(\d+)",
+        r"-ep-?(\d+)",
     ]:
         m = re.search(p, text)
         if m:
@@ -68,6 +89,8 @@ def _clean_series_name(title: str) -> str:
     t = re.sub(r"\s*مدبلجة?\s*$", "", t).strip()
     t = re.sub(r"\s*مترجمة?\s*$", "", t).strip()
     t = re.sub(r"\s*كاملة\s*$", "", t).strip()
+    t = re.sub(r"\s*والاخيرة\s*$", "", t).strip()
+    t = re.sub(r"\s*والأخيرة\s*$", "", t).strip()
     return t or title
 
 
@@ -77,75 +100,82 @@ def _strip_html(text: str) -> str:
         return ""
     t = re.sub(r"<[^>]+>", "", text)
     t = t.replace("&amp;", "&").replace("&#8217;", "'").replace("&quot;", '"')
-    t = t.replace("&#8211;", "-").replace("&nbsp;", " ")
+    t = t.replace("&#8211;", "-").replace("&nbsp;", " ").replace("&#8216;", "'")
     return t.strip()
 
 
-# ═══════════════════════════════════════════════════════════════
-# API helper
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
+# API helper — curl_cffi مع تدوير impersonate/domain
+# ═══════════════════════════════════════════════════════════════════
 def _api_get(path: str, params: Optional[Dict] = None, retries: int = 3) -> Optional[Any]:
     if not config.SOURCE_BASE_URL:
         raise SourceError("SOURCE_BASE_URL فارغ")
 
-    url = config.SOURCE_BASE_URL.rstrip("/") + path
-    headers = {
-        "Accept": "application/json",
-        "Accept-Language": "ar,en;q=0.9",
-        "Referer": config.SOURCE_BASE_URL + "/",
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-    }
-    scraper = _get_scraper()
+    bases = _bases()
     last_err = None
 
     for attempt in range(1, retries + 1):
-        try:
-            r = scraper.get(url, headers=headers, params=params, timeout=60)
-
-            if r.status_code == 200:
+        for base in bases:
+            url = base + path
+            for imp in IMPERSONATIONS:
                 try:
-                    return r.json()
+                    r = cffi.get(
+                        url,
+                        headers=_headers(referer=base + "/"),
+                        params=params,
+                        impersonate=imp,
+                        timeout=45,
+                    )
                 except Exception as e:
-                    raise SourceError(f"فشل تحليل JSON: {e}")
+                    last_err = f"{str(e)[:100]} ({base}/{imp})"
+                    continue
 
-            if r.status_code == 400:
-                print(f"   ⚠️ 400 — لا نستمر مع هذه المعطيات")
-                return None
+                if r.status_code == 200:
+                    try:
+                        return r.json()
+                    except Exception as e:
+                        raise SourceError(f"فشل تحليل JSON: {e}")
 
-            if r.status_code == 403:
-                last_err = f"403 Cloudflare (محاولة {attempt})"
-                print(f"   ⚠️ {last_err}")
-                time.sleep(5 * attempt)
+                if r.status_code == 400:
+                    print(f"   ⚠️ 400 — لا نستمر مع هذه المعطيات")
+                    return None
+
+                if r.status_code == 404:
+                    return None
+
+                if r.status_code == 403:
+                    last_err = f"403 ({base.split('//')[-1]}/{imp})"
+                    continue
+
+                last_err = f"HTTP {r.status_code} ({base.split('//')[-1]}/{imp})"
+
+        print(f"   ⚠️ {last_err} (محاولة {attempt})")
+        time.sleep(3 * attempt)
+
+    raise SourceError(f"فشل جلب {path} — {last_err}")
+
+
+def _fetch_page_html(url: str, retries: int = 2) -> str:
+    """يجلب HTML لصفحة منشور (مع تدوير impersonate)."""
+    for attempt in range(retries):
+        for imp in IMPERSONATIONS:
+            try:
+                r = cffi.get(url, headers=_headers(), impersonate=imp, timeout=45)
+                if r.status_code == 200:
+                    return r.text
+            except Exception:
                 continue
-
-            if r.status_code == 404:
-                return None
-
-            last_err = f"HTTP {r.status_code}"
-            time.sleep(3)
-
-        except SourceError:
-            raise
-        except Exception as e:
-            last_err = str(e)[:150]
-            time.sleep(3)
-
-    raise SourceError(f"فشل جلب {url} — {last_err}")
+    return ""
 
 
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 # استخراج poster و category من post واحد
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 def _extract_poster_from_post(post: Dict) -> str:
     """
-    يستخرج رابط الصورة الرئيسية من منشور WordPress.
-    يدعم:
-      - _embedded['wp:featuredmedia'][0].source_url
-      - _embedded['wp:featuredmedia'][0].media_details.sizes.full.source_url
+    يستخرج رابط الصورة الرئيسية من منشور WordPress (featured_media).
+    ملاحظة: هذا الموقع يجعل featured_media=0 عادةً، لذا نعتمد أيضاً
+    على _poster_from_page() لاحقاً.
     """
     try:
         emb = post.get("_embedded", {})
@@ -156,12 +186,10 @@ def _extract_poster_from_post(post: Dict) -> str:
         if not isinstance(media, dict):
             return ""
 
-        # أولاً: source_url
         url = media.get("source_url", "")
         if url:
             return url
 
-        # ثانياً: media_details.sizes
         details = media.get("media_details", {})
         sizes = details.get("sizes", {})
         for size_key in ("full", "large", "medium_large", "medium"):
@@ -188,14 +216,11 @@ def _extract_category_from_post(post: Dict) -> str:
             for term in term_group:
                 if not isinstance(term, dict):
                     continue
-                # فقط taxonomy = category
-                tax = term.get("taxonomy", "")
-                if tax == "category":
+                if term.get("taxonomy", "") == "category":
                     name = term.get("name", "")
                     if name:
                         return _strip_html(name)
 
-        # fallback: أي اسم term
         for term_group in terms:
             if not isinstance(term_group, list):
                 continue
@@ -209,9 +234,66 @@ def _extract_category_from_post(post: Dict) -> str:
     return ""
 
 
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
+# استخراج البوستر من صفحة المنشور (الحل الأساسي)
+# ═══════════════════════════════════════════════════════════════════
+def _poster_from_page(link: str) -> str:
+    """
+    يجلب صفحة المنشور ويستخرج صورة البوستر.
+    الأولوية:
+      1) <img class="img-responsive">  (بوستر المسلسل الحقيقي)
+      2) og:image
+      3) أكبر صورة من /wp-content/uploads/ (بعد استثناء الشعار)
+    """
+    if not link:
+        return ""
+    html = _fetch_page_html(link)
+    if not html:
+        return ""
+
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception:
+        return ""
+
+    # 1) img.img-responsive
+    for img in soup.find_all("img"):
+        src = img.get("src") or img.get("data-src") or img.get("data-lazy-src") or ""
+        if not src:
+            continue
+        low = src.lower()
+        if "logo" in low or "placeholder" in low or "avatar" in low:
+            continue
+        cls = img.get("class", [])
+        cls = " ".join(cls) if isinstance(cls, list) else str(cls)
+        if "img-responsive" in cls:
+            return urljoin(link, src)
+
+    # 2) og:image
+    og = soup.find("meta", attrs={"property": "og:image"})
+    if og and og.get("content"):
+        return og["content"]
+
+    # 3) أكبر صورة من uploads (استثناء الشعار)
+    best = ""
+    for img in soup.find_all("img"):
+        src = img.get("src") or img.get("data-src") or ""
+        if not src:
+            continue
+        low = src.lower()
+        if "logo" in low or "/wp-content/uploads/" not in low:
+            continue
+        if not re.search(r"\.(?:jpe?g|png|webp)(?:\?|$)", low):
+            continue
+        best = urljoin(link, src)
+        break
+
+    return best
+
+
+# ═══════════════════════════════════════════════════════════════════
 # المحاولة 1: WordPress REST API
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 def _fetch_via_api() -> List[Dict]:
     print(f"   📡 محاولة WordPress REST API...")
     all_posts = []
@@ -254,14 +336,14 @@ def _fetch_via_api() -> List[Dict]:
         if len(posts) < per_page:
             break
 
-        time.sleep(0.8)
+        time.sleep(0.5)
 
     return _group_into_series(all_posts)
 
 
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 # المحاولة 2: HTML scraping
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 def _fetch_via_html() -> List[Dict]:
     print(f"   📡 محاولة زحف HTML...")
     base = config.SOURCE_BASE_URL.rstrip("/")
@@ -272,35 +354,30 @@ def _fetch_via_html() -> List[Dict]:
         base + "/tv/",
     ]
 
-    scraper = _get_scraper()
     all_links = []
 
     for url in urls_to_try:
-        try:
-            r = scraper.get(url, timeout=30)
-            if r.status_code != 200:
-                continue
-
-            soup = BeautifulSoup(r.text, "html.parser")
-            for a in soup.find_all("a", href=True):
-                href = a.get("href", "")
-                text = a.get_text(strip=True)
-                if not text or len(text) < 3:
-                    continue
-                low = href.lower()
-                if any(k in low for k in [
-                    "/video/", "/series/", "/watch/", "/episode/",
-                    "modablaj-", "/moslslat/",
-                ]):
-                    full = href if href.startswith("http") else urljoin(base + "/", href)
-                    all_links.append({"link": full, "title": text})
-
-            if all_links:
-                print(f"   ✅ عُثر على {len(all_links)} رابط من {url}")
-                break
-        except Exception as e:
-            print(f"   ⚠️ {url}: {str(e)[:80]}")
+        html = _fetch_page_html(url)
+        if not html:
             continue
+
+        soup = BeautifulSoup(html, "html.parser")
+        for a in soup.find_all("a", href=True):
+            href = a.get("href", "")
+            text = a.get_text(strip=True)
+            if not text or len(text) < 3:
+                continue
+            low = href.lower()
+            if any(k in low for k in [
+                "/video/", "/series/", "/watch/", "/episode/",
+                "modablaj-", "/moslslat/",
+            ]):
+                full = href if href.startswith("http") else urljoin(base + "/", href)
+                all_links.append({"link": full, "title": text})
+
+        if all_links:
+            print(f"   ✅ عُثر على {len(all_links)} رابط من {url}")
+            break
 
     if not all_links:
         print(f"   ❌ لم يُعثر على روابط")
@@ -324,9 +401,9 @@ def _fetch_via_html() -> List[Dict]:
     return _group_into_series(posts)
 
 
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 # تجميع المنشورات في مسلسلات
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 def _group_into_series(posts: List[Dict]) -> List[Dict]:
     if not posts:
         return []
@@ -361,20 +438,17 @@ def _group_into_series(posts: List[Dict]) -> List[Dict]:
                 "name": name,
                 "url": link,
                 "poster": poster,
-                "category": category,   # ★ جديد
+                "category": category,
                 "genre": "",
                 "source": "u3seq",
-                "last_updated": date,    # ★ جديد
+                "last_updated": date,
                 "episodes": [],
             }
         else:
-            # إذا كان المنشور الحالي أحدث، نحدّث last_updated
             if date and date > (series_map[name]["last_updated"] or ""):
                 series_map[name]["last_updated"] = date
-            # إذا كان فيه poster ولم يكن موجوداً
             if poster and not series_map[name]["poster"]:
                 series_map[name]["poster"] = poster
-            # إذا كان فيه category ولم يكن موجوداً
             if category and not series_map[name]["category"]:
                 series_map[name]["category"] = category
 
@@ -395,19 +469,37 @@ def _group_into_series(posts: List[Dict]) -> List[Dict]:
         if s["episodes"]:
             result.append(s)
 
+    # ── جلب البوسترات الناقصة من صفحات المنشورات (بالتوازي) ──
+    missing = [s for s in result if not s.get("poster")]
+    if missing:
+        print(f"   🖼️  جلب بوسترات {len(missing)} مسلسل من صفحات المنشورات...")
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            futures = {ex.submit(_poster_from_page, s["url"]): s for s in missing}
+            done = 0
+            for fut in as_completed(futures):
+                s = futures[fut]
+                try:
+                    p = fut.result()
+                except Exception:
+                    p = ""
+                if p:
+                    s["poster"] = p
+                done += 1
+                if done % 25 == 0:
+                    print(f"      … {done}/{len(missing)}")
+
     return result
 
 
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 # الواجهة الرئيسية
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 def fetch() -> List[Dict]:
     cat = config.SOURCE_CATEGORY
     print(f"📋 جلب قائمة المسلسلات (تصنيف {cat if cat > 0 else 'الكل'})...")
 
     result = _fetch_via_api()
     if result:
-        # إحصائيات سريعة
         with_poster = sum(1 for s in result if s.get("poster"))
         with_cat = sum(1 for s in result if s.get("category"))
         print(f"✅ {len(result)} مسلسل (API) — "
@@ -416,7 +508,8 @@ def fetch() -> List[Dict]:
 
     result = _fetch_via_html()
     if result:
-        print(f"✅ {len(result)} مسلسل (HTML)")
+        with_poster = sum(1 for s in result if s.get("poster"))
+        print(f"✅ {len(result)} مسلسل (HTML) — {with_poster} مع صور")
         return result
 
     print(f"   ⚠️ لا مسلسلات من u3seq")
@@ -428,7 +521,7 @@ if __name__ == "__main__":
     series = fetch()
     print(f"\n📊 النتيجة: {len(series)} مسلسل")
     for s in series[:8]:
-        cat = s.get("category", "?")[:25]
+        cat = (s.get("category") or "?")[:25]
         poster_flag = "🖼️" if s.get("poster") else "❌"
         print(f"   · [{cat}] {s['name']}: {len(s['episodes'])} "
               f"| {poster_flag} | {s.get('last_updated', '')[:10]}")

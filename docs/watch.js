@@ -44,6 +44,27 @@
         } catch (e) {}
     }
 
+    // رسالة "الحلقة غير متاحة" داخل المشغل
+    function showUnavailable() {
+        let ov = document.getElementById('ep-unavailable');
+        if (!ov) {
+            ov = document.createElement('div');
+            ov.id = 'ep-unavailable';
+            ov.className = 'player-unavailable';
+            ov.innerHTML = '<div class="pu-icon">\u23f3</div>' +
+                '<p>\u0647\u0630\u0647 \u0627\u0644\u062d\u0644\u0642\u0629 \u0644\u0645 \u062a\u064f\u0631\u0641\u0639 \u0628\u0639\u062f \u0625\u0644\u0649 \u0627\u0644\u0642\u0646\u0627\u0629.</p>' +
+                '<a class="pu-btn" href="' + (window.C || '#') + '" target="_blank" rel="noopener">\ud83d\udce1 \u062a\u0627\u0628\u0639 \u0639\u0644\u0649 \u062a\u064a\u0644\u064a\u062c\u0631\u0627\u0645</a>';
+            const wrap = (v && v.parentElement) ? v.parentElement : document.body;
+            wrap.appendChild(ov);
+        }
+        ov.classList.remove('hidden');
+    }
+
+    function hideUnavailable() {
+        const ov = document.getElementById('ep-unavailable');
+        if (ov) ov.classList.add('hidden');
+    }
+
     // ═══════════════════════════════════════════════════════════
     // بناء شبكة الحلقات
     // ═══════════════════════════════════════════════════════════
@@ -80,8 +101,8 @@
         cur = i;
 
         const ep = S[i];
-        const url = ep.url || ep;
-        const num = ep.num || (i + 1);
+        const url = (ep && typeof ep === 'object') ? String(ep.url || '') : String(ep || '');
+        const num = (ep && typeof ep === 'object' && ep.num) ? ep.num : (i + 1);
 
         // تحديث العنوان + URL
         document.title = 'الحلقة ' + num;
@@ -106,14 +127,23 @@
         // إخفاء العد التنازلي
         cancelCountdown();
 
-        // إظهار التحميل
-        if (loading) loading.classList.remove('hidden');
-
         // إلغاء HLS القديم
         if (hls) {
             try { hls.destroy(); } catch (e) {}
             hls = null;
         }
+
+        // لا يوجد رابط بث لهذه الحلقة → رسالة واضحة بدل خطأ المشغل
+        if (!url) {
+            try { v.removeAttribute('src'); v.load(); } catch (e) {}
+            if (loading) loading.classList.add('hidden');
+            showUnavailable();
+            return;
+        }
+        hideUnavailable();
+
+        // إظهار التحميل
+        if (loading) loading.classList.remove('hidden');
 
         // تحميل الفيديو
         if (window.Hls && Hls.isSupported()) {

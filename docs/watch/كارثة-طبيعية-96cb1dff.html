@@ -1,22 +1,64 @@
 <!DOCTYPE html><html lang="ar" dir="rtl"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>كارثة طبيعية — Shoof</title>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../style.css">
+<meta name="theme-color" content="#0a0a0a">
+<title>كارثة طبيعية — شوف</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../style.css?v=3">
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
 </head><body class="watch-page">
 <header class="topbar">
-<a href="../index.html" class="back">←</a>
-<div class="brand">SHOOF</div>
-<div class="wtitle">كارثة طبيعية</div>
+  <a href="../index.html" class="back" title="رجوع">←</a>
+  <div class="brand">شوف</div>
+  <div class="wtitle">كارثة طبيعية</div>
+  <a href="https://t.me/shoofcima" class="tg-btn" target="_blank" rel="noopener">📡 القناة</a>
 </header>
 <main class="watch-main">
-<div class="player-wrap"><video id="v" controls playsinline poster="../"></video>
-<div id="count" class="countdown hidden">الحلقة التالية بعد <span id="cn">10</span> <button onclick="next()">الآن</button></div>
-</div>
-<div class="info"><h1>كارثة طبيعية</h1><div class="meta"><span class="badge">10 حلقة</span></div>
-<div class="controls"><button onclick="prev()">⏮ السابقة</button><button onclick="next()">التالية ⏭</button></div></div>
-<div class="eps"><h2>الحلقات</h2><div id="grid" class="grid"></div></div>
+  <section class="player-section">
+    <div class="player-wrap">
+      <video id="v" controls playsinline preload="metadata"
+             poster="../posters/كارثة-طبيعية-96cb1dff.jpg"></video>
+      <div id="player-loading" class="player-loading hidden">
+        <div class="spinner"></div><p>جارٍ التحميل...</p>
+      </div>
+      <div id="count" class="autoplay-countdown hidden">
+        <span class="countdown-text">الحلقة التالية بعد
+          <span id="cn">10</span> ثانية</span>
+        <button class="countdown-btn" onclick="window.playNext()">شاهد الآن</button>
+        <button class="countdown-cancel" onclick="window.cancelAutoplay()">إلغاء</button>
+      </div>
+    </div>
+    <div class="player-info">
+      <h1>كارثة طبيعية</h1>
+      <div class="info-meta">
+        <span class="badge eps">10 حلقة</span>
+        <span class="badge genre" id="current-ep-badge">الحلقة 1</span>
+      </div>
+      <div class="player-controls">
+        <button id="btn-prev">⏮ السابقة</button>
+        <button id="btn-autoplay" class="active">🔁 تشغيل تلقائي: مفعّل</button>
+        <button id="btn-next">التالية ⏭</button>
+      </div>
+    </div>
+  </section>
+  <section class="episodes-section">
+    <div class="episodes-header">
+      <h2>الحلقات</h2>
+      <div class="episodes-filter">
+        <input id="ep-search" type="search" placeholder="ابحث عن رقم الحلقة...">
+      </div>
+    </div>
+    <div id="grid" class="episodes-grid"></div>
+  </section>
 </main>
-<script>const S = [{"num": 1, "url": "https://t.me/shoofcima/1208"}, {"num": 2, "url": "https://t.me/shoofcima/1209"}, {"num": 3, "url": "https://t.me/shoofcima/1210"}, {"num": 4, "url": "https://t.me/shoofcima/1211"}, {"num": 5, "url": "https://t.me/shoofcima/1212"}, {"num": 6, "url": "https://t.me/shoofcima/1213"}, {"num": 7, "url": "https://t.me/shoofcima/1214"}, {"num": 8, "url": "https://t.me/shoofcima/1215"}, {"num": 9, "url": "https://t.me/shoofcima/1216"}, {"num": 10, "url": "https://t.me/shoofcima/1217"}];const C = "https://t.me/shoofcima";</script>
-<script src="../watch.js"></script></body></html>
+<footer class="footer">
+  <div>شوف — منصة المشاهدة</div>
+  <div class="footer-links">
+    <a href="../index.html">الرئيسية</a>
+    <a href="https://t.me/shoofcima" target="_blank" rel="noopener">قناة تيليجرام</a>
+  </div>
+</footer>
+<script>window.S = [{"num": 1, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAx0Cf0Q07AACBLhqw9EE4NC7uMoe2sRtAjH__KPmPQACIh0AAq8IOFG-pHz2MIFUdx4E&size=81505214&mid=1208"}, {"num": 2, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAx0Cf0Q07AACBLlqw9EEfgotjhXhYPOx1CbH5jVKEgACIx0AAq8IOFHXaEN7DSl47B4E&size=76766935&mid=1209"}, {"num": 3, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAx0Cf0Q07AACBLpqw9EEkfzNHzMSuNFCCpnJLtGSEgACJB0AAq8IOFESTWYXFjQ7Hh4E&size=85374135&mid=1210"}, {"num": 4, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAx0Cf0Q07AACBLtqw9EEymMRz-zj4pHyKuH46_z1wAACJR0AAq8IOFGQ93NtAAHps-oeBA&size=85659266&mid=1211"}, {"num": 5, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAx0Cf0Q07AACBLxqw9EEtBjPNSZHm_Z3y56z823_lQACJh0AAq8IOFH-pZsxeSBi9x4E&size=87718397&mid=1212"}, {"num": 6, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAx0Cf0Q07AACBL1qw9EEXCe_AAHjMFnDuq9dzD-LR7gAAicdAAKvCDhRCrXEpTsq96AeBA&size=75941520&mid=1213"}, {"num": 7, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAx0Cf0Q07AACBL5qw9EEy9ZbclPy3gABC-YgA9sgyRsAAigdAAKvCDhRtcEn5FwUjpMeBA&size=119356415&mid=1214"}, {"num": 8, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAx0Cf0Q07AACBL9qw9EEutYN1dyQ0pUOMHzFzloFkAACKR0AAq8IOFFeWjQlegABcKoeBA&size=121539737&mid=1215"}, {"num": 9, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAx0Cf0Q07AACBMBqw9EE2nFw2ffZwU-ZH3eoV7lQMgACKh0AAq8IOFHK2BFNIYNqtB4E&size=89576887&mid=1216"}, {"num": 10, "url": "https://auto-production-08b0.up.railway.app/stream?fid=BAACAgQAAx0Cf0Q07AACBMFqw9EEqyc2msrystjRIYKntW2KQgACKx0AAq8IOFFzHeOx8CfTih4E&size=96278524&mid=1217"}]; window.C = "https://t.me/shoofcima"; window.PLAYABLE = 10;</script>
+<script src="../watch.js?v=3"></script>
+</body></html>

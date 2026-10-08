@@ -5,6 +5,7 @@
 
 import asyncio
 import time
+from pathlib import Path
 
 from builder import build_incremental
 from checker import fetch_series_list, fetch_episodes, find_new_episodes
@@ -87,7 +88,7 @@ class Orchestrator:
                         "title": f"{name} — الحلقة {num}",
                         "series": name,
                         "episode": num,
-                        "size": file_path.stat().st_size,
+                        "size": Path(file_path).stat().st_size,
                         "date": time.strftime("%Y-%m-%dT%H:%M:%S"),
                     })
 
