@@ -1,9 +1,5 @@
 pyrogram==2.0.106
 tgcrypto==1.2.5
 python-dotenv==1.0.1
-yt-dlp[default,curl-cffi]==2025.1.26
-seleniumbase==4.52.0
-beautifulsoup4==4.15.0
-lxml==5.3.0
-imageio-ffmpeg==0.6.0
-cloudscraper==1.2.71
+requests==2.31.0
+beautifulsoup4==4.12.2

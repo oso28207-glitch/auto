@@ -1,16 +1,13 @@
-__pycache__/
-*.pyc
+# متغيرات البيئة والجلسات
 .env
-.venv/
-venv/
 *.session
 *.session-journal
 
-# لا نتجاهل data/state.json (يُدفع)
-# لكن نتجاهل:
+# ملفات الوسائط والبيانات المحلية
 data/media/
-data/.run.lock
-data/.last_import
-data/posters.json
+data/*.tmp
+__pycache__/
+*.pyc
 
-# docs/ يُدفع بالكامل
+# ملفات السجل
+*.log
