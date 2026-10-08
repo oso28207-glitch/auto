@@ -1,17 +1,20 @@
 """
-telegram_checker.py — فحص قنوات Telegram قبل التحميل
+telegram_checker.py — فحص قنوات Telegram قبل التحميل (v2)
 
-★ الوظيفة:
-  - يجلب قائمة الحلقات الموجودة في القنوات المحددة.
-  - يبني dict من {اسم_مسلسل_مُنظّف: set(أرقام حلقات)}.
-  - يتيح لـ run.py تخطي هذه الحلقات.
+★ البنية الجديدة:
+{
+    "اسم_مُنظّف": {
+        "display_name": "الاسم الأصلي",
+        "episodes": set([1, 2, 3, ...]),
+        "message_ids": {1: msg_id, 2: msg_id, ...}
+    },
+    ...
+}
 """
 
 import asyncio
-import os
 import re
 import time
-from typing import Optional
 
 from pyrogram import Client
 from pyrogram.errors import FloodWait
@@ -19,26 +22,18 @@ from pyrogram.errors import FloodWait
 from config import config
 
 
-# ═══════════════════════════════════════════════════════════════
-# الإعدادات
-# ═══════════════════════════════════════════════════════════════
 CHECK_CHANNELS = config.CHECK_CHANNELS
 MAX_MESSAGES_PER_CHANNEL = config.CHECK_CHANNEL_LIMIT
 CACHE_TTL = config.CHECK_CACHE_TTL
 
 
 # ═══════════════════════════════════════════════════════════════
-# استخراج (المسلسل، الحلقة) من رسالة
+# استخراج (المسلسل، الحلقة)
 # ═══════════════════════════════════════════════════════════════
-def _extract_series_episode(caption: str) -> tuple:
-    """
-    يستخرج (اسم المسلسل, رقم الحلقة) من نص الرسالة.
-    يدعم صيغ متعددة.
-    """
+def _extract_series_episode(caption: str):
     if not caption:
         return None, None
 
-    # استخرج رقم الحلقة
     ep_num = None
     for p in [
         r"الحلقة\s*(\d+)",
@@ -54,49 +49,38 @@ def _extract_series_episode(caption: str) -> tuple:
     if ep_num is None:
         return None, None
 
-    # اسم المسلسل = أول سطر لا يحتوي على "الحلقة"
     lines = caption.split("\n")
     series_name = None
-
     for line in lines:
-        # احذف الرموز والإيموجي في البداية
         clean = re.sub(r"^[📺🎬🎥🎞️🔹\-•\s]+", "", line).strip()
-
-        # إذا كان السطر يحتوي على "الحلقة" → تجاهله
         if "الحلقة" in clean or "حلقة" in clean.lower():
             continue
         if "episode" in clean.lower() or "ep." in clean.lower():
             continue
-
+        if "الموسم" in clean:
+            continue
         if clean and len(clean) > 2:
             series_name = clean
             break
 
-    # إذا فشل، جرّب استخراج كل شيء قبل "الحلقة"
     if not series_name:
         m = re.search(r"^(.*?)(?=الحلقة|حلقة|[Ee]pisode)", caption, re.DOTALL)
         if m:
-            series_name = m.group(1).strip()
-            # خذ أول سطر فقط
-            series_name = series_name.split("\n")[0]
-            series_name = re.sub(r"^[📺🎬🎥🎞️🔹\-•\s]+", "", series_name).strip()
+            series_name = m.group(1).strip().split("\n")[0]
+            series_name = re.sub(r"^[📺🎬🎥🎞️🔹\-•\s]+", "",
+                                 series_name).strip()
 
     return series_name, ep_num
 
 
 def _normalize_name(name: str) -> str:
-    """يُنظّف اسم المسلسل للمقارنة."""
     if not name:
         return ""
     n = name.strip()
     n = re.sub(r"\s+", " ", n)
-    # احذف "مسلسل" من البداية
     n = re.sub(r"^مسلسل\s+", "", n)
-    # احذف "الموسم X" من النهاية
     n = re.sub(r"\s+الموسم\s+.*$", "", n)
-    # احذف أرقام في النهاية
     n = re.sub(r"\s+\d+\s*$", "", n)
-    # احذف رموز خاصة
     n = re.sub(r"[^\w\s\u0600-\u06FF]", "", n)
     return n.strip().lower()
 
@@ -104,11 +88,7 @@ def _normalize_name(name: str) -> str:
 # ═══════════════════════════════════════════════════════════════
 # الكاش
 # ═══════════════════════════════════════════════════════════════
-_cache = {
-    "data": None,
-    "timestamp": 0.0,
-    "channels": [],
-}
+_cache = {"data": None, "timestamp": 0.0, "channels": []}
 
 
 def _is_cache_valid() -> bool:
@@ -118,20 +98,11 @@ def _is_cache_valid() -> bool:
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ الفحص الرئيسي
+# الفحص الرئيسي
 # ═══════════════════════════════════════════════════════════════
 async def fetch_existing_episodes(session_string: str = None) -> dict:
-    """
-    يجلب كل الحلقات الموجودة في القنوات المحددة.
-
-    يعيد dict: {
-        "normalized_series_name": set([1, 2, 3, ...]),
-        ...
-    }
-    """
     global _cache
 
-    # تحقق من الكاش
     if _is_cache_valid():
         print(f"   💾 استخدام الكاش ({len(_cache['data'])} مسلسل)")
         return _cache["data"]
@@ -140,11 +111,8 @@ async def fetch_existing_episodes(session_string: str = None) -> dict:
         print("   ℹ️  CHECK_CHANNELS فارغ — تخطي الفحص")
         return {}
 
-    channels = [
-        c.strip().replace("@", "")
-        for c in CHECK_CHANNELS.split(",")
-        if c.strip()
-    ]
+    channels = [c.strip().replace("@", "")
+                for c in CHECK_CHANNELS.split(",") if c.strip()]
     if not channels:
         return {}
 
@@ -188,14 +156,12 @@ async def fetch_existing_episodes(session_string: str = None) -> dict:
                     print(f"   ⚠️ فشل فحص @{channel}: {str(e)[:150]}")
         finally:
             await app.stop()
-
     except Exception as e:
         print(f"   ⚠️ فشل تشغيل العميل: {str(e)[:200]}")
         return {}
 
     print(f"   📊 الإجمالي: {total_episodes} حلقة في {len(result)} مسلسل")
 
-    # احفظ في الكاش
     _cache["data"] = result
     _cache["timestamp"] = time.time()
     _cache["channels"] = channels
@@ -204,21 +170,20 @@ async def fetch_existing_episodes(session_string: str = None) -> dict:
 
 
 async def _scan_channel(app: Client, channel: str, result: dict) -> int:
-    """يفحص قناة واحدة ويعيد عدد الحلقات المكتشفة."""
     count = 0
     scanned = 0
     last_log = time.time()
 
     try:
-        async for msg in app.get_chat_history(channel, limit=MAX_MESSAGES_PER_CHANNEL):
+        async for msg in app.get_chat_history(
+            channel, limit=MAX_MESSAGES_PER_CHANNEL
+        ):
             scanned += 1
 
-            # اطبع تقدم كل 30 ثانية
             if time.time() - last_log > 30:
                 print(f"      · @{channel}: فُحص {scanned} رسالة، {count} حلقة")
                 last_log = time.time()
 
-            # تجاهل الرسائل بدون وسائط
             if not (msg.video or msg.document or msg.animation):
                 continue
 
@@ -227,7 +192,6 @@ async def _scan_channel(app: Client, channel: str, result: dict) -> int:
                 continue
 
             series_name, ep_num = _extract_series_episode(caption)
-
             if not series_name or ep_num is None:
                 continue
 
@@ -235,12 +199,23 @@ async def _scan_channel(app: Client, channel: str, result: dict) -> int:
             if not key or len(key) < 2:
                 continue
 
-            result.setdefault(key, set()).add(ep_num)
+            entry = result.setdefault(key, {
+                "display_name": series_name,
+                "episodes": set(),
+                "message_ids": {},
+            })
+
+            if not entry["display_name"] and series_name:
+                entry["display_name"] = series_name
+
+            entry["episodes"].add(ep_num)
+            entry["message_ids"][ep_num] = msg.id
             count += 1
 
     except Exception as e:
         error_msg = str(e)[:150]
-        if "CHANNEL_INVALID" in error_msg or "USERNAME_NOT_OCCUPIED" in error_msg:
+        if ("CHANNEL_INVALID" in error_msg or
+                "USERNAME_NOT_OCCUPIED" in error_msg):
             raise Exception(f"القناة @{channel} غير موجودة أو غير متاحة")
         raise
 
@@ -248,13 +223,22 @@ async def _scan_channel(app: Client, channel: str, result: dict) -> int:
 
 
 # ═══════════════════════════════════════════════════════════════
-# الدالة المساعدة للاستخدام في run.py
+# Helpers متوافقة مع البنيتين
 # ═══════════════════════════════════════════════════════════════
-def is_episode_uploaded(existing: dict, series_name: str, ep_num: int) -> bool:
-    """
-    هل الحلقة موجودة في القنوات؟
-    يجرّب مطابقات متعددة للاسم لتفادي فروق التنظيف.
-    """
+def _get_episodes_set(entry) -> set:
+    if isinstance(entry, set):
+        return entry
+    if isinstance(entry, dict):
+        eps = entry.get("episodes", set())
+        if isinstance(eps, set):
+            return eps
+        if isinstance(eps, list):
+            return set(eps)
+    return set()
+
+
+def is_episode_uploaded(existing: dict, series_name: str,
+                         ep_num: int) -> bool:
     if not existing:
         return False
 
@@ -262,36 +246,98 @@ def is_episode_uploaded(existing: dict, series_name: str, ep_num: int) -> bool:
     if not normalized:
         return False
 
-    # مطابقة مباشرة
     if normalized in existing:
-        return ep_num in existing[normalized]
+        return ep_num in _get_episodes_set(existing[normalized])
 
-    # مطابقة جزئية (إذا كان أحد الاسمين يحتوي على الآخر)
-    for key, eps in existing.items():
+    for key, entry in existing.items():
         if not key:
             continue
         if key == normalized:
-            return ep_num in eps
-        # احتواء جزئي إذا كان الاسم طويلاً بما يكفي
+            return ep_num in _get_episodes_set(entry)
         if len(key) >= 5 and len(normalized) >= 5:
             if key in normalized or normalized in key:
-                if ep_num in eps:
+                if ep_num in _get_episodes_set(entry):
                     return True
 
     return False
 
 
 def get_stats(existing: dict) -> dict:
-    """إحصائيات للعرض."""
     if not existing:
         return {"series": 0, "episodes": 0}
-    total = sum(len(eps) for eps in existing.values())
+    total = sum(len(_get_episodes_set(entry))
+                for entry in existing.values())
     return {"series": len(existing), "episodes": total}
 
 
-# ═══════════════════════════════════════════════════════════════
-# اختبار
-# ═══════════════════════════════════════════════════════════════
+def get_display_name(existing: dict, series_name: str) -> str:
+    if not existing:
+        return series_name
+
+    normalized = _normalize_name(series_name)
+    if normalized in existing:
+        entry = existing[normalized]
+        if isinstance(entry, dict):
+            return entry.get("display_name", series_name)
+
+    for key, entry in existing.items():
+        if not key:
+            continue
+        if len(key) >= 5 and len(normalized) >= 5:
+            if key in normalized or normalized in key:
+                if isinstance(entry, dict):
+                    return entry.get("display_name", series_name)
+
+    return series_name
+
+
+def get_message_id(existing: dict, series_name: str, ep_num: int) -> int:
+    if not existing:
+        return 0
+
+    normalized = _normalize_name(series_name)
+    if normalized in existing:
+        entry = existing[normalized]
+        if isinstance(entry, dict):
+            mids = entry.get("message_ids", {})
+            return int(mids.get(ep_num, 0))
+
+    for key, entry in existing.items():
+        if not key:
+            continue
+        if len(key) >= 5 and len(normalized) >= 5:
+            if key in normalized or normalized in key:
+                if isinstance(entry, dict):
+                    mids = entry.get("message_ids", {})
+                    return int(mids.get(ep_num, 0))
+
+    return 0
+
+
+def to_serializable(existing: dict) -> dict:
+    if not existing:
+        return {}
+
+    out = {}
+    for key, entry in existing.items():
+        if isinstance(entry, set):
+            out[key] = {
+                "display_name": key,
+                "episodes": sorted(entry),
+                "message_ids": {},
+            }
+        elif isinstance(entry, dict):
+            eps = entry.get("episodes", set())
+            if isinstance(eps, set):
+                eps = sorted(eps)
+            out[key] = {
+                "display_name": entry.get("display_name", key),
+                "episodes": eps,
+                "message_ids": entry.get("message_ids", {}),
+            }
+    return out
+
+
 if __name__ == "__main__":
     async def test():
         result = await fetch_existing_episodes()
@@ -299,8 +345,11 @@ if __name__ == "__main__":
         print(f"\n📊 إحصائيات:")
         print(f"   المسلسلات: {stats['series']}")
         print(f"   الحلقات: {stats['episodes']}")
-        print(f"\n📋 عينة:")
-        for name, eps in list(result.items())[:10]:
-            print(f"   · {name}: {sorted(eps)[:5]}...")
+        print(f"\n📋 عينة (5):")
+        for name, entry in list(result.items())[:5]:
+            if isinstance(entry, dict):
+                dn = entry.get("display_name", name)
+                eps = sorted(entry.get("episodes", set()))[:5]
+                print(f"   · {dn} → {eps}")
 
     asyncio.run(test())

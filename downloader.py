@@ -1,11 +1,11 @@
 """
-downloader.py v56 — FINAL
+downloader.py v57 — FINAL
 ═══════════════════════════════════════════════════════════
-v56: إعدادات ضغط ثابتة (144p / CRF=28 / veryfast / threads=2)
-     - حد الملف المضغوط 100MB
-     - binary concat (سريع 100x)
-     - yt-dlp أولاً → ffmpeg-hls → browser-fetch
-     - عرض variants واختيار الأدنى بجودة >= 360p
+v57: دعم عدة سيرفرات في yam.ahwaktv.net
+     - _yam يجرب جميع iframes بالترتيب
+     - إذا فشل سيرفر، ينتقل للتالي
+     - إذا فشل الكل، يرفع استثناء لإيقاف السكربت
+     - الإعدادات: 144p / CRF=28 / veryfast / threads=2
 """
 
 import os
@@ -790,7 +790,7 @@ def _concat_segments(seg_paths, out_path, seg_dir):
 
 
 # ═══════════════════════════════════════════════════════════════
-# استخراج m3u8
+# استخراج m3u8 من iframe واحد
 # ═══════════════════════════════════════════════════════════════
 def _extract_from_iframe(sb, iframe_url, out_path):
     print(f"      🌐 iframe: {iframe_url[:80]}", flush=True)
@@ -853,7 +853,7 @@ def _extract_from_iframe(sb, iframe_url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# u3seq + yam
+# u3seq
 # ═══════════════════════════════════════════════════════════════
 def _u3seq(sb, url, out_path):
     if "?do=watch" not in url:
@@ -878,8 +878,7 @@ def _u3seq(sb, url, out_path):
         """, []) or []
         if servers: break
     if not servers:
-        print(f"   ⚠️ لا سيرفرات", flush=True)
-        return None
+        raise RuntimeError("لا سيرفرات في u3seq")
     print(f"   ✅ {len(servers)} سيرفر", flush=True)
     iframe_url = _eval(sb, """
         (function(){
@@ -900,44 +899,82 @@ def _u3seq(sb, url, out_path):
             """)
             if iframe_url: break
     if not iframe_url:
-        print(f"   ❌ لا iframe", flush=True)
-        return None
+        raise RuntimeError("لا iframe في u3seq")
     iframe_url = iframe_url.replace("&amp;", "&")
     print(f"   🎯 iframe: {iframe_url[:80]}", flush=True)
     return _extract_from_iframe(sb, iframe_url, out_path)
 
 
+# ═══════════════════════════════════════════════════════════════
+# ★★★ yam — يدعم عدة سيرفرات (v57)
+# ═══════════════════════════════════════════════════════════════
 def _yam(sb, url, out_path):
     print(f"🖥️  فتح: {url[:90]}", flush=True)
     _open(sb, url, wait=2)
-    iframe_url = _eval(sb, """
+
+    # جمع جميع iframes الفريدة
+    iframes = _eval(sb, """
         (function(){
-            var f=document.querySelector('iframe');
-            if(f&&f.src&&f.src.startsWith('http')
-                &&f.src.indexOf('google')===-1
-                &&f.src.indexOf('facebook')===-1)
-                return f.src;
-            return null;
+            var out = [];
+            document.querySelectorAll('iframe').forEach(function(f){
+                if(f.src && f.src.startsWith('http')
+                    && f.src.indexOf('google') === -1
+                    && f.src.indexOf('facebook') === -1
+                    && out.indexOf(f.src) === -1){
+                    out.push(f.src);
+                }
+            });
+            return out;
         })();
-    """)
-    if not iframe_url:
+    """, []) or []
+
+    if not iframes:
+        # انتظر ظهور iframes
         for _ in range(6):
             sb.cdp.sleep(1)
-            iframe_url = _eval(sb, """
+            iframes = _eval(sb, """
                 (function(){
-                    var f=document.querySelector('iframe');
-                    if(f&&f.src&&f.src.startsWith('http'))return f.src;
-                    return null;
+                    var out = [];
+                    document.querySelectorAll('iframe').forEach(function(f){
+                        if(f.src && f.src.startsWith('http')
+                            && f.src.indexOf('google') === -1
+                            && f.src.indexOf('facebook') === -1
+                            && out.indexOf(f.src) === -1){
+                            out.push(f.src);
+                        }
+                    });
+                    return out;
                 })();
-            """)
-            if iframe_url: break
-    if not iframe_url:
-        print(f"   ❌ لا iframe", flush=True)
-        return None
-    print(f"   🎯 iframe: {iframe_url[:80]}", flush=True)
-    return _extract_from_iframe(sb, iframe_url, out_path)
+            """, []) or []
+            if iframes: break
+
+    if not iframes:
+        raise RuntimeError("لا iframe في yam")
+
+    print(f"   🎯 {len(iframes)} iframe/سيرفر", flush=True)
+
+    # جرّب كل iframe
+    for i, iframe_url in enumerate(iframes):
+        iframe_url = iframe_url.replace("&amp;", "&")
+        print(f"\n   ── سيرفر {i+1}/{len(iframes)} ──", flush=True)
+        try:
+            res = _extract_from_iframe(sb, iframe_url, out_path)
+            if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+                print(f"   ✅ نجح السيرفر {i+1}/{len(iframes)}", flush=True)
+                return res
+        except Exception as e:
+            print(f"   ⚠️ سيرفر {i+1} فشل: {str(e)[:100]}", flush=True)
+
+        # ارجع للصفحة الأصلية قبل السيرفر التالي
+        if i < len(iframes) - 1:
+            _open(sb, url, wait=1.5)
+
+    raise RuntimeError(f"فشل كل السيرفرات ({len(iframes)})")
 
 
+# ═══════════════════════════════════════════════════════════════
+# نقطة الدخول
+# ═══════════════════════════════════════════════════════════════
 def _run_browser(url, out_path):
     from seleniumbase import SB
     try:
@@ -969,7 +1006,7 @@ def _run_browser(url, out_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# ★★★ v56: ضغط بإعدادات ثابتة
+# ضغط بإعدادات ثابتة
 # ═══════════════════════════════════════════════════════════════
 def _get_duration(path):
     try:
@@ -985,7 +1022,6 @@ def _get_duration(path):
 
 
 def _compress_once(inp, out, scale, crf):
-    """v56: preset=veryfast, threads=2."""
     try:
         cmd = [
             _ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "error",
@@ -1013,10 +1049,6 @@ def _compress_once(inp, out, scale, crf):
 
 
 def _compress(inp, out):
-    """
-    v56: إعدادات ثابتة 144p / CRF=28 / veryfast / threads=2
-    عند تجاوز 100MB: نرفع CRF (بنفس الجودة 144p)
-    """
     max_mb = config.COMPRESS_MAX_SIZE_MB
     im = Path(inp).stat().st_size / 1048576
 

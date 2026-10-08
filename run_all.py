@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
 """
-run_all.py — Shoof Automation v3.2.1
+run_all.py — Shoof Automation v3.3
 
-★ إصلاح: DOCS_DIR يُستورد مباشرة بدل config.DOCS_DIR
-
-★ الميزات:
-    1) ترتيب الأولوية: مسلسلات تركية مدبلجة → مسلسلات مدبلجة أخرى → أفلام مدبلجة → الباقي
-    2) عند الخطأ الحرج: يتوقف فوراً (exit 1)
-    3) تحميل الحلقات بالترتيب (1، 2، 3، ...)
-    4) تسجيل الحلقات بدون URL في skipped_episodes.json
-    5) استئناف من آخر حلقة على Telegram
-    6) بناء out_series لكل المسلسلات أولاً
-    7) خيار --clean لتنظيف كل شيء
+★ الترتيب:
+    1) فحص Telegram
+    2) بناء الموقع من بيانات Telegram (tg_series.json)
+    3) فحص المصادر (u3seq, yam, egybest)
+    4) تنزيل + ضغط + رفع بالترتيب (تركي مدبلج أولاً)
 """
 import argparse
 import asyncio
@@ -35,8 +30,8 @@ from uploader import uploader
 
 STATE = DATA_DIR / "series.json"
 UPLOADED = DATA_DIR / "uploaded.json"
-MISSING_REPORT = DATA_DIR / "missing_report.json"
 SKIPPED_LOG = DATA_DIR / "skipped_episodes.json"
+TG_SERIES = DATA_DIR / "tg_series.json"
 
 SOURCE_ORDER = {"u3seq": 0, "yam": 1, "egybest": 2}
 
@@ -57,6 +52,7 @@ def _clean_all():
         DATA_DIR / "uploaded.json",
         DATA_DIR / "missing_report.json",
         DATA_DIR / "skipped_episodes.json",
+        DATA_DIR / "tg_series.json",
         DOCS_DIR / "watch",
         DOCS_DIR / "posters",
         DOCS_DIR / "index.html",
@@ -135,7 +131,63 @@ async def _scan_telegram():
 
 
 # ═══════════════════════════════════════════════════════════════
-# الخطوة 2: زحف + ترتيب بالأولوية
+# الخطوة 1.5: بناء tg_series.json + الموقع
+# ═══════════════════════════════════════════════════════════════
+def _build_tg_series(existing_tg):
+    series_list = []
+    channel_id = config.CHANNEL_ID.lstrip('@')
+
+    for norm_name, entry in existing_tg.items():
+        if isinstance(entry, dict):
+            display_name = entry.get("display_name", norm_name)
+            episodes = sorted(entry.get("episodes", set()))
+            message_ids = entry.get("message_ids", {})
+        else:
+            display_name = norm_name
+            episodes = sorted(entry)
+            message_ids = {}
+
+        eps_list = []
+        for ep in episodes:
+            mid = message_ids.get(ep, 0) if isinstance(message_ids, dict) else 0
+            eps_list.append({
+                "num": ep,
+                "url": f"https://t.me/{channel_id}/{mid}" if mid else "",
+            })
+
+        series_list.append({
+            "name": display_name,
+            "poster": "",
+            "genre": "",
+            "source": "telegram",
+            "episodes": eps_list,
+            "episodes_count": len(eps_list),
+        })
+
+    _save(TG_SERIES, {
+        "series": series_list,
+        "built_at": datetime.now(timezone.utc).isoformat(),
+    })
+    print(f"   ✅ tg_series.json: {len(series_list)} مسلسل", flush=True)
+    return series_list
+
+
+def _build_site_from_tg():
+    print("\n" + "═" * 60, flush=True)
+    print("🏗️  [الخطوة 1.5] بناء الموقع من بيانات Telegram...", flush=True)
+    print("═" * 60, flush=True)
+
+    try:
+        from build_site import build_site
+        build_site()
+        print("   ✅ تم بناء الموقع", flush=True)
+    except Exception as e:
+        print(f"   ❌ فشل build_site: {e}", flush=True)
+        raise
+
+
+# ═══════════════════════════════════════════════════════════════
+# الخطوة 2: زحف + ترتيب
 # ═══════════════════════════════════════════════════════════════
 def _scrape_and_sort():
     print("\n" + "═" * 60, flush=True)
@@ -184,7 +236,7 @@ def _scrape_and_sort():
 
 
 # ═══════════════════════════════════════════════════════════════
-# فلترة الحلقات + تسجيل المُتخطاة
+# فلترة الحلقات
 # ═══════════════════════════════════════════════════════════════
 def _filter_new_episodes(series, existing_tg, uploaded, skipped_log):
     name = series.get("name", "")
@@ -210,7 +262,6 @@ def _filter_new_episodes(series, existing_tg, uploaded, skipped_log):
             newly_marked.append(local_key)
             continue
 
-        # ★ تسجيل الحلقات بدون URL
         if not e.get("url"):
             skipped_log.setdefault(name, []).append({
                 "episode": n,
@@ -234,7 +285,7 @@ def _filter_new_episodes(series, existing_tg, uploaded, skipped_log):
 
 
 # ═══════════════════════════════════════════════════════════════
-# معالجة مسلسل واحد
+# معالجة مسلسل
 # ═══════════════════════════════════════════════════════════════
 async def _process_series(series, existing_tg, uploaded, skipped_log):
     name = series.get("name", "")
@@ -260,10 +311,9 @@ async def _process_series(series, existing_tg, uploaded, skipped_log):
             "episodes_count": len(all_eps),
         }
 
-    # ★ ترتيب الحلقات تصاعدياً (1، 2، 3، ...)
     new_eps.sort(key=lambda e: int(e.get("num", 0)))
-
     nums = [e.get("num") for e in new_eps]
+
     print(f"\n{'═' * 60}", flush=True)
     print(f"📺 [{src}] {name}", flush=True)
     print(f"   🆕 {len(new_eps)}/{len(all_eps)} حلقة جديدة", flush=True)
@@ -271,7 +321,6 @@ async def _process_series(series, existing_tg, uploaded, skipped_log):
           flush=True)
     print(f"{'═' * 60}", flush=True)
 
-    # اطبع الحلقات المُتخطاة (بدون URL)
     if name in skipped_log and skipped_log[name]:
         skipped_nums = [s["episode"] for s in skipped_log[name]]
         print(f"   ⚠️  حلقات بدون URL: {skipped_nums}", flush=True)
@@ -284,7 +333,6 @@ async def _process_series(series, existing_tg, uploaded, skipped_log):
 
         print(f"\n   ── الحلقة {n} ──", flush=True)
 
-        # ★ عند الفشل: ارفع استثناء لإيقاف السكربت
         r = download_episode(name, n, u)
         if not r or not Path(r).exists():
             raise RuntimeError(f"فشل تحميل {name} حلقة {n}")
@@ -323,7 +371,7 @@ async def _process_series(series, existing_tg, uploaded, skipped_log):
 # ═══════════════════════════════════════════════════════════════
 async def _main_async(clean=False):
     print("╔" + "═" * 58 + "╗")
-    print("║" + " " * 8 + "شوف — Shoof Automation v3.2.1" + " " * 16 + "║")
+    print("║" + " " * 9 + "شوف — Shoof Automation v3.3" + " " * 17 + "║")
     print("╚" + "═" * 58 + "╝", flush=True)
 
     try:
@@ -339,6 +387,10 @@ async def _main_async(clean=False):
     # ─── 1) فحص Telegram ───
     existing_tg = await _scan_telegram()
 
+    # ─── 1.5) بناء الموقع من Telegram ───
+    _build_tg_series(existing_tg)
+    _build_site_from_tg()
+
     # ─── تحميل الحالة ───
     state = _load(STATE, {"series": []})
     uploaded = _load(UPLOADED, {})
@@ -350,13 +402,13 @@ async def _main_async(clean=False):
         flush=True,
     )
 
-    # ─── 2) زحف + ترتيب ───
+    # ─── 2) زحف ───
     all_series = _scrape_and_sort()
     if not all_series:
         print("⚠️ لا مسلسلات", flush=True)
         return 0
 
-    # ★★★ بناء out_series لكل المسلسلات أولاً
+    # بناء out_series
     out_series = []
     for series in all_series:
         name = series.get("name", "")
@@ -400,7 +452,6 @@ async def _main_async(clean=False):
                 break
 
             name = series.get("name", "")
-
             try:
                 item = await _process_series(
                     series, existing_tg, uploaded, skipped_log
@@ -429,14 +480,12 @@ async def _main_async(clean=False):
             })
             _save(UPLOADED, uploaded)
             _save(SKIPPED_LOG, skipped_log)
-
     finally:
         try:
             await uploader.stop()
         except Exception:
             pass
 
-    # حفظ نهائي
     _save(STATE, {
         "series": out_series,
         "last_update": datetime.now(timezone.utc).isoformat(),
@@ -448,17 +497,6 @@ async def _main_async(clean=False):
     if total_skipped > 0:
         print(f"\n⚠️  إجمالي الحلقات بدون URL: {total_skipped} "
               f"({len(skipped_log)} مسلسل)", flush=True)
-        for sname, items in list(skipped_log.items())[:5]:
-            nums = [i["episode"] for i in items]
-            print(f"   · {sname}: {nums}", flush=True)
-
-    # بناء الموقع
-    try:
-        from build_site import build_site
-        build_site()
-    except Exception as e:
-        print(f"❌ build_site: {e}", flush=True)
-        raise
 
     elapsed = (time.time() - start) / 60
     print(f"\n{'═' * 60}")
