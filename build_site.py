@@ -1,10 +1,10 @@
-"""build_site.py — يبني الموقع من بيانات Telegram مع صور من المصادر."""
+"""build_site.py — يبني الموقع من بيانات Telegram مع صور وترتيب زمني."""
 import json
 import re
 import hashlib
 import shutil
 from pathlib import Path
-from urllib.parse import quote
+from datetime import datetime
 
 from curl_cffi import requests as cffi
 
@@ -16,9 +16,6 @@ POSTERS.mkdir(parents=True, exist_ok=True)
 TG_SERIES = DATA_DIR / "tg_series.json"
 
 
-# ═══════════════════════════════════════════════════════════════
-# Slug + poster
-# ═══════════════════════════════════════════════════════════════
 def _slug(name):
     h = hashlib.md5(name.encode()).hexdigest()[:8]
     s = re.sub(r'[^\w\u0600-\u06FF]+', '-', name).strip('-')[:40]
@@ -49,9 +46,6 @@ def _dl_poster(url, name):
     return "posters/placeholder.jpg"
 
 
-# ═══════════════════════════════════════════════════════════════
-# HTML templates
-# ═══════════════════════════════════════════════════════════════
 CARD = """<a class="card" href="watch/{slug}.html">
   <div class="poster-wrap">
     <img src="../{poster}" alt="{name}" loading="lazy"
@@ -93,9 +87,6 @@ def _watch_html(s, ch):
 <script src="../watch.js"></script></body></html>"""
 
 
-# ═══════════════════════════════════════════════════════════════
-# ★ priority_of — تحليل أدق
-# ═══════════════════════════════════════════════════════════════
 def _priority_of(name: str, category: str = "") -> int:
     """
     1 = مسلسل تركي مدبلج
@@ -106,14 +97,11 @@ def _priority_of(name: str, category: str = "") -> int:
     """
     n = (name or "").strip()
     c = (category or "").strip()
-    combined = f"{n} {c}"
+    combined = f"{n} {c}".lower()
 
-    is_turkish = ("تركي" in combined) or ("turkish" in combined.lower())
-    is_dubbed = ("مدبلج" in combined)
-    is_movie = (
-        n.startswith("فيلم") or n.startswith("افلام") or
-        n.startswith("أفلام") or "افلام" in n[:10] or "أفلام" in n[:10]
-    )
+    is_turkish = any(k in combined for k in ["تركي", "turkish", "ترك"])
+    is_dubbed = any(k in combined for k in ["مدبلج", "مدبلجة", "dubbed"])
+    is_movie = any(k in combined for k in ["فيلم", "أفلام", "افلام", "movie", "film"])
 
     if is_turkish and is_dubbed and not is_movie:
         return 1
@@ -126,9 +114,6 @@ def _priority_of(name: str, category: str = "") -> int:
     return 5
 
 
-# ═══════════════════════════════════════════════════════════════
-# Load tg_series.json
-# ═══════════════════════════════════════════════════════════════
 def _load_tg_series():
     if not TG_SERIES.exists():
         return []
@@ -139,9 +124,6 @@ def _load_tg_series():
         return []
 
 
-# ═══════════════════════════════════════════════════════════════
-# Main
-# ═══════════════════════════════════════════════════════════════
 def build_site():
     print("\n🏗️  بناء الموقع من بيانات Telegram", flush=True)
 
@@ -158,7 +140,6 @@ def build_site():
             except Exception:
                 pass
 
-    # فلترة
     series = [s for s in series
               if s.get("name") and
               s.get("name") not in ("الصفحة الرئيسية", "جديد الأفلام")]
@@ -167,26 +148,25 @@ def build_site():
         print("⚠️ لا مسلسلات", flush=True)
         return
 
-    # ★★★ ترتيب حسب الأولوية (باستخدام category أيضاً)
-    def _sort_key(s):
-        return (
-            _priority_of(s.get("name", ""), s.get("category", "")),
-            s.get("name", ""),
-        )
+    # 1) الترتيب حسب التاريخ (الأحدث أولاً)
+    def _date_key(s):
+        return s.get("last_updated", "") or s.get("built_at", "")
+    series.sort(key=_date_key, reverse=True)
 
-    series.sort(key=_sort_key)
+    # 2) الترتيب المستقر حسب الأولوية (مع الحفاظ على الترتيب الزمني داخل كل مجموعة)
+    series.sort(key=lambda s: _priority_of(s.get("name", ""), s.get("category", "")))
 
     ch = (f"https://t.me/{config.CHANNEL_ID.lstrip('@')}"
           if config.CHANNEL_ID else "#")
 
-    # ★★★ تحميل الصور
+    # تحميل الصور
     for s in series:
         if not s.get("local_poster"):
             s["local_poster"] = _dl_poster(
                 s.get("poster", ""), s.get("name", "")
             )
 
-    # ★★★ صفحات المشاهدة
+    # صفحات المشاهدة
     watch = DOCS_DIR / "watch"
     shutil.rmtree(watch, ignore_errors=True)
     watch.mkdir(parents=True, exist_ok=True)
@@ -195,15 +175,11 @@ def build_site():
         with open(watch / f"{slug}.html", "w", encoding="utf-8") as fh:
             fh.write(_watch_html(s, ch))
 
-    # ★★★ أقسام حسب الأولوية
-    turkish_dubbed = [s for s in series
-                      if _priority_of(s["name"], s.get("category", "")) == 1]
-    other_dubbed = [s for s in series
-                    if _priority_of(s["name"], s.get("category", "")) == 2]
-    dubbed_movies = [s for s in series
-                     if _priority_of(s["name"], s.get("category", "")) == 3]
-    regular = [s for s in series
-               if _priority_of(s["name"], s.get("category", "")) >= 4]
+    # الأقسام
+    turkish_dubbed = [s for s in series if _priority_of(s["name"], s.get("category", "")) == 1]
+    other_dubbed = [s for s in series if _priority_of(s["name"], s.get("category", "")) == 2]
+    dubbed_movies = [s for s in series if _priority_of(s["name"], s.get("category", "")) == 3]
+    regular = [s for s in series if _priority_of(s["name"], s.get("category", "")) >= 4]
 
     rows = ""
 
@@ -214,26 +190,14 @@ def build_site():
             eps=s.get("episodes_count", 0)) for s in items)
 
     if turkish_dubbed:
-        rows += (f'<section class="row"><h2>🇹🇷 مسلسلات تركية مدبلجة</h2>'
-                 f'<div class="grid">{_make_cards(turkish_dubbed)}</div>'
-                 f'</section>')
-
+        rows += f'<section class="row"><h2>🇹🇷 مسلسلات تركية مدبلجة</h2><div class="grid">{_make_cards(turkish_dubbed)}</div></section>'
     if other_dubbed:
-        rows += (f'<section class="row"><h2>🎙️ مسلسلات مدبلجة</h2>'
-                 f'<div class="grid">{_make_cards(other_dubbed)}</div>'
-                 f'</section>')
-
+        rows += f'<section class="row"><h2>🎙️ مسلسلات مدبلجة</h2><div class="grid">{_make_cards(other_dubbed)}</div></section>'
     if dubbed_movies:
-        rows += (f'<section class="row"><h2>🎬 أفلام مدبلجة</h2>'
-                 f'<div class="grid">{_make_cards(dubbed_movies)}</div>'
-                 f'</section>')
-
+        rows += f'<section class="row"><h2>🎬 أفلام مدبلجة</h2><div class="grid">{_make_cards(dubbed_movies)}</div></section>'
     if regular:
-        rows += (f'<section class="row"><h2>📺 مسلسلات وأفلام</h2>'
-                 f'<div class="grid">{_make_cards(regular[:60])}</div>'
-                 f'</section>')
+        rows += f'<section class="row"><h2>📺 مسلسلات وأفلام</h2><div class="grid">{_make_cards(regular[:60])}</div></section>'
 
-    # ★★★ الصفحة الرئيسية
     html = f"""<!DOCTYPE html><html lang="ar" dir="rtl"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Shoof — شاهد أحدث المسلسلات</title>
@@ -249,7 +213,6 @@ def build_site():
     with open(DOCS_DIR / "index.html", "w", encoding="utf-8") as fh:
         fh.write(html)
 
-    # ★★★ series.json للـ JS
     meta = {"series": [
         {"name": s["name"], "slug": _slug(s["name"]),
          "poster": s.get("local_poster", ""),

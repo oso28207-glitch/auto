@@ -4,8 +4,13 @@ sources/u3seq.py — جلب المسلسلات من u.3seq.cam
 يعتمد على WordPress REST API:
   GET /wp-json/wp/v2/posts?per_page=100&page=N
 
-★ لا نرسل categories عندما تكون 0 (WordPress يفسّرها كتصنيف غير موجود).
-★ عند فشل wp-json، يحاول scrape HTML مباشرة كخطة بديلة.
+★ v2: إضافة
+    - poster (من featured_media._embedded)
+    - category (من wp:term._embedded)
+    - last_updated (تاريخ آخر منشور في المسلسل)
+    - fallback: HTML scraping لجلب og:image عند الحاجة
+
+★ لا نرسل categories عندما تكون 0.
 """
 
 import re
@@ -20,7 +25,7 @@ from config import config
 from errors import SourceError
 
 # ═══════════════════════════════════════════════════════════════
-# cloudscraper (مُنشأ مرة واحدة)
+# cloudscraper
 # ═══════════════════════════════════════════════════════════════
 _scraper = None
 
@@ -40,10 +45,9 @@ def _get_scraper():
 
 
 # ═══════════════════════════════════════════════════════════════
-# استخراج
+# استخراج نصي
 # ═══════════════════════════════════════════════════════════════
 def _extract_ep(text: str) -> int:
-    """يستخرج رقم الحلقة من النص."""
     if not text:
         return 0
     for p in [
@@ -65,6 +69,16 @@ def _clean_series_name(title: str) -> str:
     t = re.sub(r"\s*مترجمة?\s*$", "", t).strip()
     t = re.sub(r"\s*كاملة\s*$", "", t).strip()
     return t or title
+
+
+def _strip_html(text: str) -> str:
+    """يزيل وسوم HTML من نص title.rendered."""
+    if not text:
+        return ""
+    t = re.sub(r"<[^>]+>", "", text)
+    t = t.replace("&amp;", "&").replace("&#8217;", "'").replace("&quot;", '"')
+    t = t.replace("&#8211;", "-").replace("&nbsp;", " ")
+    return t.strip()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -99,8 +113,6 @@ def _api_get(path: str, params: Optional[Dict] = None, retries: int = 3) -> Opti
                     raise SourceError(f"فشل تحليل JSON: {e}")
 
             if r.status_code == 400:
-                # 400 = bad request، غالباً categories غير صحيح
-                # نرجع None ليجرّب المسار البديل
                 print(f"   ⚠️ 400 — لا نستمر مع هذه المعطيات")
                 return None
 
@@ -126,10 +138,81 @@ def _api_get(path: str, params: Optional[Dict] = None, retries: int = 3) -> Opti
 
 
 # ═══════════════════════════════════════════════════════════════
+# استخراج poster و category من post واحد
+# ═══════════════════════════════════════════════════════════════
+def _extract_poster_from_post(post: Dict) -> str:
+    """
+    يستخرج رابط الصورة الرئيسية من منشور WordPress.
+    يدعم:
+      - _embedded['wp:featuredmedia'][0].source_url
+      - _embedded['wp:featuredmedia'][0].media_details.sizes.full.source_url
+    """
+    try:
+        emb = post.get("_embedded", {})
+        media_list = emb.get("wp:featuredmedia", [])
+        if not media_list:
+            return ""
+        media = media_list[0]
+        if not isinstance(media, dict):
+            return ""
+
+        # أولاً: source_url
+        url = media.get("source_url", "")
+        if url:
+            return url
+
+        # ثانياً: media_details.sizes
+        details = media.get("media_details", {})
+        sizes = details.get("sizes", {})
+        for size_key in ("full", "large", "medium_large", "medium"):
+            if size_key in sizes:
+                src = sizes[size_key].get("source_url", "")
+                if src:
+                    return src
+    except Exception:
+        pass
+    return ""
+
+
+def _extract_category_from_post(post: Dict) -> str:
+    """
+    يستخرج أول تصنيف من _embedded['wp:term'].
+    البنية: [ [cat1, cat2], [tag1, tag2] ]
+    """
+    try:
+        emb = post.get("_embedded", {})
+        terms = emb.get("wp:term", [])
+        for term_group in terms:
+            if not isinstance(term_group, list):
+                continue
+            for term in term_group:
+                if not isinstance(term, dict):
+                    continue
+                # فقط taxonomy = category
+                tax = term.get("taxonomy", "")
+                if tax == "category":
+                    name = term.get("name", "")
+                    if name:
+                        return _strip_html(name)
+
+        # fallback: أي اسم term
+        for term_group in terms:
+            if not isinstance(term_group, list):
+                continue
+            for term in term_group:
+                if isinstance(term, dict):
+                    name = term.get("name", "")
+                    if name:
+                        return _strip_html(name)
+    except Exception:
+        pass
+    return ""
+
+
+# ═══════════════════════════════════════════════════════════════
 # المحاولة 1: WordPress REST API
 # ═══════════════════════════════════════════════════════════════
 def _fetch_via_api() -> List[Dict]:
-    """يجلب من wp-json. لا يرسل categories إذا كانت 0."""
     print(f"   📡 محاولة WordPress REST API...")
     all_posts = []
     per_page = 100
@@ -139,9 +222,9 @@ def _fetch_via_api() -> List[Dict]:
         params = {
             "per_page": per_page,
             "page": page,
-            "_fields": "id,link,title,date,slug",
+            "_fields": "id,link,title,date,slug,featured_media,_embedded,_links",
+            "_embed": "wp:featuredmedia,wp:term",
         }
-        # ★ لا نرسل categories إذا كانت 0
         if config.SOURCE_CATEGORY and config.SOURCE_CATEGORY > 0:
             params["categories"] = config.SOURCE_CATEGORY
 
@@ -152,7 +235,6 @@ def _fetch_via_api() -> List[Dict]:
             return []
 
         if posts is None:
-            # قد تكون 400 لأن categories غير صحيح
             if config.SOURCE_CATEGORY and config.SOURCE_CATEGORY > 0:
                 print(f"   🔄 إعادة محاولة بدون تصنيف...")
                 params.pop("categories", None)
@@ -178,10 +260,9 @@ def _fetch_via_api() -> List[Dict]:
 
 
 # ═══════════════════════════════════════════════════════════════
-# المحاولة 2: زحف HTML
+# المحاولة 2: HTML scraping
 # ═══════════════════════════════════════════════════════════════
 def _fetch_via_html() -> List[Dict]:
-    """يقرأ الصفحة الرئيسية ويستخرج المسلسلات."""
     print(f"   📡 محاولة زحف HTML...")
     base = config.SOURCE_BASE_URL.rstrip("/")
     urls_to_try = [
@@ -201,13 +282,11 @@ def _fetch_via_html() -> List[Dict]:
                 continue
 
             soup = BeautifulSoup(r.text, "html.parser")
-            # ابحث عن روابط تحتوي على كلمات مفتاحية
             for a in soup.find_all("a", href=True):
                 href = a.get("href", "")
                 text = a.get_text(strip=True)
                 if not text or len(text) < 3:
                     continue
-                # علامات: video/series/watch/episode
                 low = href.lower()
                 if any(k in low for k in [
                     "/video/", "/series/", "/watch/", "/episode/",
@@ -227,7 +306,6 @@ def _fetch_via_html() -> List[Dict]:
         print(f"   ❌ لم يُعثر على روابط")
         return []
 
-    # نحوّل الروابط لصيغة منشورات
     posts = []
     seen = set()
     for item in all_links:
@@ -240,6 +318,7 @@ def _fetch_via_html() -> List[Dict]:
             "link": link,
             "title": {"rendered": title},
             "slug": link.rstrip("/").split("/")[-1],
+            "date": "",
         })
 
     return _group_into_series(posts)
@@ -258,9 +337,9 @@ def _group_into_series(posts: List[Dict]) -> List[Dict]:
         link = post.get("link", "")
         title_obj = post.get("title", "")
         if isinstance(title_obj, dict):
-            title = title_obj.get("rendered", "")
+            title = _strip_html(title_obj.get("rendered", ""))
         else:
-            title = title_obj or ""
+            title = _strip_html(str(title_obj or ""))
 
         if not link or not title:
             continue
@@ -268,22 +347,36 @@ def _group_into_series(posts: List[Dict]) -> List[Dict]:
         name = _clean_series_name(title)
         ep_num = _extract_ep(title)
 
-        # إذا لم نجد رقم حلقة، اعتبرها منشوراً منفصلاً
         if not ep_num:
-            # جرّب من الرابط
             ep_num = _extract_ep(link)
         if not ep_num:
             continue
+
+        date = post.get("date", "") or ""
+        poster = _extract_poster_from_post(post)
+        category = _extract_category_from_post(post)
 
         if name not in series_map:
             series_map[name] = {
                 "name": name,
                 "url": link,
-                "poster": "",
+                "poster": poster,
+                "category": category,   # ★ جديد
                 "genre": "",
                 "source": "u3seq",
+                "last_updated": date,    # ★ جديد
                 "episodes": [],
             }
+        else:
+            # إذا كان المنشور الحالي أحدث، نحدّث last_updated
+            if date and date > (series_map[name]["last_updated"] or ""):
+                series_map[name]["last_updated"] = date
+            # إذا كان فيه poster ولم يكن موجوداً
+            if poster and not series_map[name]["poster"]:
+                series_map[name]["poster"] = poster
+            # إذا كان فيه category ولم يكن موجوداً
+            if category and not series_map[name]["category"]:
+                series_map[name]["category"] = category
 
         series_map[name]["episodes"].append({
             "num": ep_num,
@@ -309,17 +402,18 @@ def _group_into_series(posts: List[Dict]) -> List[Dict]:
 # الواجهة الرئيسية
 # ═══════════════════════════════════════════════════════════════
 def fetch() -> List[Dict]:
-    """يجلب المسلسلات من u.3seq.cam."""
     cat = config.SOURCE_CATEGORY
     print(f"📋 جلب قائمة المسلسلات (تصنيف {cat if cat > 0 else 'الكل'})...")
 
-    # المحاولة 1: REST API
     result = _fetch_via_api()
     if result:
-        print(f"✅ {len(result)} مسلسل (API)")
+        # إحصائيات سريعة
+        with_poster = sum(1 for s in result if s.get("poster"))
+        with_cat = sum(1 for s in result if s.get("category"))
+        print(f"✅ {len(result)} مسلسل (API) — "
+              f"{with_poster} مع صور، {with_cat} مع تصنيفات")
         return result
 
-    # المحاولة 2: HTML
     result = _fetch_via_html()
     if result:
         print(f"✅ {len(result)} مسلسل (HTML)")
@@ -333,5 +427,8 @@ if __name__ == "__main__":
     config.validate()
     series = fetch()
     print(f"\n📊 النتيجة: {len(series)} مسلسل")
-    for s in series[:5]:
-        print(f"   · {s['name']}: {len(s['episodes'])} حلقة")
+    for s in series[:8]:
+        cat = s.get("category", "?")[:25]
+        poster_flag = "🖼️" if s.get("poster") else "❌"
+        print(f"   · [{cat}] {s['name']}: {len(s['episodes'])} "
+              f"| {poster_flag} | {s.get('last_updated', '')[:10]}")
