@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-run_all.py — Shoof Automation v3.3
+run_all.py — Shoof Automation v3.4
 
-★ الترتيب:
-    1) فحص Telegram
-    2) بناء الموقع من بيانات Telegram (tg_series.json)
-    3) فحص المصادر (u3seq, yam, egybest)
-    4) تنزيل + ضغط + رفع بالترتيب (تركي مدبلج أولاً)
+★ التغيير الرئيسي:
+    1) فحص Telegram (existing_tg)
+    2) ★ زحف المصادر أولاً (all_series) ← للصور والتصنيفات
+    3) بناء tg_series.json مع مطابقة posters من all_series
+    4) بناء الموقع (من Telegram)
+    5) تنزيل + ضغط + رفع الجديد فقط
 """
 import argparse
 import asyncio
@@ -115,6 +116,43 @@ def _fetch(src):
     return []
 
 
+def _norm(s):
+    """تطبيع الاسم للمقارنة."""
+    import re
+    if not s:
+        return ""
+    n = s.strip().lower()
+    n = re.sub(r"^مسلسل\s+", "", n)
+    n = re.sub(r"\s+", " ", n)
+    n = re.sub(r"[^\w\s\u0600-\u06FF]", "", n)
+    return n.strip()
+
+
+def _find_source_match(tg_name, all_series):
+    """
+    يبحث عن مصدر مطابق لاسم Telegram.
+    يعيد dict المصدر أو None.
+    """
+    tg_norm = _norm(tg_name)
+    if not tg_norm:
+        return None
+
+    # 1) مطابقة مباشرة
+    for s in all_series:
+        if _norm(s.get("name", "")) == tg_norm:
+            return s
+
+    # 2) مطابقة جزئية
+    if len(tg_norm) >= 5:
+        for s in all_series:
+            s_norm = _norm(s.get("name", ""))
+            if len(s_norm) >= 5:
+                if s_norm in tg_norm or tg_norm in s_norm:
+                    return s
+
+    return None
+
+
 # ═══════════════════════════════════════════════════════════════
 # الخطوة 1: فحص Telegram
 # ═══════════════════════════════════════════════════════════════
@@ -131,11 +169,39 @@ async def _scan_telegram():
 
 
 # ═══════════════════════════════════════════════════════════════
-# الخطوة 1.5: بناء tg_series.json + الموقع
+# الخطوة 2: زحف المصادر (للحصول على posters + categories)
 # ═══════════════════════════════════════════════════════════════
-def _build_tg_series(existing_tg):
+def _scrape_sources():
+    print("\n" + "═" * 60, flush=True)
+    print("📡 [الخطوة 2] زحف المصادر (لجلب الصور)...", flush=True)
+    print("═" * 60, flush=True)
+
+    all_series = []
+    for src in ["u3seq", "yam", "egybest"]:
+        print(f"\n   [{src}]", flush=True)
+        items = _fetch(src)
+        for s in items:
+            s["_src"] = src
+        print(f"      ✅ {len(items)} مسلسل", flush=True)
+        all_series.extend(items)
+
+    return all_series
+
+
+# ═══════════════════════════════════════════════════════════════
+# الخطوة 3: بناء tg_series.json مع posters من المصادر
+# ═══════════════════════════════════════════════════════════════
+def _build_tg_series(existing_tg, all_series=None):
+    """
+    يبني tg_series.json من Telegram.
+    إذا مررت all_series، نطابق الـ posters من المصادر.
+    """
+    if all_series is None:
+        all_series = []
+
     series_list = []
     channel_id = config.CHANNEL_ID.lstrip('@')
+    matched = 0
 
     for norm_name, entry in existing_tg.items():
         if isinstance(entry, dict):
@@ -147,6 +213,16 @@ def _build_tg_series(existing_tg):
             episodes = sorted(entry)
             message_ids = {}
 
+        # ★ مطابقة المصدر لجلب poster
+        poster = ""
+        source_category = ""
+        src_match = _find_source_match(display_name, all_series)
+        if src_match:
+            poster = src_match.get("poster", "") or ""
+            source_category = src_match.get("category", "") or ""
+            if poster:
+                matched += 1
+
         eps_list = []
         for ep in episodes:
             mid = message_ids.get(ep, 0) if isinstance(message_ids, dict) else 0
@@ -155,9 +231,19 @@ def _build_tg_series(existing_tg):
                 "url": f"https://t.me/{channel_id}/{mid}" if mid else "",
             })
 
+        # ★ name_enhanced للتصنيف الأدق
+        # إذا كان المصدر تركي مدبلج → نضيف التصنيف للاسم
+        enhanced_name = display_name
+        if source_category and "تركي" in source_category and "مدبلج" in source_category:
+            if "تركي" not in enhanced_name:
+                enhanced_name = f"{display_name} (تركي مدبلج)"
+
         series_list.append({
             "name": display_name,
-            "poster": "",
+            "display_name": display_name,
+            "enhanced_name": enhanced_name,
+            "poster": poster,
+            "category": source_category,
             "genre": "",
             "source": "telegram",
             "episodes": eps_list,
@@ -168,13 +254,17 @@ def _build_tg_series(existing_tg):
         "series": series_list,
         "built_at": datetime.now(timezone.utc).isoformat(),
     })
-    print(f"   ✅ tg_series.json: {len(series_list)} مسلسل", flush=True)
+    print(f"   ✅ tg_series.json: {len(series_list)} مسلسل "
+          f"({matched} مع صور)", flush=True)
     return series_list
 
 
+# ═══════════════════════════════════════════════════════════════
+# الخطوة 4: بناء الموقع
+# ═══════════════════════════════════════════════════════════════
 def _build_site_from_tg():
     print("\n" + "═" * 60, flush=True)
-    print("🏗️  [الخطوة 1.5] بناء الموقع من بيانات Telegram...", flush=True)
+    print("🏗️  [الخطوة 4] بناء الموقع من بيانات Telegram...", flush=True)
     print("═" * 60, flush=True)
 
     try:
@@ -187,22 +277,9 @@ def _build_site_from_tg():
 
 
 # ═══════════════════════════════════════════════════════════════
-# الخطوة 2: زحف + ترتيب
+# الخطوة 5: ترتيب للتحميل
 # ═══════════════════════════════════════════════════════════════
-def _scrape_and_sort():
-    print("\n" + "═" * 60, flush=True)
-    print("📡 [الخطوة 2] فحص المصادر + ترتيب بالأولوية...", flush=True)
-    print("═" * 60, flush=True)
-
-    all_series = []
-    for src in ["u3seq", "yam", "egybest"]:
-        print(f"\n   [{src}]", flush=True)
-        items = _fetch(src)
-        for s in items:
-            s["_src"] = src
-        print(f"      ✅ {len(items)} مسلسل", flush=True)
-        all_series.extend(items)
-
+def _sort_for_download(all_series):
     def sort_key(s):
         name = s.get("name", "")
         return (config.priority_of(name),
@@ -371,7 +448,7 @@ async def _process_series(series, existing_tg, uploaded, skipped_log):
 # ═══════════════════════════════════════════════════════════════
 async def _main_async(clean=False):
     print("╔" + "═" * 58 + "╗")
-    print("║" + " " * 9 + "شوف — Shoof Automation v3.3" + " " * 17 + "║")
+    print("║" + " " * 9 + "شوف — Shoof Automation v3.4" + " " * 17 + "║")
     print("╚" + "═" * 58 + "╝", flush=True)
 
     try:
@@ -384,14 +461,28 @@ async def _main_async(clean=False):
     if clean:
         _clean_all()
 
-    # ─── 1) فحص Telegram ───
+    # ═══ 1) فحص Telegram ═══
     existing_tg = await _scan_telegram()
 
-    # ─── 1.5) بناء الموقع من Telegram ───
-    _build_tg_series(existing_tg)
+    # ═══ 2) زحف المصادر (للصور) ═══
+    all_series = _scrape_sources()
+    if not all_series:
+        print("⚠️ لا مسلسلات من المصادر — الموقع سيبني بدون صور", flush=True)
+
+    # ═══ 3) بناء tg_series.json مع الصور ═══
+    print("\n" + "═" * 60, flush=True)
+    print("🏗️  [الخطوة 3] بناء tg_series.json...", flush=True)
+    print("═" * 60, flush=True)
+    _build_tg_series(existing_tg, all_series)
+
+    # ═══ 4) بناء الموقع ═══
     _build_site_from_tg()
 
-    # ─── تحميل الحالة ───
+    # ═══ 5) ترتيب للتحميل ═══
+    if all_series:
+        all_series = _sort_for_download(all_series)
+
+    # ═══ تحميل الحالة ═══
     state = _load(STATE, {"series": []})
     uploaded = _load(UPLOADED, {})
     skipped_log = _load(SKIPPED_LOG, {})
@@ -402,13 +493,11 @@ async def _main_async(clean=False):
         flush=True,
     )
 
-    # ─── 2) زحف ───
-    all_series = _scrape_and_sort()
     if not all_series:
-        print("⚠️ لا مسلسلات", flush=True)
+        print("\n⚠️ لا مصادر — توقف بعد بناء الموقع", flush=True)
         return 0
 
-    # بناء out_series
+    # بناء out_series للمصادر
     out_series = []
     for series in all_series:
         name = series.get("name", "")
@@ -433,9 +522,9 @@ async def _main_async(clean=False):
         "last_update": datetime.now(timezone.utc).isoformat(),
     })
 
-    # ─── 3) معالجة ───
+    # ═══ 6) تنزيل + رفع ═══
     print("\n" + "═" * 60, flush=True)
-    print("⬇️  [الخطوة 3] تنزيل + ضغط + رفع بالترتيب...", flush=True)
+    print("⬇️  [الخطوة 6] تنزيل + ضغط + رفع بالترتيب...", flush=True)
     print("═" * 60, flush=True)
 
     await uploader.start()

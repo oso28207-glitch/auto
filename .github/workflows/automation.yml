@@ -18,11 +18,11 @@ on:
     paths:
       - 'downloader.py'
       - 'run_all.py'
-      - 'sources/**'
+      - 'build_site.py'
       - 'telegram_checker.py'
       - 'uploader.py'
       - 'config.py'
-      - 'build_site.py'
+      - 'sources/**'
       - '.github/workflows/automation.yml'
 
 permissions:
@@ -106,9 +106,10 @@ jobs:
           MAX_EPISODES_PER_RUN=0
           MAX_RUNTIME_SECONDS=9900
           SKIP_COMPRESS=false
-          COMPRESS_SCALE=240
-          COMPRESS_CRF=32
+          COMPRESS_SCALE=144
+          COMPRESS_CRF=28
           COMPRESS_PRESET=veryfast
+          COMPRESS_THREADS=2
           COMPRESS_AUDIO_BITRATE=32k
           COMPRESS_MAX_SIZE_MB=100
           M3U8_SEARCH_TIMEOUT=25
@@ -140,8 +141,9 @@ jobs:
           fi
           yt-dlp --version || echo "⚠️ yt-dlp لا يعمل"
 
-      # ★★★ عند الخطأ: توقف فوراً (بدون || true)
+      # ★★★ عند الخطأ: يتوقف (بدون || true)
       - name: 🚀 Run Automation
+        id: run_auto
         run: |
           if [ "${{ github.event.inputs.clean }}" = "true" ]; then
             echo "🧹 تشغيل مع تنظيف شامل..."
@@ -150,8 +152,9 @@ jobs:
             python run_all.py
           fi
 
+      # ★★★ حفظ نتائج الموقع حتى لو فشل التحميل
       - name: 💾 Save & Push
-        if: success()
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -171,7 +174,6 @@ jobs:
               break
             fi
             echo "⚠️ محاولة $i — pull..."; git pull --rebase --autostash || true
-            # حل تعارضات data/ بـ ours
             git checkout --ours data/ 2>/dev/null || true
             git checkout --ours docs/ 2>/dev/null || true
             git add data/ docs/ 2>/dev/null || true
