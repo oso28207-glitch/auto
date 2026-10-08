@@ -44,11 +44,17 @@ jobs:
     timeout-minutes: 340
 
     steps:
+      # ═══════════════════════════════════════════════════════
+      # 1) Checkout
+      # ═══════════════════════════════════════════════════════
       - name: 📥 Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
+      # ═══════════════════════════════════════════════════════
+      # 2) Python
+      # ═══════════════════════════════════════════════════════
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
@@ -56,12 +62,18 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
+      # ═══════════════════════════════════════════════════════
+      # 3) ffmpeg
+      # ═══════════════════════════════════════════════════════
       - name: 🎞️ Install ffmpeg
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
           ffmpeg -version | head -1
 
+      # ═══════════════════════════════════════════════════════
+      # 4) Chrome + Xvfb
+      # ═══════════════════════════════════════════════════════
       - name: 🌐 Install Chrome + Xvfb
         run: |
           sudo apt-get install -y -qq xvfb wget
@@ -74,12 +86,18 @@ jobs:
           sleep 2
           google-chrome --version
 
+      # ═══════════════════════════════════════════════════════
+      # 5) pip install
+      # ═══════════════════════════════════════════════════════
       - name: 📚 Install Python packages
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip check || true
 
+      # ═══════════════════════════════════════════════════════
+      # 6) .env
+      # ═══════════════════════════════════════════════════════
       - name: 📝 Create .env
         env:
           API_ID: ${{ secrets.API_ID }}
@@ -127,6 +145,9 @@ jobs:
           grep -v -E "API_HASH|SESSION_STRING|API_ID|CHANNEL_ID" .env
           echo "════════════════════════════════════════════════"
 
+      # ═══════════════════════════════════════════════════════
+      # 7) Diagnostics
+      # ═══════════════════════════════════════════════════════
       - name: 🔍 Diagnostics
         run: |
           echo "════════════════════════════════════════════════"
@@ -141,7 +162,10 @@ jobs:
           fi
           yt-dlp --version || echo "⚠️ yt-dlp لا يعمل"
 
-      # ★★★ عند الخطأ: يتوقف (بدون || true)
+      # ═══════════════════════════════════════════════════════
+      # 8) Run Automation
+      #    ★ بدون || true: عند الخطأ يتوقف الـ workflow
+      # ═══════════════════════════════════════════════════════
       - name: 🚀 Run Automation
         id: run_auto
         run: |
@@ -152,8 +176,11 @@ jobs:
             python run_all.py
           fi
 
-      # ★★★ حفظ نتائج الموقع حتى لو فشل التحميل
-      - name: 💾 Save & Push
+      # ═══════════════════════════════════════════════════════
+      # 9) Save & Push (final)
+      #    ★ if: always() — يدفع حتى لو فشل التحميل
+      # ═══════════════════════════════════════════════════════
+      - name: 💾 Save & Push (final)
         if: always()
         run: |
           git config user.name "github-actions[bot]"
@@ -166,22 +193,30 @@ jobs:
             exit 0
           fi
 
-          git commit -m "🤖 تحديث: $(date -u +'%Y-%m-%d %H:%M UTC')" || true
+          git commit -m "🤖 تحديث نهائي: $(date -u +'%Y-%m-%d %H:%M UTC')" || true
 
           for i in 1 2 3; do
             if git push; then
-              echo "✅ push ناجح"
+              echo "✅ push ناجح (محاولة $i)"
               break
             fi
-            echo "⚠️ محاولة $i — pull..."; git pull --rebase --autostash || true
+
+            echo "⚠️ محاولة $i فشلت — pull ثم دمج..."
+            git pull --rebase --autostash || true
+
+            # حل تعارضات data/ و docs/ بـ ours (الأحدث)
             git checkout --ours data/ 2>/dev/null || true
             git checkout --ours docs/ 2>/dev/null || true
             git add data/ docs/ 2>/dev/null || true
-            git rebase --continue 2>/dev/null || true
+
+            GIT_EDITOR=true git rebase --continue 2>/dev/null || true
+
             sleep 5
           done
 
-      # ★★★ حفظ السجل عند الفشل
+      # ═══════════════════════════════════════════════════════
+      # 10) حفظ السجل عند الفشل
+      # ═══════════════════════════════════════════════════════
       - name: 📤 Upload failure logs
         if: failure()
         uses: actions/upload-artifact@v4

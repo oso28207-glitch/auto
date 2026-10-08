@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-run_all.py — Shoof Automation v3.4
+run_all.py — Shoof Automation v3.5
 
-★ التغيير الرئيسي:
-    1) فحص Telegram (existing_tg)
-    2) ★ زحف المصادر أولاً (all_series) ← للصور والتصنيفات
-    3) بناء tg_series.json مع مطابقة posters من all_series
-    4) بناء الموقع (من Telegram)
-    5) تنزيل + ضغط + رفع الجديد فقط
+★ الترتيب الجديد:
+    1) فحص Telegram
+    2) زحف المصادر (للصور)
+    3) بناء tg_series.json مع الصور
+    4) بناء الموقع
+    4.5) ★ Push وسيط — الموقع يصبح live فوراً
+    5) ترتيب للتحميل
+    6) تنزيل + ضغط + رفع
+    7) Push نهائي (إذا كان هناك تغييرات)
 """
 import argparse
 import asyncio
@@ -15,6 +18,7 @@ import os
 import sys
 import json
 import shutil
+import subprocess
 import time
 import traceback
 from datetime import datetime, timezone
@@ -35,6 +39,89 @@ SKIPPED_LOG = DATA_DIR / "skipped_episodes.json"
 TG_SERIES = DATA_DIR / "tg_series.json"
 
 SOURCE_ORDER = {"u3seq": 0, "yam": 1, "egybest": 2}
+
+
+# ═══════════════════════════════════════════════════════════════
+# Git push
+# ═══════════════════════════════════════════════════════════════
+def _git_push_docs(force=False):
+    """
+    يدفع data/ و docs/ إلى GitHub.
+    يُستدعى بعد بناء الموقع (قبل التحميل) وبعد النهاية.
+    """
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        print("   ℹ️  ليس في GitHub Actions — تخطي push", flush=True)
+        return False
+
+    try:
+        subprocess.run(
+            ["git", "config", "user.name", "github-actions[bot]"],
+            capture_output=True, timeout=10,
+        )
+        subprocess.run(
+            ["git", "config", "user.email",
+             "github-actions[bot]@users.noreply.github.com"],
+            capture_output=True, timeout=10,
+        )
+
+        subprocess.run(
+            ["git", "add", "-f", "docs/", "data/"],
+            capture_output=True, timeout=30,
+        )
+
+        r = subprocess.run(
+            ["git", "diff", "--staged", "--quiet"],
+            capture_output=True, timeout=10,
+        )
+        if r.returncode == 0:
+            print("   ℹ️  لا تغييرات لدفعها", flush=True)
+            return False
+
+        ts = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
+        subprocess.run(
+            ["git", "commit", "-m", f"🤖 الموقع: {ts}"],
+            capture_output=True, timeout=30,
+        )
+
+        for i in range(3):
+            r = subprocess.run(
+                ["git", "push"], capture_output=True, text=True, timeout=90,
+            )
+            if r.returncode == 0:
+                print(f"   🚀 تم دفع الموقع إلى GitHub", flush=True)
+                return True
+
+            print(f"   ⚠️ محاولة push {i+1} فشلت، إعادة...", flush=True)
+            subprocess.run(
+                ["git", "pull", "--rebase", "--autostash"],
+                capture_output=True, timeout=90,
+            )
+            # حل تعارضات data/ و docs/ بـ ours
+            subprocess.run(
+                ["git", "checkout", "--ours", "data/"],
+                capture_output=True, timeout=30,
+            )
+            subprocess.run(
+                ["git", "checkout", "--ours", "docs/"],
+                capture_output=True, timeout=30,
+            )
+            subprocess.run(
+                ["git", "add", "data/", "docs/"],
+                capture_output=True, timeout=30,
+            )
+            subprocess.run(
+                ["git", "rebase", "--continue"],
+                capture_output=True, timeout=30,
+                env={**os.environ, "GIT_EDITOR": "true"},
+            )
+            time.sleep(3)
+
+        print(f"   ❌ فشل push بعد 3 محاولات", flush=True)
+        return False
+
+    except Exception as e:
+        print(f"   ⚠️ خطأ في git push: {str(e)[:150]}", flush=True)
+        return False
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -117,7 +204,6 @@ def _fetch(src):
 
 
 def _norm(s):
-    """تطبيع الاسم للمقارنة."""
     import re
     if not s:
         return ""
@@ -129,20 +215,17 @@ def _norm(s):
 
 
 def _find_source_match(tg_name, all_series):
-    """
-    يبحث عن مصدر مطابق لاسم Telegram.
-    يعيد dict المصدر أو None.
-    """
+    """يبحث عن مصدر مطابق لاسم Telegram."""
     tg_norm = _norm(tg_name)
     if not tg_norm:
         return None
 
-    # 1) مطابقة مباشرة
+    # مطابقة مباشرة
     for s in all_series:
         if _norm(s.get("name", "")) == tg_norm:
             return s
 
-    # 2) مطابقة جزئية
+    # مطابقة جزئية
     if len(tg_norm) >= 5:
         for s in all_series:
             s_norm = _norm(s.get("name", ""))
@@ -169,7 +252,7 @@ async def _scan_telegram():
 
 
 # ═══════════════════════════════════════════════════════════════
-# الخطوة 2: زحف المصادر (للحصول على posters + categories)
+# الخطوة 2: زحف المصادر
 # ═══════════════════════════════════════════════════════════════
 def _scrape_sources():
     print("\n" + "═" * 60, flush=True)
@@ -189,13 +272,9 @@ def _scrape_sources():
 
 
 # ═══════════════════════════════════════════════════════════════
-# الخطوة 3: بناء tg_series.json مع posters من المصادر
+# الخطوة 3: بناء tg_series.json مع صور من المصادر
 # ═══════════════════════════════════════════════════════════════
 def _build_tg_series(existing_tg, all_series=None):
-    """
-    يبني tg_series.json من Telegram.
-    إذا مررت all_series، نطابق الـ posters من المصادر.
-    """
     if all_series is None:
         all_series = []
 
@@ -213,7 +292,7 @@ def _build_tg_series(existing_tg, all_series=None):
             episodes = sorted(entry)
             message_ids = {}
 
-        # ★ مطابقة المصدر لجلب poster
+        # مطابقة المصدر لجلب poster + category
         poster = ""
         source_category = ""
         src_match = _find_source_match(display_name, all_series)
@@ -231,17 +310,9 @@ def _build_tg_series(existing_tg, all_series=None):
                 "url": f"https://t.me/{channel_id}/{mid}" if mid else "",
             })
 
-        # ★ name_enhanced للتصنيف الأدق
-        # إذا كان المصدر تركي مدبلج → نضيف التصنيف للاسم
-        enhanced_name = display_name
-        if source_category and "تركي" in source_category and "مدبلج" in source_category:
-            if "تركي" not in enhanced_name:
-                enhanced_name = f"{display_name} (تركي مدبلج)"
-
         series_list.append({
             "name": display_name,
             "display_name": display_name,
-            "enhanced_name": enhanced_name,
             "poster": poster,
             "category": source_category,
             "genre": "",
@@ -273,6 +344,7 @@ def _build_site_from_tg():
         print("   ✅ تم بناء الموقع", flush=True)
     except Exception as e:
         print(f"   ❌ فشل build_site: {e}", flush=True)
+        traceback.print_exc()
         raise
 
 
@@ -448,7 +520,7 @@ async def _process_series(series, existing_tg, uploaded, skipped_log):
 # ═══════════════════════════════════════════════════════════════
 async def _main_async(clean=False):
     print("╔" + "═" * 58 + "╗")
-    print("║" + " " * 9 + "شوف — Shoof Automation v3.4" + " " * 17 + "║")
+    print("║" + " " * 9 + "شوف — Shoof Automation v3.5" + " " * 17 + "║")
     print("╚" + "═" * 58 + "╝", flush=True)
 
     try:
@@ -477,6 +549,12 @@ async def _main_async(clean=False):
 
     # ═══ 4) بناء الموقع ═══
     _build_site_from_tg()
+
+    # ═══ 4.5) ★★★ Push وسيط — الموقع يصبح live فوراً ═══
+    print("\n" + "═" * 60, flush=True)
+    print("📤 [الخطوة 4.5] دفع الموقع إلى GitHub فوراً...", flush=True)
+    print("═" * 60, flush=True)
+    _git_push_docs(force=True)
 
     # ═══ 5) ترتيب للتحميل ═══
     if all_series:
@@ -587,6 +665,12 @@ async def _main_async(clean=False):
         print(f"\n⚠️  إجمالي الحلقات بدون URL: {total_skipped} "
               f"({len(skipped_log)} مسلسل)", flush=True)
 
+    # ═══ 7) Push نهائي ═══
+    print("\n" + "═" * 60, flush=True)
+    print("📤 [الخطوة 7] دفع التحديثات النهائية...", flush=True)
+    print("═" * 60, flush=True)
+    _git_push_docs(force=True)
+
     elapsed = (time.time() - start) / 60
     print(f"\n{'═' * 60}")
     print(f"⏱️  انتهى في {elapsed:.1f}د | ✅ {ok_total} مسلسل جديد")
@@ -605,6 +689,10 @@ def main():
     except Exception as e:
         print(f"\n❌ فشل حرج: {str(e)[:300]}", flush=True)
         traceback.print_exc()
+
+        # ★ محاولة push أخيرة قبل الفشل
+        print("\n📤 محاولة push أخيرة بعد الفشل...", flush=True)
+        _git_push_docs(force=True)
         return 1
 
 
