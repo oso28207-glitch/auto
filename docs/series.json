@@ -1,5 +1,5 @@
 {
-  "built_at": "2026-10-09T00:02:46.972904",
+  "built_at": "2026-10-08T21:58:46.111369",
   "series": [
     {
       "name": "احتمال حب",
@@ -38,7 +38,7 @@
       "episodes_count": 97,
       "eps": 97,
       "genre": "",
-      "category": "moslslat-turkiaa-modblga",
+      "category": "مسلسلات تركية مدبلجة",
       "last_updated": ""
     },
     {
@@ -48,7 +48,7 @@
       "episodes_count": 122,
       "eps": 122,
       "genre": "",
-      "category": "moslslat-turkiaa-modblga",
+      "category": "مسلسلات تركية مدبلجة",
       "last_updated": ""
     },
     {
@@ -58,7 +58,7 @@
       "episodes_count": 30,
       "eps": 30,
       "genre": "",
-      "category": "moslslat-turkiaa-modblga",
+      "category": "مسلسلات تركية مدبلجة",
       "last_updated": ""
     },
     {
@@ -68,7 +68,7 @@
       "episodes_count": 8,
       "eps": 8,
       "genre": "",
-      "category": "moslslat-turkiaa-modblga",
+      "category": "مسلسلات تركية مدبلجة",
       "last_updated": ""
     },
     {
@@ -78,7 +78,7 @@
       "episodes_count": 37,
       "eps": 37,
       "genre": "",
-      "category": "goda-akbar-modblge",
+      "category": "مسلسلات مدبلجة",
       "last_updated": ""
     },
     {
@@ -98,7 +98,7 @@
       "episodes_count": 164,
       "eps": 164,
       "genre": "",
-      "category": "مسلسلات مترجمة",
+      "category": "مسلسلات مدبلجة",
       "last_updated": ""
     },
     {
@@ -108,7 +108,7 @@
       "episodes_count": 10,
       "eps": 10,
       "genre": "",
-      "category": "مسلسلات مترجمة",
+      "category": "مسلسلات مدبلجة",
       "last_updated": ""
     },
     {
@@ -118,17 +118,7 @@
       "episodes_count": 10,
       "eps": 10,
       "genre": "",
-      "category": "مسلسلات تركية مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "فتاة النافذة الموسم 3",
-      "slug": "فتاة-النافذة-الموسم-3-0f263a7a",
-      "poster": "posters/placeholder.jpg",
-      "episodes_count": 44,
-      "eps": 44,
-      "genre": "",
-      "category": "",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -138,7 +128,7 @@
       "episodes_count": 55,
       "eps": 55,
       "genre": "",
-      "category": "مسلسلات تركية مترجمة",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -148,7 +138,7 @@
       "episodes_count": 15,
       "eps": 15,
       "genre": "",
-      "category": "",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -168,7 +158,7 @@
       "episodes_count": 30,
       "eps": 30,
       "genre": "",
-      "category": "",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -178,17 +168,7 @@
       "episodes_count": 15,
       "eps": 15,
       "genre": "",
-      "category": "",
-      "last_updated": ""
-    },
-    {
-      "name": "حد اقصى الموسم 1",
-      "slug": "حد-اقصى-الموسم-1-30b58646",
-      "poster": "posters/حد-اقصى-الموسم-1-30b58646.png",
-      "episodes_count": 15,
-      "eps": 15,
-      "genre": "",
-      "category": "",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -208,7 +188,7 @@
       "episodes_count": 15,
       "eps": 15,
       "genre": "",
-      "category": "",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -218,7 +198,7 @@
       "episodes_count": 15,
       "eps": 15,
       "genre": "",
-      "category": "",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -228,7 +208,7 @@
       "episodes_count": 15,
       "eps": 15,
       "genre": "",
-      "category": "",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -238,7 +218,7 @@
       "episodes_count": 15,
       "eps": 15,
       "genre": "",
-      "category": "",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -252,23 +232,13 @@
       "last_updated": ""
     },
     {
-      "name": "التفاح الحرام الموسم 6",
-      "slug": "التفاح-الحرام-الموسم-6-89d43715",
-      "poster": "posters/placeholder.jpg",
-      "episodes_count": 99,
-      "eps": 99,
-      "genre": "",
-      "category": "",
-      "last_updated": ""
-    },
-    {
       "name": "لعبة الحظ الموسم 1",
       "slug": "لعبة-الحظ-الموسم-1-702e2e43",
       "poster": "posters/لعبة-الحظ-الموسم-1-702e2e43.jpg",
       "episodes_count": 58,
       "eps": 58,
       "genre": "",
-      "category": "مسلسلات تركية مترجمة",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -278,7 +248,7 @@
       "episodes_count": 17,
       "eps": 17,
       "genre": "",
-      "category": "مسلسلات تركية مترجمة",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -298,7 +268,7 @@
       "episodes_count": 15,
       "eps": 15,
       "genre": "",
-      "category": "",
+      "category": "مسلسلات مترجمة",
       "last_updated": ""
     },
     {
@@ -418,7 +388,37 @@
       "episodes_count": 15,
       "eps": 15,
       "genre": "",
-      "category": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
+      "name": "فتاة النافذة الموسم 3",
+      "slug": "فتاة-النافذة-الموسم-3-0f263a7a",
+      "poster": "posters/placeholder.jpg",
+      "episodes_count": 44,
+      "eps": 44,
+      "genre": "",
+      "category": "مسلسلات وأفلام",
+      "last_updated": ""
+    },
+    {
+      "name": "حد اقصى الموسم 1",
+      "slug": "حد-اقصى-الموسم-1-30b58646",
+      "poster": "posters/حد-اقصى-الموسم-1-30b58646.png",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات وأفلام",
+      "last_updated": ""
+    },
+    {
+      "name": "التفاح الحرام الموسم 6",
+      "slug": "التفاح-الحرام-الموسم-6-89d43715",
+      "poster": "posters/placeholder.jpg",
+      "episodes_count": 99,
+      "eps": 99,
+      "genre": "",
+      "category": "مسلسلات وأفلام",
       "last_updated": ""
     },
     {
@@ -428,7 +428,7 @@
       "episodes_count": 10,
       "eps": 10,
       "genre": "",
-      "category": "",
+      "category": "مسلسلات وأفلام",
       "last_updated": ""
     }
   ]

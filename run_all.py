@@ -15,6 +15,7 @@ run_all.py — Shoof Automation v3.5
 import argparse
 import asyncio
 import os
+import re
 import sys
 import json
 import shutil
@@ -273,16 +274,31 @@ def _search_enabled():
 
 
 def _find_source_match_with_search(tg_name, all_series):
-    """مطابقة عادية + طبقة احتياطية عبر البحث المباشر في yam (لجلب الصور)."""
+    """مطابقة عادية + طبقة احتياطية عبر البحث المباشر في yam (لجلب الصور + التصنيف)."""
     m = _find_source_match(tg_name, all_series)
-    if m and m.get("poster"):
+    # إن توفّرت الصورة والتصنيف معاً فلا حاجة للبحث
+    if m and m.get("poster") and m.get("category"):
         return m
 
     if _search_enabled():
         try:
             from sources.yam import search_series
             sm = search_series(tg_name)
-            if sm and sm.get("poster"):
+            # إن لم نجد، نجرّب الاسم بدون لاحقة الموسم/الرقم
+            if not sm:
+                base = re.sub(r"\s+الموسم\s+\d+\s*$", "", tg_name).strip()
+                base = re.sub(r"\s+\d+\s*$", "", base).strip()
+                if base and base != tg_name:
+                    sm = search_series(base)
+            # ★ نقبل نتيجة البحث إن توفّر فيها صورة أو تصنيف (سابقاً كان يشترط الصورة فيُفقد التصنيف)
+            if sm and (sm.get("poster") or sm.get("category")):
+                if m:
+                    merged = dict(m)
+                    if not merged.get("poster"):
+                        merged["poster"] = sm.get("poster", "") or ""
+                    if not merged.get("category"):
+                        merged["category"] = sm.get("category", "") or ""
+                    return merged
                 return sm
         except Exception as e:
             print(f"      ⚠️ search fallback '{tg_name}': {str(e)[:80]}", flush=True)
@@ -687,6 +703,8 @@ async def _main_async(clean=False):
             "name": name,
             "poster": series.get("poster", ""),
             "genre": series.get("genre", ""),
+            # ★ نحفظ التصنيف حتى لا يُفقد بين التشغيلات (كان يُحذف سابقاً)
+            "category": series.get("category", ""),
             "source": series.get("_src", "?"),
             "episodes": all_eps,
             "episodes_count": len(all_eps),
