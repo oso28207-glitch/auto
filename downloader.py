@@ -909,68 +909,86 @@ def _u3seq(sb, url, out_path):
 # ★★★ yam — يدعم عدة سيرفرات (v57)
 # ═══════════════════════════════════════════════════════════════
 def _yam(sb, url, out_path):
-    print(f"🖥️  فتح: {url[:90]}", flush=True)
-    _open(sb, url, wait=2)
+    """
+    v58: يفتح صفحة السيرفرات see.php ويستخرج الروابط من ul.WatchList > li[data-embed-url]
+    (كان الإصدار القديم يفتح watch.php ويجمع iframes الإعلانات فقط).
+    """
+    # ── بناء رابط see.php من watch.php?vid=XXX ──
+    see_url = url
+    m = re.search(r"[?&]vid=([A-Za-z0-9]+)", url)
+    if m:
+        vid = m.group(1)
+        base = _origin(url) or "https://yam.ahwaktv.net"
+        see_url = f"{base}/see.php?vid={vid}"
 
-    # جمع جميع iframes الفريدة
-    iframes = _eval(sb, """
-        (function(){
-            var out = [];
-            document.querySelectorAll('iframe').forEach(function(f){
-                if(f.src && f.src.startsWith('http')
-                    && f.src.indexOf('google') === -1
-                    && f.src.indexOf('facebook') === -1
-                    && out.indexOf(f.src) === -1){
-                    out.push(f.src);
-                }
-            });
-            return out;
-        })();
-    """, []) or []
+    print(f"🖥️  فتح صفحة السيرفرات: {see_url[:90]}", flush=True)
+    _open(sb, see_url, wait=2)
 
-    if not iframes:
-        # انتظر ظهور iframes
-        for _ in range(6):
-            sb.cdp.sleep(1)
-            iframes = _eval(sb, """
-                (function(){
-                    var out = [];
-                    document.querySelectorAll('iframe').forEach(function(f){
-                        if(f.src && f.src.startsWith('http')
-                            && f.src.indexOf('google') === -1
-                            && f.src.indexOf('facebook') === -1
-                            && out.indexOf(f.src) === -1){
-                            out.push(f.src);
-                        }
-                    });
-                    return out;
-                })();
-            """, []) or []
-            if iframes: break
+    # ── استخراج روابط السيرفرات من ul.WatchList > li[data-embed-url] ──
+    servers = []
+    for _ in range(8):
+        sb.cdp.sleep(0.6)
+        servers = _eval(sb, """
+            (function(){
+                var out = [];
+                document.querySelectorAll('ul.WatchList li[data-embed-url]').forEach(function(li){
+                    var u = (li.getAttribute('data-embed-url')||'').trim();
+                    if(u && u.indexOf('http')===0 && out.indexOf(u)===-1) out.push(u);
+                });
+                return out;
+            })();
+        """, []) or []
+        if servers:
+            break
 
-    if not iframes:
-        raise RuntimeError("لا iframe في yam")
+    # ── خطة بديلة 1: أي عنصر فيه data-embed-url ──
+    if not servers:
+        servers = _eval(sb, """
+            (function(){
+                var out = [];
+                document.querySelectorAll('[data-embed-url]').forEach(function(el){
+                    var u = (el.getAttribute('data-embed-url')||'').trim();
+                    if(u && u.indexOf('http')===0 && out.indexOf(u)===-1) out.push(u);
+                });
+                return out;
+            })();
+        """, []) or []
 
-    print(f"   🎯 {len(iframes)} iframe/سيرفر", flush=True)
+    # ── خطة بديلة 2: iframe المشغّل (Playerholder) ──
+    if not servers:
+        servers = _eval(sb, """
+            (function(){
+                var out = [];
+                var f = document.querySelector('#Playerholder iframe, .embedded-video iframe, iframe');
+                if(f && f.src && f.src.indexOf('http')===0) out.push(f.src);
+                return out;
+            })();
+        """, []) or []
 
-    # جرّب كل iframe
-    for i, iframe_url in enumerate(iframes):
-        iframe_url = iframe_url.replace("&amp;", "&")
-        print(f"\n   ── سيرفر {i+1}/{len(iframes)} ──", flush=True)
+    if not servers:
+        raise RuntimeError("لا سيرفرات في yam (see.php)")
+
+    print(f"   🎯 {len(servers)} سيرفر", flush=True)
+    for u in servers[:8]:
+        print(f"      · {u[:100]}", flush=True)
+
+    # ── جرّب كل سيرفر بالترتيب ──
+    for i, embed in enumerate(servers[:8]):
+        embed = embed.replace("&amp;", "&")
+        print(f"\n   ── سيرفر {i+1}/{len(servers)} ──", flush=True)
         try:
-            res = _extract_from_iframe(sb, iframe_url, out_path)
+            res = _extract_from_iframe(sb, embed, out_path)
             if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
-                print(f"   ✅ نجح السيرفر {i+1}/{len(iframes)}", flush=True)
+                print(f"   ✅ نجح السيرفر {i+1}/{len(servers)}", flush=True)
                 return res
         except Exception as e:
             print(f"   ⚠️ سيرفر {i+1} فشل: {str(e)[:100]}", flush=True)
 
-        # ارجع للصفحة الأصلية قبل السيرفر التالي
-        if i < len(iframes) - 1:
-            _open(sb, url, wait=1.5)
+        # ارجع لصفحة السيرفرات قبل السيرفر التالي
+        if i < len(servers) - 1:
+            _open(sb, see_url, wait=1.2)
 
-    raise RuntimeError(f"فشل كل السيرفرات ({len(iframes)})")
-
+    raise RuntimeError(f"فشل كل السيرفرات ({len(servers)})")
 
 # ═══════════════════════════════════════════════════════════════
 # نقطة الدخول
