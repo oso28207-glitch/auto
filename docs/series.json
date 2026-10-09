@@ -1,22 +1,52 @@
 {
-  "built_at": "2026-10-09T01:04:41.314404",
+  "built_at": "2026-10-09T06:50:23.499901",
   "series": [
     {
-      "name": "احتمال حب",
-      "slug": "احتمال-حب-1072df4b",
-      "poster": "posters/احتمال-حب-1072df4b.jpg",
-      "episodes_count": 65,
-      "eps": 65,
+      "name": "العشق المر",
+      "slug": "العشق-المر-351f895c",
+      "poster": "posters/العشق-المر-351f895c.png",
+      "episodes_count": 32,
+      "eps": 32,
       "genre": "",
       "category": "مسلسلات تركية مدبلجة",
       "last_updated": ""
     },
     {
-      "name": "مسلسل الخفقان",
-      "slug": "مسلسل-الخفقان-2b7c7d34",
-      "poster": "posters/مسلسل-الخفقان-2b7c7d34.jpg",
-      "episodes_count": 33,
-      "eps": 33,
+      "name": "الخفقان",
+      "slug": "الخفقان-dad72718",
+      "poster": "posters/الخفقان-dad72718.jpg",
+      "episodes_count": 42,
+      "eps": 42,
+      "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
+      "last_updated": ""
+    },
+    {
+      "name": "الحقيقة والخيال",
+      "slug": "الحقيقة-والخيال-b4f5d201",
+      "poster": "posters/الحقيقة-والخيال-b4f5d201.jpg",
+      "episodes_count": 2,
+      "eps": 2,
+      "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
+      "last_updated": ""
+    },
+    {
+      "name": "احتمال حب",
+      "slug": "احتمال-حب-1072df4b",
+      "poster": "posters/احتمال-حب-1072df4b.jpg",
+      "episodes_count": 75,
+      "eps": 75,
+      "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
+      "last_updated": ""
+    },
+    {
+      "name": "ابواب القدر 2 الموسم الثاني",
+      "slug": "ابواب-القدر-2-الموسم-الثاني-c49eb2af",
+      "poster": "posters/ابواب-القدر-2-الموسم-الثاني-c49eb2af.png",
+      "episodes_count": 1,
+      "eps": 1,
       "genre": "",
       "category": "مسلسلات تركية مدبلجة",
       "last_updated": ""
