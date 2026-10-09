@@ -1,12 +1,22 @@
 {
-  "built_at": "2026-10-09T06:50:23.499901",
+  "built_at": "2026-10-09T13:04:23.717641",
   "series": [
+    {
+      "name": "القلعة المنظمة",
+      "slug": "القلعة-المنظمة-acfeac53",
+      "poster": "posters/القلعة-المنظمة-acfeac53.png",
+      "episodes_count": 25,
+      "eps": 25,
+      "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
+      "last_updated": ""
+    },
     {
       "name": "العشق المر",
       "slug": "العشق-المر-351f895c",
       "poster": "posters/العشق-المر-351f895c.png",
-      "episodes_count": 32,
-      "eps": 32,
+      "episodes_count": 45,
+      "eps": 45,
       "genre": "",
       "category": "مسلسلات تركية مدبلجة",
       "last_updated": ""
