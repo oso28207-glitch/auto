@@ -862,10 +862,6 @@
           "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e01-444x/"
         },
         {
-          "num": 2,
-          "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e02-n6ey/"
-        },
-        {
           "num": 3,
           "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e03-4bd3/"
         },
@@ -876,22 +872,6 @@
         {
           "num": 5,
           "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e05-6c4r/"
-        },
-        {
-          "num": 6,
-          "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e06-bicy/"
-        },
-        {
-          "num": 7,
-          "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e07-3y4h/"
-        },
-        {
-          "num": 8,
-          "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e08-hzpf/"
-        },
-        {
-          "num": 9,
-          "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e09-66ob/"
         },
         {
           "num": 10,
@@ -1086,7 +1066,7 @@
           "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e57-jjip/"
         }
       ],
-      "episodes_count": 57
+      "episodes_count": 52
     },
     {
       "name": "مسلسل الوريث - ولي العهد",
@@ -2771,9 +2751,29 @@
         {
           "num": 90,
           "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-90/"
+        },
+        {
+          "num": 91,
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-91/"
+        },
+        {
+          "num": 92,
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-92/"
+        },
+        {
+          "num": 93,
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-93/"
+        },
+        {
+          "num": 94,
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-94/"
+        },
+        {
+          "num": 95,
+          "url": "https://u.3seq.com/video/modablaj-daha-on-yedi-episode-95/"
         }
       ],
-      "episodes_count": 90
+      "episodes_count": 95
     },
     {
       "name": "مسلسل نساء حائرات الموسم الخامس",
@@ -350311,9 +350311,17 @@
         {
           "num": 18,
           "url": "https://yam.ahwaktv.net/watch.php?vid=ac1b81374"
+        },
+        {
+          "num": 19,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=542363055"
+        },
+        {
+          "num": 20,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=542363055"
         }
       ],
-      "episodes_count": 18
+      "episodes_count": 20
     },
     {
       "name": "مسلسل Dexter",
@@ -379832,19 +379840,19 @@
       "episodes": [
         {
           "num": 1,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=1b6362586"
+          "url": "https://yam.ahwaktv.net/watch.php?vid=3Da2904ed"
         },
         {
           "num": 2,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=1b6362586"
+          "url": "https://yam.ahwaktv.net/watch.php?vid=3Da2904ed"
         },
         {
           "num": 3,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=db0ee6432"
+          "url": "https://yam.ahwaktv.net/watch.php?vid=B9540e7bc"
         },
         {
           "num": 4,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=db0ee6432"
+          "url": "https://yam.ahwaktv.net/watch.php?vid=B9540e7bc"
         },
         {
           "num": 5,
@@ -404638,5 +404646,5 @@
       "episodes_count": 124
     }
   ],
-  "last_update": "2026-10-10T14:46:52.333819+00:00"
+  "last_update": "2026-10-10T19:48:07.935178+00:00"
 }
