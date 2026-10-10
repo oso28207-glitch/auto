@@ -874,14 +874,6 @@
           "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e05-6c4r/"
         },
         {
-          "num": 10,
-          "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e10-ba6f/"
-        },
-        {
-          "num": 11,
-          "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e11-zyls/"
-        },
-        {
           "num": 12,
           "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e12-otla/"
         },
@@ -1066,7 +1058,7 @@
           "url": "https://u.3seq.com/video/modablaj-sahipsizler-episode-s02e57-jjip/"
         }
       ],
-      "episodes_count": 52
+      "episodes_count": 50
     },
     {
       "name": "مسلسل الوريث - ولي العهد",
@@ -1462,10 +1454,6 @@
       "source": "u3seq",
       "episodes": [
         {
-          "num": 41,
-          "url": "https://u.3seq.com/video/esref-ruya-episode-41/"
-        },
-        {
           "num": 42,
           "url": "https://u.3seq.com/video/esref-ruya-episode-42/"
         },
@@ -1634,7 +1622,7 @@
           "url": "https://u.3seq.com/video/modablaj-esref-ruya-episode-152/"
         }
       ],
-      "episodes_count": 43,
+      "episodes_count": 42,
       "is_new": false
     },
     {
@@ -281125,9 +281113,13 @@
         {
           "num": 2,
           "url": "https://u.3seq.com/video/omur-usta-episode-02/"
+        },
+        {
+          "num": 3,
+          "url": "https://u.3seq.com/video/omur-usta-episode-03/"
         }
       ],
-      "episodes_count": 2
+      "episodes_count": 3
     },
     {
       "name": "مسلسل الممثل المساعد",
@@ -281933,9 +281925,13 @@
         {
           "num": 187,
           "url": "https://u.3seq.com/video/teskilat-episode-187/"
+        },
+        {
+          "num": 188,
+          "url": "https://u.3seq.com/video/teskilat-episode-188/"
         }
       ],
-      "episodes_count": 187
+      "episodes_count": 188
     },
     {
       "name": "مسلسل اليوم الاخير",
@@ -283657,9 +283653,13 @@
         {
           "num": 19,
           "url": "https://u.3seq.com/video/daha-on-yedi-episode-19/"
+        },
+        {
+          "num": 20,
+          "url": "https://u.3seq.com/video/daha-on-yedi-episode-20/"
         }
       ],
-      "episodes_count": 19
+      "episodes_count": 20
     },
     {
       "name": "مسلسل قانون الطبيعة",
@@ -404646,5 +404646,5 @@
       "episodes_count": 124
     }
   ],
-  "last_update": "2026-10-10T19:48:07.935178+00:00"
+  "last_update": "2026-10-10T23:57:39.272669+00:00"
 }
