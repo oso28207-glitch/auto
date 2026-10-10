@@ -83,9 +83,169 @@
     {
       "episode": 75,
       "reason": "download_failed"
+    },
+    {
+      "episode": 55,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 56,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 57,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 58,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 59,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 60,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 61,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 62,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 63,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 64,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 65,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 66,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 67,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 68,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 69,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 70,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 71,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 72,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 73,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 74,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 75,
+      "reason": "download_failed"
     }
   ],
   "مسلسل انت من احببت 2 الموسم الثاني": [
+    {
+      "episode": 2,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 3,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 4,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 5,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 6,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 7,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 8,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 9,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 10,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 11,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 12,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 13,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 14,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 15,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 16,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 17,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 18,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 19,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 20,
+      "reason": "download_failed"
+    },
     {
       "episode": 2,
       "reason": "download_failed"
@@ -167,15 +327,51 @@
     {
       "episode": 1,
       "reason": "download_failed"
+    },
+    {
+      "episode": 1,
+      "reason": "download_failed"
     }
   ],
   "مسلسل باهار": [
     {
       "episode": 4,
       "reason": "download_failed"
+    },
+    {
+      "episode": 4,
+      "reason": "download_failed"
     }
   ],
   "مسلسل ثلاث اخوات": [
+    {
+      "episode": 5,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 8,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 11,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 12,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 25,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 34,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 122,
+      "reason": "download_failed"
+    },
     {
       "episode": 5,
       "reason": "download_failed"
@@ -233,15 +429,219 @@
     {
       "episode": 25,
       "reason": "download_failed"
+    },
+    {
+      "episode": 1,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 2,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 4,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 8,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 22,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 23,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 25,
+      "reason": "download_failed"
     }
   ],
   "مسلسل حكاية زواج": [
     {
       "episode": 3,
       "reason": "download_failed"
+    },
+    {
+      "episode": 3,
+      "reason": "download_failed"
     }
   ],
   "مسلسل حلم اشرف": [
+    {
+      "episode": 41,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 42,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 43,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 44,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 45,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 46,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 47,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 117,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 118,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 119,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 120,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 121,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 122,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 123,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 124,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 125,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 126,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 127,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 128,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 129,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 130,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 131,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 132,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 133,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 134,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 135,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 136,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 137,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 138,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 139,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 140,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 141,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 142,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 143,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 144,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 145,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 146,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 147,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 148,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 149,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 150,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 151,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 152,
+      "reason": "download_failed"
+    },
     {
       "episode": 41,
       "reason": "download_failed"
@@ -447,15 +847,71 @@
     {
       "episode": 119,
       "reason": "download_failed"
+    },
+    {
+      "episode": 1,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 2,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 3,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 4,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 5,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 6,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 59,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 119,
+      "reason": "download_failed"
     }
   ],
   "مسلسل شراب التوت 3 الموسم الثالث": [
     {
       "episode": 127,
       "reason": "download_failed"
+    },
+    {
+      "episode": 127,
+      "reason": "download_failed"
     }
   ],
   "مسلسل عندما يعشق الرجل": [
+    {
+      "episode": 1,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 3,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 4,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 17,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 19,
+      "reason": "download_failed"
+    },
     {
       "episode": 1,
       "reason": "download_failed"
@@ -824,6 +1280,500 @@
     },
     {
       "episode": 90,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 1,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 2,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 3,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 4,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 5,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 6,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 7,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 9,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 10,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 11,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 12,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 13,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 14,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 15,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 16,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 17,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 18,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 19,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 20,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 21,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 22,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 23,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 24,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 25,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 26,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 27,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 28,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 29,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 30,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 32,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 33,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 34,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 35,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 36,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 37,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 38,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 39,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 40,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 41,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 42,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 43,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 45,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 46,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 47,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 48,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 49,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 50,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 51,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 52,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 53,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 54,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 55,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 56,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 57,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 58,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 59,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 60,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 61,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 62,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 63,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 64,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 65,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 66,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 67,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 68,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 69,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 70,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 71,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 72,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 73,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 74,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 75,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 76,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 77,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 78,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 79,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 80,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 81,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 82,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 83,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 84,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 85,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 86,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 87,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 88,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 89,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 90,
+      "reason": "download_failed"
+    }
+  ],
+  "مسلسل في الظل": [
+    {
+      "episode": 45,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 46,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 47,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 48,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 49,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 50,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 51,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 52,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 53,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 54,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 55,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 56,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 57,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 58,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 59,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 60,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 61,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 62,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 63,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 64,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 65,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 66,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 67,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 68,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 69,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 70,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 71,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 72,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 73,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 74,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 75,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 76,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 77,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 78,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 79,
+      "reason": "download_failed"
+    },
+    {
+      "episode": 80,
       "reason": "download_failed"
     }
   ]

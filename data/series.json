@@ -1269,7 +1269,7 @@
         }
       ],
       "episodes_count": 30,
-      "is_new": true
+      "is_new": false
     },
     {
       "name": "مسلسل انت من احببت 2 الموسم الثاني",
@@ -2105,7 +2105,6 @@
       "name": "مسلسل في الظل",
       "poster": "https://u.3seq.cam/wp-content/uploads/2026/03/1-347x520.png",
       "genre": "",
-      "category": "مسلسلات تركية مدبلجة",
       "source": "u3seq",
       "episodes": [
         {
@@ -2253,7 +2252,8 @@
           "url": "https://u.3seq.com/video/modablaj-yeralti-episode-80/"
         }
       ],
-      "episodes_count": 36
+      "episodes_count": 36,
+      "is_new": false
     },
     {
       "name": "مسلسل لعبة الحياة",
@@ -4499,10 +4499,6 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=Bede2e14b"
         },
         {
-          "num": 500,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=Ae8f25612"
-        },
-        {
           "num": 501,
           "url": "https://yam.ahwaktv.net/watch.php?vid=cb451a0ba"
         },
@@ -4695,7 +4691,7 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=f0b97cb63"
         }
       ],
-      "episodes_count": 71
+      "episodes_count": 70
     },
     {
       "name": "الاخوة بربروس",
@@ -13683,10 +13679,6 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=c27c56392"
         },
         {
-          "num": 48,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=ae9f4c1b6"
-        },
-        {
           "num": 49,
           "url": "https://yam.ahwaktv.net/watch.php?vid=e0b23a90d"
         },
@@ -13747,7 +13739,7 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=edfec8b66"
         }
       ],
-      "episodes_count": 30
+      "episodes_count": 29
     },
     {
       "name": "ليلى",
@@ -14241,15 +14233,11 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=db392c428"
         },
         {
-          "num": 58,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=aec57a07f"
-        },
-        {
           "num": 59,
           "url": "https://yam.ahwaktv.net/watch.php?vid=cacd64b79"
         }
       ],
-      "episodes_count": 26
+      "episodes_count": 25
     },
     {
       "name": "متاهة الحب",
@@ -19696,6 +19684,74 @@
       "episodes_count": 60
     },
     {
+      "name": "أكاديمية الخيول أحادية القرن: كشف الأسرار الموسم الاول",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/e18a9349a-1.jpg",
+      "genre": "",
+      "category": "moslslat-modblga",
+      "source": "yam",
+      "episodes": [
+        {
+          "num": 1,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=e18a9349a"
+        },
+        {
+          "num": 2,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=6b28e0d08"
+        },
+        {
+          "num": 3,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=d1b68a24c"
+        },
+        {
+          "num": 4,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=88d670059"
+        },
+        {
+          "num": 5,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=ff0b5b9c7"
+        },
+        {
+          "num": 6,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=2c2486f64"
+        },
+        {
+          "num": 7,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=5665728ee"
+        },
+        {
+          "num": 8,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=73bb49050"
+        }
+      ],
+      "episodes_count": 8
+    },
+    {
+      "name": "أكاديمية الخيول أحادية القرن: كشف الأسرار الموسم الثاني",
+      "poster": "https://yam.ahwaktv.net/uploads/thumbs/af5197b7a-1.jpg",
+      "genre": "",
+      "category": "moslslat-modblga",
+      "source": "yam",
+      "episodes": [
+        {
+          "num": 1,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=af5197b7a"
+        },
+        {
+          "num": 2,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=f91efcfa2"
+        },
+        {
+          "num": 3,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=915e99633"
+        },
+        {
+          "num": 4,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=6d4dd1b84"
+        }
+      ],
+      "episodes_count": 4
+    },
+    {
       "name": "أميرة بلا تاج مدبلج",
       "poster": "https://yam.ahwaktv.net/uploads/custom-logo.png",
       "genre": "",
@@ -20249,10 +20305,6 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=d0e920837"
         },
         {
-          "num": 17,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=ae711c55a"
-        },
-        {
           "num": 19,
           "url": "https://yam.ahwaktv.net/watch.php?vid=cca31efb4"
         },
@@ -20309,7 +20361,7 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=dd35b41ef"
         }
       ],
-      "episodes_count": 19
+      "episodes_count": 18
     },
     {
       "name": "اتصل بمدير اعمالى مدبلج",
@@ -48621,10 +48673,6 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=ec34cc7f3"
         },
         {
-          "num": 39,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=ae8fcce70"
-        },
-        {
           "num": 42,
           "url": "https://yam.ahwaktv.net/watch.php?vid=f93f614be"
         },
@@ -48669,7 +48717,7 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=e37586815"
         }
       ],
-      "episodes_count": 24
+      "episodes_count": 23
     },
     {
       "name": "الروح العاشقة مدبلج",
@@ -50251,10 +50299,6 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=c2609ccd0"
         },
         {
-          "num": 22,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=ae7cf2799"
-        },
-        {
           "num": 23,
           "url": "https://yam.ahwaktv.net/watch.php?vid=df76e388e"
         },
@@ -50324,7 +50368,7 @@
         },
         {
           "num": 54,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=ae8806a87"
+          "url": "https://yam.ahwaktv.net/watch.php?vid=bae6f2f05"
         },
         {
           "num": 55,
@@ -50387,7 +50431,7 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=f317da39a"
         }
       ],
-      "episodes_count": 44
+      "episodes_count": 43
     },
     {
       "name": "الطفل مدبلج",
@@ -78791,10 +78835,6 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=cede25b83"
         },
         {
-          "num": 13,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=aeb81c780"
-        },
-        {
           "num": 20,
           "url": "https://yam.ahwaktv.net/watch.php?vid=bb07a0e68"
         },
@@ -79079,7 +79119,7 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=cc7bf3c25"
         }
       ],
-      "episodes_count": 75
+      "episodes_count": 74
     },
     {
       "name": "انمي ون بيس",
@@ -107221,10 +107261,6 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=d288f4597"
         },
         {
-          "num": 72,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=aeb72e73e"
-        },
-        {
           "num": 93,
           "url": "https://yam.ahwaktv.net/watch.php?vid=eb23adc4d"
         },
@@ -107297,7 +107333,7 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=b4f0b7929"
         }
       ],
-      "episodes_count": 37
+      "episodes_count": 36
     },
     {
       "name": "رحلة لاكشمي مدبلج",
@@ -118897,10 +118933,6 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=d2f04eb44"
         },
         {
-          "num": 49,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=ae9a41212"
-        },
-        {
           "num": 51,
           "url": "https://yam.ahwaktv.net/watch.php?vid=b0e7a54e7"
         },
@@ -119009,7 +119041,7 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=ee082b4a5"
         }
       ],
-      "episodes_count": 41
+      "episodes_count": 40
     },
     {
       "name": "شركة العائلة مدبلج",
@@ -119677,10 +119709,6 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=e8c014a53"
         },
         {
-          "num": 21,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=aebeba596"
-        },
-        {
           "num": 23,
           "url": "https://yam.ahwaktv.net/watch.php?vid=d67fb3607"
         },
@@ -119701,7 +119729,7 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=fba67f623"
         }
       ],
-      "episodes_count": 10
+      "episodes_count": 9
     },
     {
       "name": "ضيق النفس مدبلج",
@@ -123443,10 +123471,6 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=D32a32586"
         },
         {
-          "num": 15,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=Aed13faf7"
-        },
-        {
           "num": 17,
           "url": "https://yam.ahwaktv.net/watch.php?vid=ccf1489b8"
         },
@@ -123479,7 +123503,7 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=d323daa87"
         }
       ],
-      "episodes_count": 14
+      "episodes_count": 13
     },
     {
       "name": "عائلتي مدبلج",
@@ -159520,6 +159544,112 @@
         }
       ],
       "episodes_count": 372
+    },
+    {
+      "name": "مسلسل أكاديمية الخيول أحادية القرن: كشف الأسرار مدبلج",
+      "poster": "https://yam.ahwaktv.net/uploads/custom-logo.png",
+      "genre": "",
+      "category": "",
+      "source": "yam",
+      "episodes": [
+        {
+          "num": 1,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=e18a9349a"
+        },
+        {
+          "num": 2,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=e18a9349a"
+        },
+        {
+          "num": 3,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=6b28e0d08"
+        },
+        {
+          "num": 4,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=6b28e0d08"
+        },
+        {
+          "num": 5,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=d1b68a24c"
+        },
+        {
+          "num": 6,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=d1b68a24c"
+        },
+        {
+          "num": 7,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=88d670059"
+        },
+        {
+          "num": 8,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=88d670059"
+        },
+        {
+          "num": 9,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=ff0b5b9c7"
+        },
+        {
+          "num": 10,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=ff0b5b9c7"
+        },
+        {
+          "num": 11,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=2c2486f64"
+        },
+        {
+          "num": 12,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=2c2486f64"
+        },
+        {
+          "num": 13,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=5665728ee"
+        },
+        {
+          "num": 14,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=5665728ee"
+        },
+        {
+          "num": 15,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=73bb49050"
+        },
+        {
+          "num": 16,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=73bb49050"
+        },
+        {
+          "num": 17,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=af5197b7a"
+        },
+        {
+          "num": 18,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=af5197b7a"
+        },
+        {
+          "num": 19,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=f91efcfa2"
+        },
+        {
+          "num": 20,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=f91efcfa2"
+        },
+        {
+          "num": 21,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=915e99633"
+        },
+        {
+          "num": 22,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=915e99633"
+        },
+        {
+          "num": 23,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=6d4dd1b84"
+        },
+        {
+          "num": 24,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=6d4dd1b84"
+        }
+      ],
+      "episodes_count": 24
     },
     {
       "name": "مسلسل إيزابيل مدبلج",
@@ -355520,144 +355650,6 @@
       "episodes_count": 6
     },
     {
-      "name": "مسلسل Leanne مترجم",
-      "poster": "https://yam.ahwaktv.net/uploads/custom-logo.png",
-      "genre": "",
-      "category": "",
-      "source": "yam",
-      "episodes": [
-        {
-          "num": 1,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=bb9aa2615"
-        },
-        {
-          "num": 2,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=bb9aa2615"
-        },
-        {
-          "num": 3,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=d48b6e4bf"
-        },
-        {
-          "num": 4,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=d48b6e4bf"
-        },
-        {
-          "num": 5,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=5869ad3e7"
-        },
-        {
-          "num": 6,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=5869ad3e7"
-        },
-        {
-          "num": 7,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=9b7db5935"
-        },
-        {
-          "num": 8,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=9b7db5935"
-        },
-        {
-          "num": 9,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=2253cd7e0"
-        },
-        {
-          "num": 10,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=2253cd7e0"
-        },
-        {
-          "num": 11,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=932488076"
-        },
-        {
-          "num": 12,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=932488076"
-        },
-        {
-          "num": 13,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=053098d27"
-        },
-        {
-          "num": 14,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=053098d27"
-        },
-        {
-          "num": 15,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=417ca9d13"
-        },
-        {
-          "num": 16,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=417ca9d13"
-        },
-        {
-          "num": 17,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=e364fc44c"
-        },
-        {
-          "num": 18,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=e364fc44c"
-        },
-        {
-          "num": 19,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=8ac39ec92"
-        },
-        {
-          "num": 20,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=8ac39ec92"
-        },
-        {
-          "num": 21,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=ec26752f8"
-        },
-        {
-          "num": 22,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=ec26752f8"
-        },
-        {
-          "num": 23,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=ca66ca70b"
-        },
-        {
-          "num": 24,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=ca66ca70b"
-        },
-        {
-          "num": 25,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=4c05ab360"
-        },
-        {
-          "num": 26,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=4c05ab360"
-        },
-        {
-          "num": 27,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=6945f3d31"
-        },
-        {
-          "num": 28,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=6945f3d31"
-        },
-        {
-          "num": 29,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=332f00493"
-        },
-        {
-          "num": 30,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=332f00493"
-        },
-        {
-          "num": 31,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=e62da7094"
-        },
-        {
-          "num": 32,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=e62da7094"
-        }
-      ],
-      "episodes_count": 32
-    },
-    {
       "name": "مسلسل Line of Fire مترجم",
       "poster": "https://yam.ahwaktv.net/uploads/custom-logo.png",
       "genre": "",
@@ -404646,5 +404638,5 @@
       "episodes_count": 124
     }
   ],
-  "last_update": "2026-10-10T07:34:35.328444+00:00"
+  "last_update": "2026-10-10T14:46:52.333819+00:00"
 }
