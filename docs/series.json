@@ -1,12 +1,21 @@
 {
+<<<<<<< HEAD
   "built_at": "2026-10-11T22:01:42.241860",
+=======
+  "built_at": "2026-10-12T01:21:58.819941",
+>>>>>>> 73562be (🤖 الموقع: 2026-10-11 22:21 UTC)
   "series": [
     {
       "name": "انت من احببت",
       "slug": "انت-من-احببت-8c83f29c",
       "poster": "posters/انت-من-احببت-8c83f29c.jpg",
+<<<<<<< HEAD
       "episodes_count": 46,
       "eps": 46,
+=======
+      "episodes_count": 55,
+      "eps": 55,
+>>>>>>> 73562be (🤖 الموقع: 2026-10-11 22:21 UTC)
       "seasons_count": 1,
       "seasons": [
         1
@@ -686,6 +695,20 @@
       ],
       "genre": "",
       "category": "مسلسلات عربية",
+      "last_updated": ""
+    },
+    {
+      "name": "النص الثاني",
+      "slug": "النص-الثاني-25242fe7",
+      "poster": "posters/النص-الثاني-25242fe7.jpg",
+      "episodes_count": 15,
+      "eps": 15,
+      "seasons_count": 1,
+      "seasons": [
+        1
+      ],
+      "genre": "",
+      "category": "أفلام",
       "last_updated": ""
     }
   ]
