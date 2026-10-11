@@ -21,7 +21,14 @@ from urllib.parse import urljoin, urlparse
 from curl_cffi import requests as cffi
 
 from config import config, DATA_DIR, DOCS_DIR
-from names import norm as _norm, base_norm as _base_norm, canonical_category as _canonical_category
+from names import (
+    norm as _norm, base_norm as _base_norm,
+    canonical_category as _canonical_category,
+    CATEGORY_PRIORITY as _CATEGORY_PRIORITY,
+    CAT_TURK_DUB, CAT_IND_DUB, CAT_ANIME_DUB, CAT_KOR_DUB, CAT_DUB,
+    CAT_DUB_MOVIES, CAT_TRANS, CAT_ARABIC, CAT_FOREIGN, CAT_ASIAN,
+    CAT_MOVIES, CAT_GENERIC,
+)
 
 POSTERS = DOCS_DIR / "posters"
 POSTERS.mkdir(parents=True, exist_ok=True)
@@ -35,11 +42,60 @@ UPLOADED = DATA_DIR / "uploaded.json"
 
 IMPERSONATIONS = ["safari17_0", "chrome120", "chrome110", "chrome104"]
 
-# عناوين الأقسام (تُستخدم أيضاً كقيم data-category للتصفية)
-SEC_TURKISH = "مسلسلات تركية مدبلجة"
-SEC_DUBBED = "مسلسلات مدبلجة"
-SEC_DUB_MOVIES = "أفلام مدبلجة"
-SEC_REGULAR = "مسلسلات وأفلام"
+# عناوين الأقسام = التصنيفات الموحّدة (تُستخدم أيضاً كقيم data-category للتصفية)
+SEC_TURK_DUB   = CAT_TURK_DUB
+SEC_IND_DUB    = CAT_IND_DUB
+SEC_ANIME_DUB  = CAT_ANIME_DUB
+SEC_KOR_DUB    = CAT_KOR_DUB
+SEC_DUB        = CAT_DUB
+SEC_TRANS      = CAT_TRANS
+SEC_ARABIC     = CAT_ARABIC
+SEC_FOREIGN    = CAT_FOREIGN
+SEC_ASIAN      = CAT_ASIAN
+SEC_DUB_MOVIES = CAT_DUB_MOVIES
+SEC_MOVIES     = CAT_MOVIES
+SEC_GENERIC    = CAT_GENERIC
+
+# ترتيب عرض الأقسام في الصفحة الرئيسية (الأهم أولاً)
+SECTION_ORDER = [
+    SEC_TURK_DUB, SEC_IND_DUB, SEC_ANIME_DUB, SEC_KOR_DUB, SEC_DUB,
+    SEC_TRANS, SEC_ARABIC, SEC_FOREIGN, SEC_ASIAN,
+    SEC_DUB_MOVIES, SEC_MOVIES, SEC_GENERIC,
+]
+
+SECTION_ICONS = {
+    SEC_TURK_DUB:   "🇹🇷",
+    SEC_IND_DUB:    "🇮🇳",
+    SEC_ANIME_DUB:  "🎌",
+    SEC_KOR_DUB:    "🇰🇷",
+    SEC_DUB:        "🎙️",
+    SEC_TRANS:      "📝",
+    SEC_ARABIC:     "🎭",
+    SEC_FOREIGN:    "🌍",
+    SEC_ASIAN:      "🌏",
+    SEC_DUB_MOVIES: "🎬",
+    SEC_MOVIES:     "🎥",
+    SEC_GENERIC:    "📺",
+}
+
+# وسوم البطاقات المختصرة حسب التصنيف الموحّد
+CAT_BADGE = {
+    CAT_TURK_DUB:   "تركي مدبلج",
+    CAT_IND_DUB:    "هندي مدبلج",
+    CAT_ANIME_DUB:  "أنمي مدبلج",
+    CAT_KOR_DUB:    "كوري مدبلج",
+    CAT_DUB:        "مدبلج",
+    CAT_TRANS:      "مترجم",
+    CAT_ARABIC:     "عربي",
+    CAT_FOREIGN:    "أجنبي",
+    CAT_ASIAN:      "أسيوي",
+    CAT_DUB_MOVIES: "فيلم مدبلج",
+    CAT_MOVIES:     "فيلم",
+    CAT_GENERIC:    "",
+}
+
+# عكس خريطة الأولويات: رقم الأولوية → اسم القسم
+_PRIO_TO_SEC = {v: k for k, v in _CATEGORY_PRIORITY.items()}
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -70,36 +126,18 @@ def _load_json(path, default):
     return default
 
 
-def _priority_of(name: str, category: str = "") -> int:
-    n = (name or "").strip()
-    c = (category or "").strip()
-    combined = f"{n} {c}".lower()
-
-    is_turkish = any(k in combined for k in
-                     ["تركي", "turkish", "ترك", "turkiaa", "turk"])
-    is_dubbed = any(k in combined for k in
-                    ["مدبلج", "مدبلجة", "dubbed",
-                     "modblga", "modblja", "modblge", "dub"])
-    is_movie = any(k in combined for k in
-                   ["فيلم", "أفلام", "افلام", "movie", "film", "aflam"])
-
-    if is_turkish and is_dubbed and not is_movie:
-        return 1
-    if is_dubbed and not is_movie:
-        return 2
-    if is_dubbed and is_movie:
-        return 3
-    if not is_movie:
-        return 4
-    return 5
+def _priority_of(name: str, category: str = "", source: str = "") -> int:
+    """أولوية العرض (1 = الأعلى) مبنية على التصنيف الموحّد."""
+    try:
+        cat = _canonical_category(name=name, category=category, source=source)
+        return _CATEGORY_PRIORITY.get(cat, 12)
+    except Exception:
+        return 12
 
 
 def _section_of(prio: int) -> str:
-    return {
-        1: SEC_TURKISH,
-        2: SEC_DUBBED,
-        3: SEC_DUB_MOVIES,
-    }.get(prio, SEC_REGULAR)
+    """رقم الأولوية → اسم القسم الموحّد."""
+    return _PRIO_TO_SEC.get(prio, SEC_GENERIC)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -306,32 +344,14 @@ CARD = """<a class="card" href="watch/{slug}.html" title="{name}">
 
 
 def _cat_label(category: str) -> str:
-    """يحوّل أي تصنيف (slug أو عربي) إلى وسم عربي نظيف واحد."""
-    c = (category or "").strip().lower()
+    """وسم مختصر للبطاقة حسب التصنيف الموحّد (يعمل أيضاً مع التصنيفات القديمة)."""
+    c = (category or "").strip()
     if not c:
         return ""
-    is_movie = any(k in c for k in ["فيلم", "أفلام", "افلام", "movie", "film", "aflam"])
-    is_turk = any(k in c for k in ["تركي", "turk"])
-    is_ind = any(k in c for k in ["هندي", "hndia", "india"])
-    is_anime = any(k in c for k in ["انمي", "أنمي", "anime", "كرتون", "cartoon"])
-    is_kor = any(k in c for k in ["كوري", "korea", "korean"])
-    is_dub = any(k in c for k in ["مدبلج", "dub", "modblga", "modblja", "modblge"])
-    is_trans = any(k in c for k in ["مترجم", "sub"])
-    if is_movie:
-        return "فيلم"
-    if is_turk and is_dub:
-        return "تركي مدبلج"
-    if is_ind and is_dub:
-        return "هندي مدبلج"
-    if is_anime and is_dub:
-        return "أنمي مدبلج"
-    if is_kor and is_dub:
-        return "كوري مدبلج"
-    if is_dub:
-        return "مدبلج"
-    if is_trans:
-        return "مترجم"
-    return ""
+    if c in CAT_BADGE:
+        return CAT_BADGE[c]
+    # احتياطي: التصنيفات المخزّنة القديمة (slug أو نص)
+    return CAT_BADGE.get(_canonical_category(category=c), "")
 
 
 def _badges(s):
@@ -433,14 +453,12 @@ def _watch_html(s, ch, stream_eps):
 
 def _index_html(series, ch, built_at):
     rows = ""
-    order = [SEC_TURKISH, SEC_DUBBED, SEC_DUB_MOVIES, SEC_REGULAR]
-    icons = {
-        SEC_TURKISH: "🇹🇷", SEC_DUBBED: "🎙️",
-        SEC_DUB_MOVIES: "🎬", SEC_REGULAR: "📺",
-    }
+    order = SECTION_ORDER
+    icons = SECTION_ICONS
     by_sec = {k: [] for k in order}
     for s in series:
-        sec = _section_of(_priority_of(s.get("name", ""), s.get("category", "")))
+        sec = _section_of(_priority_of(s.get("name", ""), s.get("category", ""),
+                                       s.get("source", "")))
         by_sec.setdefault(sec, []).append(s)
 
     for sec in order:
@@ -546,7 +564,8 @@ def _load_tg_series():
     # ★ توحيد التصنيفات عند التحميل (حتى لو كانت البيانات المخزّنة قديمة/مختلطة)
     for s in series:
         try:
-            s["category"] = _canonical_category(s.get("name", ""), s.get("category", ""))
+            s["category"] = _canonical_category(
+                s.get("name", ""), s.get("category", ""), s.get("source", ""))
         except Exception:
             pass
     return series
@@ -569,7 +588,8 @@ def build_site():
         return s.get("last_updated", "") or s.get("built_at", "")
 
     series.sort(key=_date_key, reverse=True)
-    series.sort(key=lambda s: _priority_of(s.get("name", ""), s.get("category", "")))
+    series.sort(key=lambda s: _priority_of(s.get("name", ""), s.get("category", ""),
+                                           s.get("source", "")))
 
     # ── الصورة البديلة ──
     _ensure_placeholder()
@@ -633,14 +653,15 @@ def build_site():
     # إحصاء الأقسام
     counts = {}
     for s in series:
-        sec = _section_of(_priority_of(s.get("name", ""), s.get("category", "")))
+        sec = _section_of(_priority_of(s.get("name", ""), s.get("category", ""),
+                                       s.get("source", "")))
         counts[sec] = counts.get(sec, 0) + 1
 
     print(f"✅ {len(series)} عمل | {playable_total} حلقة قابلة للبث | "
           f"صور: {ok}", flush=True)
-    for sec in (SEC_TURKISH, SEC_DUBBED, SEC_DUB_MOVIES, SEC_REGULAR):
+    for sec in SECTION_ORDER:
         if counts.get(sec):
-            print(f"      · {sec}: {counts[sec]}", flush=True)
+            print(f"      · {SECTION_ICONS.get(sec, '')} {sec}: {counts[sec]}", flush=True)
 
 
 def _write_videos_json():

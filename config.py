@@ -42,10 +42,40 @@ class Config:
     YAM_CATEGORY_PAGES = int(os.environ.get("YAM_CATEGORY_PAGES", "40"))
     YAM_SERIES_FETCH_LIMIT = int(os.environ.get("YAM_SERIES_FETCH_LIMIT", "900"))
     YAM_WORKERS = int(os.environ.get("YAM_WORKERS", "10"))
+    # تصنيفات المصدر (yam) — تُغطّي كل الأقسام المطلوبة:
+    #   مدبلج تركي / مدبلج هندي / مدبلج / أنمي / كوري / مترجم تركي /
+    #   عربي (خليجي/مصري) / أجنبي / آسيوي / أفلام (عربي/تركي/هندي/مدبلج)
     YAM_CATEGORIES = os.environ.get(
         "YAM_CATEGORIES",
-        "moslslat-turkiaa-modblga,moslslat-modblga,aflam-dub,"
-        "moslslat-hndia-modblja,goda-akbar-modblge,mn-elnazra-elthania-modblge",
+        ",".join([
+            # ── مدبلج تركي ──
+            "moslslat-turkiaa-modblga",
+            # ── مدبلج هندي ──
+            "moslslat-hndia-modblja",
+            "indian-series",
+            # ── مدبلج (عام) ──
+            "moslslat-modblga",
+            "goda-akbar-modblge",
+            "mn-elnazra-elthania-modblge",
+            # ── أنمي / كرتون ──
+            "moslslat-cartoon",
+            # ── مترجم (تركي) ──
+            "moslslat-turkiaa-motrgma",
+            "moslslat-turkiaa1",
+            # ── عربي (خليجي / مصري) ──
+            "1moslslat-arbyaa",
+            "moslslat-msriya",
+            "moslslat-",
+            # ── أجنبي ──
+            "mosalslat-english",
+            # ── آسيوي ──
+            "moslslat-asia",
+            # ── أفلام ──
+            "aflam-dub",
+            "aflam-arabya1",
+            "aflam-turky",
+            "aflam-hindi",
+        ]),
     ).strip()
 
     EGYBEST_BASE_URL = os.environ.get("EGYBEST_BASE_URL", "https://egybesstt.baby").rstrip("/")
@@ -80,66 +110,53 @@ class Config:
     @classmethod
     def priority_of(cls, name: str) -> int:
         """
-        1 = مسلسلات تركية مدبلجة (الأولوية القصوى)
-        2 = مسلسلات مدبلجة أخرى
-        3 = أفلام مدبلجة
-        4 = مسلسلات عادية
-        5 = أفلام عادية
+        أولوية العرض/الترتيب (1 = الأعلى) مبنية على التصنيف الموحّد.
+        ترتيب الأقسام:
+          1 مسلسلات تركية مدبلجة | 2 مسلسلات هندية مدبلجة | 3 مسلسلات أنمي مدبلجة
+          4 مسلسلات كورية مدبلجة | 5 مسلسلات مدبلجة | 6 مسلسلات مترجمة
+          7 مسلسلات عربية | 8 مسلسلات أجنبية | 9 مسلسلات أسيوية
+          10 أفلام مدبلجة | 11 أفلام | 12 مسلسلات وأفلام
         """
-        n = (name or "").strip()
-        is_dubbed = ("مدبلج" in n) or any(
-            k in n.lower() for k in ("modblga", "modblja", "modblge", "dubbed", "dub"))
-        is_turkish = ("تركي" in n) or ("تركية" in n) or any(
-            k in n.lower() for k in ("turkish", "turkiaa", "turk"))
-        is_movie = (
-            n.startswith("فيلم") or n.startswith("افلام") or
-            n.startswith("أفلام") or "افلام" in n[:10] or "أفلام" in n[:10] or
-            "aflam" in n.lower() or "movie" in n.lower()
-        )
-        if is_turkish and is_dubbed and not is_movie:
-            return 1
-        if is_dubbed and not is_movie:
-            return 2
-        if is_dubbed and is_movie:
-            return 3
-        if not is_movie:
-            return 4
-        return 5
+        try:
+            from names import canonical_category, CATEGORY_PRIORITY
+            return CATEGORY_PRIORITY.get(canonical_category(name=name), 12)
+        except Exception:
+            return 12
 
     @classmethod
     def priority_of_series(cls, series) -> int:
         """
-        أولوية حسب الاسم + التصنيف (category) + النوع (genre).
-        ★ يضمن أن المسلسلات التركية المدبلجة تأتي أولاً حتى لو لم يحتوِ اسمها كلمة "تركي"،
-          بالاعتماد على تصنيف المصدر مثل: moslslat-turkiaa-modblga.
+        أولوية حسب الاسم + التصنيف (category) + النوع (genre) عبر التصنيف الموحّد.
+        ★ يضمن أن المسلسلات التركية المدبلجة تأتي أولاً حتى لو لم يحتوِ اسمها كلمة
+          "تركي"، بالاعتماد على تصنيف المصدر مثل: moslslat-turkiaa-modblga.
         """
         if isinstance(series, dict):
             name = series.get("name") or series.get("display_name") or ""
             category = series.get("category") or ""
-            genre = series.get("genre") or ""
+            source = series.get("source") or ""
         else:
-            name, category, genre = str(series or ""), "", ""
+            name, category, source = str(series or ""), "", ""
+        try:
+            from names import canonical_category, CATEGORY_PRIORITY
+            cat = canonical_category(name=name, category=category, source=source)
+            return CATEGORY_PRIORITY.get(cat, 12)
+        except Exception:
+            return 12
 
-        hay = f"{name} {category} {genre}".lower()
-
-        is_dubbed = ("مدبلج" in hay) or any(
-            k in hay for k in ("modblga", "modblja", "modblge", "dubbed", "dub"))
-        is_turkish = ("تركي" in hay) or any(
-            k in hay for k in ("turkish", "turkiaa", "turk"))
-        is_movie = (
-            name.startswith("فيلم") or name.startswith("افلام") or
-            name.startswith("أفلام") or "افلام" in name[:10] or
-            "أفلام" in name[:10] or "aflam" in hay or "movie" in hay
-        )
-        if is_turkish and is_dubbed and not is_movie:
-            return 1
-        if is_dubbed and not is_movie:
-            return 2
-        if is_dubbed and is_movie:
-            return 3
-        if not is_movie:
-            return 4
-        return 5
+    @classmethod
+    def category_of_series(cls, series) -> str:
+        """يُرجِع اسم التصنيف الموحّد لسلسلة (dict)."""
+        if isinstance(series, dict):
+            name = series.get("name") or series.get("display_name") or ""
+            category = series.get("category") or ""
+            source = series.get("source") or ""
+        else:
+            name, category, source = str(series or ""), "", ""
+        try:
+            from names import canonical_category
+            return canonical_category(name=name, category=category, source=source)
+        except Exception:
+            return "مسلسلات وأفلام"
 
     @classmethod
     def validate(cls):

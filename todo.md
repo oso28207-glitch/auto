@@ -1,38 +1,46 @@
-# TODO — إصلاح مستودع Shoof (auto) — الجولة الثانية
+# TODO — إصلاح مستودع Shoof (auto) — الجولة الثالثة
 
-## 1. مقارنة الأعمال بالتيليجرام (إصلاح رسالة "الحلقة لم تُرفع")
-- [x] telegram_checker: التقاط file_id + size لكل حلقة أثناء فحص القنوات (shoofcima, shoofFilm)
-- [x] telegram_checker: إضافة file_ids/sizes إلى البنية + to_serializable + get_file_id/get_size
-- [x] run_all._build_tg_series: تضمين file_id + size + mid في كل حلقة
-- [x] build_site._load_stream_map: قراءة tg_series.json كمصدر إضافي للبث (file_id)
-- [x] telegram_checker._normalize_name: توحيد الهمزات/الياء/التاء المربوطة + إزالة التشكيل (مطابقة أقوى)
-- [x] التحقق: كل حلقة موجودة على التيليجرام تصبح قابلة للتشغيل
+## 0. التشخيص (مكتمل)
+- [x] فحص المستودع + سجلات GitHub Actions (run 38109547359)
+- [x] السبب الجذري لعشق (u3seq): مشغّل vidsp.net يرفض التضمين بدون Referer صحيح
+      → يعيد "Embeds disabled2" → لا m3u8 → فشل 236/236 تنزيل
+- [x] تأكيد الحل: curl_cffi + Referer = صفحة المشغّل الكاملة + رابط m3u8 مباشر في HTML
+- [x] استخراج كل السيرفرات عبر temp/ajax/iframe2.php (vidsp/vinovo/vids/vidaraa)
+- [x] تشخيص التصنيفات: 879 بلا تصنيف + slugs خام + أقسام ناقصة (عربي/أجنبي/مترجم/هندي)
+- [x] تشخيص السجلات: 1147 "بدون URL" = في الحقيقة download_failed (كلها عشق)
 
-## 2. إصلاح التصنيفات
-- [x] names.canonical_category: تصنيف عربي موحّد (تركي مدبلج/مدبلج/هندي/أنمي/كوري/أفلام مدبلجة/مترجم)
-- [x] run_all._build_tg_series: استخدام canonical_category(name, source_category)
-- [x] build_site._cat_label: ترتيب صحيح (فيلم قبل مدبلج، هندي/أنمي)
-- [x] التحقق من التصنيفات (11/11 حالة صحيحة)
-- [x] إصلاح التصنيفات الخاطئة الفعلية: كانت 13 بلا تصنيف + 5 بـ slug خام (moslslat-turkiaa-modblga/goda-akbar-modblge) + 13 فارغة
-- [x] إصلاح جذر المشكلة: _find_source_match_with_search كان يُسقط التصنيف إن توفّرت الصورة فقط
-- [x] إصلاح جذر المشكلة: حفظ category في STATE (كان يُحذف بين التشغيلات)
-- [x] إثراء data/tg_series.json بالتصنيفات الصحيحة (9 أعمال → مسلسلات مترجمة)
+## 1. إصلاح جلب سيرفرات عشق (u3seq) — downloader.py ✅
+- [x] إضافة مسار مباشر `_u3seq_direct()` عبر curl_cffi (watch → servers → iframe2.php → m3u8)
+- [x] دالة `_player_m3u8()` لاستخراج m3u8 من HTML المشغّل مع Referer
+- [x] دالة `_download_m3u8_direct()` (yt-dlp → ffmpeg → curl_cffi يدوي)
+- [x] دالة `_download_m3u8_manual()` (جلسة ثابتة + إعادة محاولة لكل مقطع)
+- [x] إصلاح `_open()` لدعم تمرير Referer إلى Page.navigate
+- [x] إصلاح `_u3seq()` لتجربة كل السيرفرات (لا الأول فقط)
+- [x] ربط المسار المباشر في `_run_browser` كخيار أول (المتصفح احتياطي)
+- [x] إصلاح `_cffi_get`: إضافة X-Requested-With + خفض حد الطول (AJAX يعيد 203 حرف)
+- [x] اختبار محلي: استخراج m3u8 (master + variant) من عشق بنجاح ✅
 
-## 3. ترتيب التنزيل + إكمال الحلقات الناقصة
-- [x] التأكد من ترتيب الحلقات تصاعدياً (1,2,3...) داخل كل مسلسل
-- [x] _filter_new_episodes: تسجيل file_id/size/mid عند اعتبار الحلقة موجودة على التيليجرام
-- [x] التحقق من المنطق الكامل (فرز تصاعدي + مقارنة التيليجرام)
+## 2. إصلاح التصنيفات — names.py + build_site.py + config.py
+- [x] names.canonical_category: إضافة عربي/أجنبي/مترجم/هندي/أنمي مترجم
+- [x] names: خريطة أولويات موحّدة CATEGORY_PRIORITY
+- [x] names: fallback لتصنيفات yam الفارغة (نص عربي → عربية)
+- [x] config: توسيع YAM_CATEGORIES (18 قسم) + توحيد priority_of/priority_of_series
+- [x] build_site: أقسام جديدة (تركي مدبلج/هندي مدبلج/مدبلج/أنمي/كوري/مترجم/عربي/أجنبي/أفلام مدبلجة)
+- [x] build_site: _section_of/_priority_of/_cat_label/_index_html محدّثة
+- [x] run_all: _sort_for_download + prio_counts (12 قسم)
+- [x] .github/workflows: تحديث YAM_CATEGORIES
+- [x] تطبيع الـ slugs الخام في البيانات + بناء الموقع من جديد
+- [x] تحسين: التصنيف العام "مسلسلات وأفلام" يُستنتج من نص الاسم (عربي/أجنبي) بدل الفئة العامة
 
-## 4. دمج تغييرات المستودع البعيدة (remote)
-- [x] git fetch + تحليل الفرق (remote: 500068f, 6891380)
-- [x] git merge — حل التعارضات في الملفات المُولَّدة فقط (tg_series.json, index.html, series.json)
-- [x] التأكد من أن run_all.py دُمج سليماً (منطقنا + منطق remote معاً)
+## 3. مراجعة سجلات الأكشن وإصلاح الأخطاء
+- [x] تصحيح رسالة "بدون URL" → تفصيل حسب السبب (بدون رابط/فشل التنزيل/فشل الرفع)
+- [x] معالجة egybest (معطّل) بشكل واضح دون أخطاء + احترام ENABLED_SOURCES
+- [x] تنظيف سجل الحلقات المتخطّاة بعد نجاح الرفع (سجل دقيق)
+- [x] yam: جلب التصنيفات بالتوازي (18 قسم) + CAT_WORKERS
 
-## 5. التحقق والتسليم
-- [x] اختبار محلي (محاكاة فحص التيليجرام + بناء الخريطة) — 4/4 نجحت
-- [x] التحقق من سلامة بيانات data/ الحقيقية (tg_series.json = 43 مسلسل)
-- [x] حذف الملفات المؤقتة (_diag.py, _verify.py)
-- [x] عمل commit للتحسينات الجديدة (تصنيف + دمج)
-- [x] إعادة بناء الموقع (43 عمل | 1508 حلقة قابلة للبث | 40 صورة)
-- [x] دفع التغييرات إلى GitHub (تم الدفع بنجاح: c6f3718)
-- [x] تسليم الملخص
+## 4. التحقق والتسليم
+- [x] اختبار محلي: استخراج m3u8 من عشق + تنزيل مقطع (watch→servers→iframe2→m3u8=200→variant=200→segment)
+- [x] اختبار محلي: التصنيفات (18/18 حالة ناجحة + 0 فئة عامة متبقية)
+- [x] بناء الموقع محلياً والتحقق من الأقسام (4 أقسام مأهولة)
+- [ ] commit + push إلى GitHub
+- [ ] تسليم الملخص

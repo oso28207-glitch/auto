@@ -200,8 +200,12 @@ def _cookies(sb):
     return {}
 
 
-def _open(sb, url, wait=1.5):
-    _cdp(sb, "Page.navigate", {"url": url})
+def _open(sb, url, wait=1.5, referrer=None):
+    # ★ Referer مهم: مشغّل vidsp.net يرفض التضمين بدونه ("Embeds disabled2")
+    params = {"url": url}
+    if referrer:
+        params["referrer"] = referrer
+    _cdp(sb, "Page.navigate", params)
     sb.cdp.sleep(wait)
     _cdp(sb, "Runtime.evaluate", {"expression": "try{window.stop()}catch(e){}"})
 
@@ -855,6 +859,234 @@ def _extract_from_iframe(sb, iframe_url, out_path):
 # ═══════════════════════════════════════════════════════════════
 # u3seq
 # ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════
+# ★★★ u3seq (عشق) — المسار المباشر عبر curl_cffi (v58)
+# ═══════════════════════════════════════════════════════════════════════════
+# السبب الجذري للفشل السابق: مشغّل vidsp.net يرفض التضمين بدون Referer صحيح
+# ("Embeds disabled2") → لا m3u8 → فشل كل التنزيلات. الحل: جلب صفحة المشغّل
+# عبر curl_cffi مع Referer → رابط m3u8 موجود مباشرة داخل HTML.
+_U3SEQ_IMPERSONATIONS = ["safari17_0", "chrome120", "chrome110", "chrome104", "chrome99"]
+
+
+def _cffi_get(url, referer=None, timeout=30, session=None):
+    """جلب HTML عبر curl_cffi مع تمويه المتصفح + Referer (لتجاوز حماية vidsp)."""
+    try:
+        from curl_cffi import requests as cffi_requests
+    except Exception:
+        return None
+    headers = {
+        "User-Agent": UA,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+    if referer:
+        headers["Referer"] = referer
+    if session is not None:
+        try:
+            r = session.get(url, headers=headers, timeout=timeout, allow_redirects=True)
+            if r.status_code == 200 and r.text and len(r.text) > 40:
+                return r.text
+        except Exception:
+            pass
+    for imp in _U3SEQ_IMPERSONATIONS:
+        try:
+            r = cffi_requests.get(url, headers=headers, impersonate=imp,
+                                  timeout=timeout, allow_redirects=True)
+            if r.status_code == 200 and r.text and len(r.text) > 40:
+                return r.text
+        except Exception:
+            continue
+    return None
+
+
+def _player_m3u8(iframe_html, iframe_url):
+    """استخراج رابط m3u8 من HTML المشغّل (vidsp/vinovo/...) + قاعدة الـ URL."""
+    if not iframe_html:
+        return None, None
+    patterns = [
+        r'["\']file["\']\s*:\s*["\'](https?://[^"\']+\.m3u8[^"\']*)["\']',
+        r'["\']src["\']\s*:\s*["\'](https?://[^"\']+\.m3u8[^"\']*)["\']',
+        r'(https?://[^"\'\s<>]+\.m3u8[^"\'\s<>]*)',
+        r'(https?://[^"\'\s<>]+\.mpd[^"\'\s<>]*)',
+    ]
+    for pat in patterns:
+        m = re.search(pat, iframe_html)
+        if m:
+            url = m.group(1).replace("\\/", "/").replace("&amp;", "&")
+            return url, iframe_url
+    return None, None
+
+
+def _download_m3u8_direct(m3u8_url, out_path, referer, session=None):
+    """تنزيل HLS: yt-dlp → ffmpeg → curl_cffi يدوي (بدون متصفح)."""
+    print("      🎯 [1/3] yt-dlp (مباشر)...", flush=True)
+    if _ytdlp_simple(m3u8_url, str(out_path), referer):
+        if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+            return (os.path.getsize(out_path), True)
+
+    print("      🎯 [2/3] ffmpeg-hls (مباشر)...", flush=True)
+    if _ffmpeg_hls(m3u8_url, str(out_path), referer, None):
+        if os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+            return (os.path.getsize(out_path), True)
+
+    print("      🎯 [3/3] curl_cffi يدوي...", flush=True)
+    return _download_m3u8_manual(m3u8_url, str(out_path), referer, session=session)
+
+
+def _download_m3u8_manual(m3u8_url, out_path, referer, session=None):
+    """تنزيل HLS يدوياً عبر curl_cffi: جلب m3u8 + المقاطع + الدمج بـ ffmpeg."""
+    try:
+        from curl_cffi import requests as cffi_requests
+    except Exception:
+        return None
+    if session is None:
+        try:
+            session = cffi_requests.Session(impersonate="safari17_0")
+        except Exception:
+            session = None
+
+    text = _cffi_get(m3u8_url, referer=referer, timeout=30, session=session)
+    if not text:
+        print("      ❌ فشل جلب m3u8", flush=True)
+        return None
+
+    if "#EXT-X-STREAM-INF" in text:
+        chosen = _pick_smallest_variant(text, m3u8_url, min_height=MIN_HEIGHT)
+        if chosen:
+            m3u8_url = chosen
+            text = _cffi_get(m3u8_url, referer=referer, timeout=30, session=session)
+            if not text:
+                return None
+
+    base = m3u8_url.rsplit("/", 1)[0]
+    seg_urls = []
+    for line in text.splitlines():
+        l = line.strip()
+        if not l or l.startswith("#"):
+            continue
+        full = l if l.startswith("http") else urljoin(base + "/", l)
+        seg_urls.append(full)
+    if not seg_urls:
+        print("      ❌ لا مقاطع", flush=True)
+        return None
+
+    print(f"      📥 {len(seg_urls)} مقطع (curl_cffi)...", flush=True)
+    tmp_dir = tempfile.mkdtemp(prefix="cffi_segs_")
+    headers = {"User-Agent": UA, "Referer": referer, "Accept": "*/*",
+               "Accept-Language": "en-US,en;q=0.9"}
+    paths = []
+    for idx, su in enumerate(seg_urls):
+        ok = False
+        for attempt in range(3):
+            try:
+                if session is not None:
+                    r = session.get(su, headers=headers, timeout=90)
+                else:
+                    r = cffi_requests.get(su, headers=headers,
+                                          impersonate="safari17_0", timeout=90)
+                if r.status_code == 200 and r.content and len(r.content) > 200:
+                    p = os.path.join(tmp_dir, f"seg_{idx:06d}.ts")
+                    with open(p, "wb") as f:
+                        f.write(r.content)
+                    paths.append(p)
+                    ok = True
+                    break
+            except Exception:
+                time.sleep(1.0 * (attempt + 1))
+                continue
+        if not ok:
+            print(f"      ⚠️ فشل المقطع {idx}", flush=True)
+        if (idx + 1) % 25 == 0:
+            print(f"         ↳ {idx+1}/{len(seg_urls)}", flush=True)
+
+    if not paths:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        print("      ❌ فشل كل المقاطع", flush=True)
+        return None
+    print(f"      ✅ {len(paths)}/{len(seg_urls)} مقطع", flush=True)
+
+    res = _concat_segments(paths, str(out_path), tmp_dir)
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+        return (os.path.getsize(out_path), True)
+    return None
+
+
+def _u3seq_direct(url, out_path):
+    """مسار مباشر لعشق (u3seq) عبر curl_cffi — لا يحتاج متصفح.
+       watch → serversList → iframe2.php → HTML المشغّل → m3u8 → تنزيل."""
+    try:
+        from curl_cffi import requests as cffi_requests
+        session = cffi_requests.Session(impersonate="safari17_0")
+    except Exception:
+        session = None
+
+    watch = url
+    if "?do=watch" not in watch:
+        cur = watch.split("?")[0]
+        if not cur.endswith("/"):
+            cur += "/"
+        watch = cur + "?do=watch"
+
+    print(f"   ⚡ [مباشر] عشق: {watch[:90]}", flush=True)
+    html = _cffi_get(watch, referer=_origin(watch) + "/", timeout=30, session=session)
+    if not html:
+        print("   ⚠️ [مباشر] فشل جلب صفحة المشاهدة", flush=True)
+        return None
+
+    m_post = re.search(r'vo_postID\s*=\s*["\']?(\d+)', html)
+    m_theme = re.search(r'themeDir\s*=\s*["\']([^"\']+)', html)
+    if not m_theme:
+        m_theme = re.search(r'vo_theme_dir\s*=\s*["\']([^"\']+)', html)
+    if not m_post or not m_theme:
+        print("   ⚠️ [مباشر] لم أجد vo_postID/themeDir", flush=True)
+        return None
+    post_id = m_post.group(1)
+    theme_dir = m_theme.group(1).rstrip("/")
+
+    servers = []
+    for m in re.finditer(
+            r'getServer2\(\s*this\.id\s*,\s*(\d+)\s*,\s*(\d+)\s*\)', html):
+        servers.append((m.group(1), m.group(2)))
+    if not servers:
+        for m in re.finditer(r'getServer2\([^,]+,\s*(\d+)\s*,\s*(\d+)\s*\)', html):
+            servers.append((m.group(1), m.group(2)))
+    if not servers:
+        print("   ⚠️ [مباشر] لا سيرفرات", flush=True)
+        return None
+    print(f"   ✅ [مباشر] {len(servers)} سيرفر", flush=True)
+
+    for video, sid in servers:
+        ajax = (f"{theme_dir}/temp/ajax/iframe2.php"
+                f"?id={post_id}&video={video}&serverId={sid}")
+        frag = _cffi_get(ajax, referer=watch, timeout=25, session=session)
+        if not frag:
+            continue
+        m_if = re.search(r'src\s*=\s*["\'](https?://[^"\']+)["\']', frag)
+        if not m_if:
+            m_if = re.search(r'(https?://[^"\'\s<>]+)', frag)
+        if not m_if:
+            continue
+        iframe_url = m_if.group(1).replace("&amp;", "&")
+        print(f"   🎯 [مباشر] مشغّل: {iframe_url[:80]}", flush=True)
+
+        player_html = _cffi_get(iframe_url, referer=watch, timeout=25, session=session)
+        if not player_html:
+            continue
+        m3u8, ref = _player_m3u8(player_html, iframe_url)
+        if not m3u8:
+            print("      ⚠️ لا m3u8 في المشغّل", flush=True)
+            continue
+        print(f"      ✨ m3u8: {m3u8[:100]}", flush=True)
+        res = _download_m3u8_direct(m3u8, str(out_path), ref, session=session)
+        if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+            return res
+
+    print("   ❌ [مباشر] فشل كل السيرفرات", flush=True)
+    return None
+
+
 def _u3seq(sb, url, out_path):
     if "?do=watch" not in url:
         cur = url.split("?")[0]
@@ -880,29 +1112,70 @@ def _u3seq(sb, url, out_path):
     if not servers:
         raise RuntimeError("لا سيرفرات في u3seq")
     print(f"   ✅ {len(servers)} سيرفر", flush=True)
-    iframe_url = _eval(sb, """
+
+    # ★ استخراج (video, serverId) من onClick لكل سيرفر لتجربة الكل
+    metas = _eval(sb, """
         (function(){
-            var f=document.querySelector('.watch iframe');
-            if(f&&f.src&&f.src.startsWith('http'))return f.src;
-            return null;
+            var l=document.querySelector('.serversList');
+            if(!l)return[];
+            var out=[];
+            Array.from(l.querySelectorAll('li')).forEach(function(li){
+                var oc=li.getAttribute('onClick')||li.getAttribute('onclick')||'';
+                var m=oc.match(/getServer2\\([^,]+,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\)/);
+                out.push({id:li.id||'', video:m?m[1]:null, sid:m?m[2]:null});
+            });
+            return out;
         })();
-    """)
-    if not iframe_url:
+    """, []) or []
+
+    def _read_iframe():
+        return _eval(sb, """
+            (function(){
+                var f=document.querySelector('.watch iframe');
+                if(f&&f.src&&f.src.startsWith('http'))return f.src;
+                return null;
+            })();
+        """)
+
+    # ★ نجرّب كل سيرفر بالترتيب (وليس الأول فقط)
+    order = list(range(len(metas))) if metas else []
+    for k in order:
+        meta = metas[k]
+        if not meta.get("video") or not meta.get("sid"):
+            continue
+        name = (servers[k].get("name") if k < len(servers) else "") or f"#{k}"
+        print(f"   ▶️ سيرفر [{k+1}/{len(order)}] {name}", flush=True)
+        _eval(sb, f"""
+            (function(){{
+                try{{ getServer2('s_{meta['video']}', {meta['video']}, {meta['sid']}); }}catch(e){{}}
+            }})();
+        """)
+        iframe_url = None
         for _ in range(6):
             sb.cdp.sleep(1)
-            iframe_url = _eval(sb, """
-                (function(){
-                    var f=document.querySelector('.watch iframe');
-                    if(f&&f.src&&f.src.startsWith('http'))return f.src;
-                    return null;
-                })();
-            """)
-            if iframe_url: break
-    if not iframe_url:
-        raise RuntimeError("لا iframe في u3seq")
-    iframe_url = iframe_url.replace("&amp;", "&")
-    print(f"   🎯 iframe: {iframe_url[:80]}", flush=True)
-    return _extract_from_iframe(sb, iframe_url, out_path)
+            iframe_url = _read_iframe()
+            if iframe_url:
+                break
+        if not iframe_url:
+            print(f"      ⚠️ لا iframe لهذا السيرفر", flush=True)
+            continue
+        iframe_url = iframe_url.replace("&amp;", "&")
+        print(f"   🎯 iframe: {iframe_url[:80]}", flush=True)
+        try:
+            res = _extract_from_iframe(sb, iframe_url, out_path)
+            if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+                return res
+        except Exception as e:
+            print(f"      ⚠️ فشل السيرفر: {str(e)[:120]}", flush=True)
+            continue
+
+    # احتياطي: أي iframe موجود أصلاً
+    iframe_url = _read_iframe()
+    if iframe_url:
+        iframe_url = iframe_url.replace("&amp;", "&")
+        print(f"   🎯 iframe (احتياطي): {iframe_url[:80]}", flush=True)
+        return _extract_from_iframe(sb, iframe_url, out_path)
+    raise RuntimeError("فشل كل سيرفرات u3seq")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -994,6 +1267,20 @@ def _yam(sb, url, out_path):
 # نقطة الدخول
 # ═══════════════════════════════════════════════════════════════
 def _run_browser(url, out_path):
+    u_low = url.lower()
+    is_u3seq = ("modablaj-" in u_low or "/video/" in u_low)
+
+    # ★ المسار المباشر أولاً لعشق (curl_cffi + Referer) — أسرع وأخف
+    if is_u3seq:
+        try:
+            res = _u3seq_direct(url, out_path)
+            if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+                print("   ✅ نجح المسار المباشر (عشق)", flush=True)
+                return res
+            print("   ↩️ فشل المباشر — التحويل للمتصفح", flush=True)
+        except Exception as e:
+            print(f"   ⚠️ خطأ المسار المباشر: {str(e)[:150]}", flush=True)
+
     from seleniumbase import SB
     try:
         with SB(uc=True, xvfb=True, headless=False, incognito=True,
@@ -1005,9 +1292,8 @@ def _run_browser(url, out_path):
                 try: sb.driver.set_page_load_timeout(20)
                 except Exception: pass
                 _install_js(sb)
-                u_low = url.lower()
-                if "modablaj-" in u_low or "/video/" in u_low:
-                    print(f"   🎯 u3seq (عشق)", flush=True)
+                if is_u3seq:
+                    print(f"   🎯 u3seq (عشق) — متصفح", flush=True)
                     return _u3seq(sb, url, out_path)
                 else:
                     print(f"   🎯 yam (اهواك)", flush=True)

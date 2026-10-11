@@ -24,12 +24,20 @@ MAX_PAGES = int(os.environ.get("YAM_MAX_PAGES", "95"))
 CATEGORY_PAGES = int(os.environ.get("YAM_CATEGORY_PAGES", "40"))
 SERIES_FETCH_LIMIT = int(os.environ.get("YAM_SERIES_FETCH_LIMIT", "900"))
 WORKERS = int(os.environ.get("YAM_WORKERS", "10"))
+CAT_WORKERS = int(os.environ.get("YAM_CAT_WORKERS", "6"))
 
 _DEFAULT_CATS = (
-    "moslslat-turkiaa-modblga,moslslat-modblga,aflam-dub,"
-    "moslslat-hndia-modblja,goda-akbar-modblge,mn-elnazra-elthania-modblge"
+    "moslslat-turkiaa-modblga,moslslat-hndia-modblja,indian-series,"
+    "moslslat-modblga,goda-akbar-modblge,mn-elnazra-elthania-modblge,"
+    "moslslat-cartoon,moslslat-turkiaa-motrgma,moslslat-turkiaa1,"
+    "1moslslat-arbyaa,moslslat-msriya,moslslat-,mosalslat-english,"
+    "moslslat-asia,aflam-dub,aflam-arabya1,aflam-turky,aflam-hindi"
 )
-CATEGORIES = [c.strip() for c in os.environ.get("YAM_CATEGORIES", _DEFAULT_CATS).split(",") if c.strip()]
+# اتحاد (union) بين المتغير البيئي والافتراضي: نضمن تغطية كل الأقسام المطلوبة
+# حتى لو كان YAM_CATEGORIES في الـ workflow قديماً/ناقصاً.
+_ENV_CATS = [c.strip() for c in os.environ.get("YAM_CATEGORIES", "").split(",") if c.strip()]
+_DEFAULT_LIST = [c.strip() for c in _DEFAULT_CATS.split(",") if c.strip()]
+CATEGORIES = list(dict.fromkeys(_ENV_CATS + _DEFAULT_LIST))
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -247,32 +255,58 @@ def _parse_category_page(html: str):
     return series
 
 
+def _fetch_cat(cat):
+    """يجلب كل صفحات تصنيف واحد ويعيد (cat, {name: entry})."""
+    merged = {}
+    for page in range(1, CATEGORY_PAGES + 1):
+        url = f"{BASE}/category.php?cat={cat}&page={page}&order=DESC"
+        r = _get(url, 25)
+        if not r or r.status_code != 200:
+            break
+        page_series = _parse_category_page(r.text)
+        if not page_series:
+            break
+        for name, s in page_series.items():
+            tgt = merged.setdefault(name, {
+                "name": name, "poster": "", "genre": "", "category": cat,
+                "episodes": {}, "source_url": "",
+            })
+            if s.get("poster") and not tgt["poster"]:
+                tgt["poster"] = s["poster"]
+            tgt["episodes"].update(s["episodes"])
+        # توقف إذا كانت الصفحة أقل من 20 حلقة (آخر صفحة)
+        total_eps = sum(len(v["episodes"]) for v in page_series.values())
+        if total_eps < 20:
+            break
+    return cat, merged
+
+
 def _fetch_categories():
-    """يزحف تصنيفات المدبلج ويجمع المسلسلات + الحلقات + الصور."""
+    """يزحف تصنيفات المصدر (بالتوازي) ويجمع المسلسلات + الحلقات + الصور."""
+    results = {}
+    with ThreadPoolExecutor(max_workers=CAT_WORKERS) as ex:
+        futs = {ex.submit(_fetch_cat, cat): cat for cat in CATEGORIES}
+        for f in as_completed(futs):
+            try:
+                cat, cat_series = f.result()
+                results[cat] = cat_series
+            except Exception:
+                pass
+
+    # الدمج بترتيب ثابت حسب قائمة CATEGORIES (الأول يفوز عند التكرار)
     merged = {}
     for cat in CATEGORIES:
+        cat_series = results.get(cat) or {}
         cat_count = 0
-        for page in range(1, CATEGORY_PAGES + 1):
-            url = f"{BASE}/category.php?cat={cat}&page={page}&order=DESC"
-            r = _get(url, 25)
-            if not r or r.status_code != 200:
-                break
-            page_series = _parse_category_page(r.text)
-            if not page_series:
-                break
-            for name, s in page_series.items():
-                tgt = merged.setdefault(name, {
-                    "name": name, "poster": "", "genre": "", "category": cat,
-                    "episodes": {}, "source_url": "",
-                })
-                if s.get("poster") and not tgt["poster"]:
-                    tgt["poster"] = s["poster"]
-                tgt["episodes"].update(s["episodes"])
-                cat_count += len(s["episodes"])
-            # توقف إذا كانت الصفحة أقل من 20 حلقة (آخر صفحة)
-            total_eps = sum(len(v["episodes"]) for v in page_series.values())
-            if total_eps < 20:
-                break
+        for name, s in cat_series.items():
+            tgt = merged.setdefault(name, {
+                "name": name, "poster": "", "genre": "", "category": cat,
+                "episodes": {}, "source_url": "",
+            })
+            if s.get("poster") and not tgt["poster"]:
+                tgt["poster"] = s["poster"]
+            tgt["episodes"].update(s["episodes"])
+            cat_count += len(s["episodes"])
         if cat_count:
             print(f"      yam cat {cat}: {cat_count} حلقة", flush=True)
 

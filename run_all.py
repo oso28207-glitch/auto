@@ -32,6 +32,7 @@ from names import (
     base_norm as _base_norm,
     similarity as _similarity,
     canonical_category as _canonical_category,
+    CATEGORY_PRIORITY as _CATEGORY_PRIORITY,
 )
 from telegram_checker import (
     fetch_existing_episodes,
@@ -49,6 +50,14 @@ SKIPPED_LOG = DATA_DIR / "skipped_episodes.json"
 TG_SERIES = DATA_DIR / "tg_series.json"
 
 SOURCE_ORDER = {"u3seq": 0, "yam": 1, "egybest": 2}
+
+# تسميات أسباب تخطّي الحلقات (للرسائل الواضحة)
+_SKIP_LABELS = {
+    "no_url": "بدون رابط",
+    "download_failed": "فشل التنزيل",
+    "upload_failed": "فشل الرفع",
+    "unknown": "سبب غير معروف",
+}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -329,8 +338,14 @@ def _scrape_sources():
     print("📡 [الخطوة 2] زحف المصادر (لجلب الصور)...", flush=True)
     print("═" * 60, flush=True)
 
+    enabled = [s.strip() for s in (config.ENABLED_SOURCES or "").split(",") if s.strip()]
+    # المصادر المعطّلة تُتخطّى بوضوح دون أخطاء
+    disabled = {"egybest"}
     all_series = []
-    for src in ["u3seq", "yam", "egybest"]:
+    for src in enabled:
+        if src in disabled:
+            print(f"\n   [{src}] ⚠️ معطّل — تم تخطّيه", flush=True)
+            continue
         print(f"\n   [{src}]", flush=True)
         items = _fetch(src)
         for s in items:
@@ -369,15 +384,18 @@ def _build_tg_series(existing_tg, all_series=None):
         # مطابقة المصدر لجلب poster + category
         poster = ""
         source_category = ""
+        source_name = ""
         src_match = _find_source_match_with_search(display_name, all_series)
         if src_match:
             poster = src_match.get("poster", "") or ""
             source_category = src_match.get("category", "") or ""
+            source_name = (src_match.get("_src", "") or
+                           src_match.get("source", "") or "")
             if poster:
                 matched += 1
 
         # ★ تصنيف عربي موحّد (الاسم له الأولوية عند التعارض مع تصنيف المصدر)
-        category = _canonical_category(display_name, source_category)
+        category = _canonical_category(display_name, source_category, source_name)
 
         eps_list = []
         for ep in episodes:
@@ -451,23 +469,27 @@ def _sort_for_download(all_series):
 
     all_series.sort(key=sort_key)
 
-    prio_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    # إحصاء الأقسام الموحّدة (12 قسماً) بالترتيب
+    cat_counts = {}
     for s in all_series:
-        prio_counts[config.priority_of_series(s)] += 1
+        cat = config.category_of_series(s)
+        cat_counts[cat] = cat_counts.get(cat, 0) + 1
 
     print(f"\n📊 إجمالي: {len(all_series)} مسلسل", flush=True)
-    print(f"   1️⃣ مسلسلات تركية مدبلجة: {prio_counts[1]}", flush=True)
-    print(f"   2️⃣ مسلسلات مدبلجة أخرى:  {prio_counts[2]}", flush=True)
-    print(f"   3️⃣ أفلام مدبلجة:          {prio_counts[3]}", flush=True)
-    print(f"   4️⃣ مسلسلات عادية:         {prio_counts[4]}", flush=True)
-    print(f"   5️⃣ أفلام عادية:            {prio_counts[5]}", flush=True)
+    for cat, prio in sorted(_CATEGORY_PRIORITY.items(), key=lambda x: x[1]):
+        n = cat_counts.get(cat, 0)
+        if n:
+            print(f"   {prio:>2}. {cat}: {n}", flush=True)
     print(flush=True)
 
-    for prio in [1, 2]:
+    # أعلى قسمين (الأولوية 1 و2) — أول 5 عناصر لكل منهما
+    top_prios = sorted(set(_CATEGORY_PRIORITY.values()))[:2]
+    for prio in top_prios:
         top = [s for s in all_series
                if config.priority_of_series(s) == prio][:5]
         if top:
-            print(f"   🔝 أولوية {prio} (أول 5):", flush=True)
+            label = config.category_of_series(top[0])
+            print(f"   🔝 أولوية {prio} — {label} (أول 5):", flush=True)
             for s in top:
                 print(f"      · {s.get('name')}", flush=True)
             print(flush=True)
@@ -566,8 +588,13 @@ async def _process_series(series, existing_tg, uploaded, skipped_log):
     print(f"{'═' * 60}", flush=True)
 
     if name in skipped_log and skipped_log[name]:
-        skipped_nums = [s["episode"] for s in skipped_log[name]]
-        print(f"   ⚠️  حلقات بدون URL: {skipped_nums}", flush=True)
+        by_reason = {}
+        for s in skipped_log[name]:
+            by_reason.setdefault(s.get("reason", "unknown"), []).append(s["episode"])
+        parts = []
+        for reason, nums in by_reason.items():
+            parts.append(f"{_SKIP_LABELS.get(reason, reason)}: {sorted(nums)}")
+        print(f"   ⚠️  حلقات متخطّاة — " + " | ".join(parts), flush=True)
 
     ok_count = 0
 
@@ -616,6 +643,13 @@ async def _process_series(series, existing_tg, uploaded, skipped_log):
         }
         ok_count += 1
         print(f"   ✅ تمت + رُفعت (msg={info.get('message_id')})", flush=True)
+
+        # تنظيف: إزالة أي سجل فشل سابق لهذه الحلقة بعد نجاحها
+        if name in skipped_log:
+            skipped_log[name] = [s for s in skipped_log[name]
+                                 if s.get("episode") != n]
+            if not skipped_log[name]:
+                skipped_log.pop(name, None)
 
     return {
         "name": name,
@@ -769,6 +803,13 @@ async def _main_async(clean=False):
         except Exception:
             pass
 
+    # تنظيف سجل الحلقات المتخطّاة: إزالة ما رُفع فعلاً (سجل دقيق)
+    for nm in list(skipped_log.keys()):
+        skipped_log[nm] = [s for s in skipped_log[nm]
+                           if f"{nm}|ep{s.get('episode')}" not in uploaded]
+        if not skipped_log[nm]:
+            skipped_log.pop(nm, None)
+
     _save(STATE, {
         "series": out_series,
         "last_update": datetime.now(timezone.utc).isoformat(),
@@ -778,8 +819,16 @@ async def _main_async(clean=False):
 
     total_skipped = sum(len(v) for v in skipped_log.values())
     if total_skipped > 0:
-        print(f"\n⚠️  إجمالي الحلقات بدون URL: {total_skipped} "
-              f"({len(skipped_log)} مسلسل)", flush=True)
+        reason_totals = {}
+        for v in skipped_log.values():
+            for s in v:
+                r = s.get("reason", "unknown")
+                reason_totals[r] = reason_totals.get(r, 0) + 1
+        breakdown = " | ".join(
+            f"{_SKIP_LABELS.get(r, r)}: {n}"
+            for r, n in sorted(reason_totals.items(), key=lambda x: -x[1]))
+        print(f"\n⚠️  إجمالي الحلقات المتخطّاة: {total_skipped} "
+              f"({len(skipped_log)} مسلسل) — {breakdown}", flush=True)
 
     # ═══ 7) Push نهائي ═══
     print("\n" + "═" * 60, flush=True)

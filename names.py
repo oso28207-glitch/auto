@@ -126,78 +126,160 @@ def similarity(a: str, b: str) -> float:
 #   يحوّل أي إشارة (اسم العمل أو تصنيف المصدر: slug عربي/إنجليزي) إلى وسم
 #   عربي واحد ثابت، مع إعطاء الاسم الأولوية عند التعارض.
 # ══════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════
+# التصنيف الموحّد (canonical category)
+#   يحوّل أي إشارة (اسم العمل أو تصنيف المصدر: slug عربي/إنجليزي) إلى وسم
+#   عربي واحد ثابت، مع إعطاء الاسم الأولوية عند التعارض.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── أسماء الأقسام الموحّدة ──
+CAT_TURK_DUB   = "مسلسلات تركية مدبلجة"
+CAT_IND_DUB    = "مسلسلات هندية مدبلجة"
+CAT_ANIME_DUB  = "مسلسلات أنمي مدبلجة"
+CAT_KOR_DUB    = "مسلسلات كورية مدبلجة"
+CAT_DUB        = "مسلسلات مدبلجة"
+CAT_DUB_MOVIES = "أفلام مدبلجة"
+CAT_TRANS      = "مسلسلات مترجمة"
+CAT_ARABIC     = "مسلسلات عربية"
+CAT_FOREIGN    = "مسلسلات أجنبية"
+CAT_ASIAN      = "مسلسلات أسيوية"
+CAT_MOVIES     = "أفلام"
+CAT_GENERIC    = "مسلسلات وأفلام"
+
+# ── ترتيب الأقسام في الموقع (الأصغر يُعرض أولاً) ──
+CATEGORY_PRIORITY = {
+    CAT_TURK_DUB:   1,
+    CAT_IND_DUB:    2,
+    CAT_ANIME_DUB:  3,
+    CAT_KOR_DUB:    4,
+    CAT_DUB:        5,
+    CAT_TRANS:      6,
+    CAT_ARABIC:     7,
+    CAT_FOREIGN:    8,
+    CAT_ASIAN:      9,
+    CAT_DUB_MOVIES: 10,
+    CAT_MOVIES:     11,
+    CAT_GENERIC:    12,
+}
+
+ALL_CATEGORIES = list(CATEGORY_PRIORITY.keys())
+
+# ── كلمات مفتاحية ──
 _MOVIE_KEYS = ("فيلم", "أفلام", "افلام", "movie", "film", "aflam")
 _TURK_KEYS = ("تركي", "turk")
 _IND_KEYS = ("هندي", "hndia", "india")
 _KOR_KEYS = ("كوري", "korea", "korean")
-_LATIN_KEYS = ("لاتيني", "latin")
-_ANIME_KEYS = ("انمي", "أنمي", "انيمى", "anime", "كرتون", "cartoon")
+_ANIME_KEYS = ("انمي", "أنمي", "انيمى", "انيمي", "anime", "كرتون", "cartoon")
+_ASIAN_KEYS = ("اسيوي", "أسيوي", "اسيوية", "asia", "asian")
+_ARABIC_KEYS = (
+    "عربي", "عربية", "مصري", "مصرية", "خليجي", "خليجية", "سعودي", "لبناني",
+    "سوري", "عراقي", "مغربي", "جزائري", "تونسي", "كويتي", "اماراتي", "إماراتي",
+    "اردني", "أردني", "فلسطيني", "يمني", "قطري", "بحريني", "عماني", "سوداني",
+    "رمضان", "arabic", "arab", "egyptian", "masry", "khaleeji", "gulf",
+    "arbyaa", "msriya",
+)
+_FOREIGN_KEYS = (
+    "اجنبي", "أجنبي", "امريكي", "أمريكي", "بريطاني", "انجليزي", "إنجليزي",
+    "فرنسي", "اسباني", "إسباني", "الماني", "ألماني", "ايطالي", "إيطالي",
+    "روسي", "مكسيكي", "برازيلي", "كندي", "استرالي", "foreign", "english",
+    "american", "british", "spanish", "mexican", "latin", "russian",
+)
 _DUB_KEYS = ("مدبلج", "dubbed", "modblga", "modblja", "modblge", "modbla", "dub")
-_TRANS_KEYS = ("مترجم", "ترجم", "subtitle", "sub")
+_TRANS_KEYS = ("مترجم", "ترجم", "subtitle", "sub", "motrgma")
+
+# ── إصلاحات صريحة لبعض الـ slugs التي لا تحمل كلمات مفتاحية ──
+_SLUG_FIX = {
+    "moslslat-": CAT_ARABIC,        # مسلسلات خليجية
+    "moslslat-ahwak": CAT_GENERIC,
+    "tv-show": CAT_GENERIC,
+    "msr7yat": CAT_GENERIC,
+}
 
 
 def _has(hay: str, keys) -> bool:
     return any(k in hay for k in keys)
 
 
-def canonical_category(name: str = "", category: str = "") -> str:
-    """يُرجع تصنيفاً عربياً موحّداً واحداً من:
-        مسلسلات تركية مدبلجة | مسلسلات مدبلجة | مسلسلات هندية مدبلجة |
-        مسلسلات أنمي مدبلجة | مسلسلات كورية مدبلجة | أفلام مدبلجة |
-        مسلسلات مترجمة | أفلام | مسلسلات وأفلام
+def canonical_category(name: str = "", category: str = "",
+                       source: str = "") -> str:
+    """يُرجِع تصنيفاً عربياً موحّداً واحداً من:
+        مسلسلات تركية مدبلجة | مسلسلات هندية مدبلجة | مسلسلات أنمي مدبلجة |
+        مسلسلات كورية مدبلجة | مسلسلات مدبلجة | أفلام مدبلجة | مسلسلات مترجمة |
+        مسلسلات عربية | مسلسلات أجنبية | مسلسلات أسيوية | أفلام | مسلسلات وأفلام
     """
     n = (name or "").lower()
-    c = (category or "").lower()
+    c = (category or "").strip().lower()
+    s = (source or "").lower()
+    # التصنيف العام "مسلسلات وأفلام" محايد — لا يعني أن العمل فيلم
+    c_match = "" if c == CAT_GENERIC.lower() else c
+    hay = f"{n} {c_match}"
 
-    # إشارات الاسم (الأعلى موثوقية)
-    n_movie = _has(n, _MOVIE_KEYS)
-    n_turk = _has(n, _TURK_KEYS)
-    n_ind = _has(n, _IND_KEYS)
-    n_kor = _has(n, _KOR_KEYS)
-    n_anime = _has(n, _ANIME_KEYS)
-    n_dub = _has(n, _DUB_KEYS)
-    n_trans = _has(n, _TRANS_KEYS)
-
-    # إشارات تصنيف المصدر
-    c_movie = _has(c, _MOVIE_KEYS)
-    c_turk = _has(c, _TURK_KEYS)
-    c_ind = _has(c, _IND_KEYS)
-    c_kor = _has(c, _KOR_KEYS)
-    c_anime = _has(c, _ANIME_KEYS)
-    c_dub = _has(c, _DUB_KEYS)
-    c_trans = _has(c, _TRANS_KEYS)
-
-    is_movie = n_movie or c_movie
-    is_turk = n_turk or c_turk
-    is_ind = n_ind or c_ind
-    is_kor = n_kor or c_kor
-    is_anime = n_anime or c_anime
-    is_dub = n_dub or c_dub
-    is_trans = n_trans or c_trans
+    is_movie = _has(hay, _MOVIE_KEYS)
+    is_turk = _has(hay, _TURK_KEYS)
+    is_ind = _has(hay, _IND_KEYS)
+    is_kor = _has(hay, _KOR_KEYS)
+    is_anime = _has(hay, _ANIME_KEYS)
+    is_asian = _has(hay, _ASIAN_KEYS)
+    is_arabic = _has(hay, _ARABIC_KEYS)
+    is_foreign = _has(hay, _FOREIGN_KEYS)
+    is_dub = _has(hay, _DUB_KEYS)
+    is_trans = _has(hay, _TRANS_KEYS)
+    has_latin = bool(re.search(r"[a-z]{3,}", n))
 
     # الاسم له الأولوية عند التعارض (مثال: "فيلينتا مدبلج" + تصنيف "مترجمة" ⇒ مدبلج)
-    if n_dub:
+    if _has(n, _DUB_KEYS):
         is_trans = False
-    if n_trans and not n_dub:
+    elif _has(n, _TRANS_KEYS):
         is_dub = False
 
+    # مصدر عشق (u3seq) = مسلسلات تركية (مدبلجة افتراضياً)
+    if s == "u3seq" and not is_movie:
+        is_turk = True
+        if not is_trans:
+            is_dub = True
+
+    # ── الترتيب ──
     if is_movie and is_dub:
-        return "أفلام مدبلجة"
-    if is_turk and is_dub:
-        return "مسلسلات تركية مدبلجة"
-    if is_ind and is_dub:
-        return "مسلسلات هندية مدبلجة"
-    if is_kor and is_dub:
-        return "مسلسلات كورية مدبلجة"
-    if is_anime and is_dub:
-        return "مسلسلات أنمي مدبلجة"
-    if is_dub:
-        return "مسلسلات مدبلجة"
-    if is_trans:
-        return "مسلسلات مترجمة"
+        return CAT_DUB_MOVIES
     if is_movie:
-        return "أفلام"
-    return "مسلسلات وأفلام"
+        return CAT_MOVIES
+    if is_dub:
+        if is_turk:
+            return CAT_TURK_DUB
+        if is_ind:
+            return CAT_IND_DUB
+        if is_kor:
+            return CAT_KOR_DUB
+        if is_anime:
+            return CAT_ANIME_DUB
+        return CAT_DUB
+    if is_trans:
+        return CAT_TRANS
+    if is_anime:
+        return CAT_ANIME_DUB
+    if is_arabic:
+        return CAT_ARABIC
+    if is_foreign or (has_latin and not (is_turk or is_ind or is_kor or is_anime)):
+        return CAT_FOREIGN
+    if is_turk:
+        return CAT_TRANS
+    if is_ind:
+        return CAT_TRANS
+    if is_asian:
+        return CAT_ASIAN
+    if c in _SLUG_FIX:
+        return _SLUG_FIX[c]
+    # yam: تصنيف فارغ (من صفحة القائمة الرئيسية) — نستنتج من نص الاسم.
+    #   ملاحظة: المسلسلات التركية/الأجنبية/المدبلجة تُلتقط عبر تصنيفاتها المخصّصة،
+    #   لذا المتبقّي هنا (نص عربي بلا كلمات مفتاحية) هو غالباً عربي (مصري/خليجي).
+    # التصنيف العام "مسلسلات وأفلام" أو الفارغ محايد — نستنتج من نص الاسم.
+    #   ملاحظة: عشق (u3seq) يعود مبكراً كتركي مدبلج، لذا لا يصل إلى هنا.
+    if not c or c == CAT_GENERIC.lower():
+        if re.search(r"[\u0600-\u06FF]", n):
+            return CAT_ARABIC
+        if n.strip():
+            return CAT_FOREIGN
+    return CAT_GENERIC
 
 
 if __name__ == "__main__":
