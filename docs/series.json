@@ -1,5 +1,5 @@
 {
-  "built_at": "2026-10-11T09:58:31.675781",
+  "built_at": "2026-10-11T13:06:06.941637",
   "series": [
     {
       "name": "انت من احببت",
@@ -132,6 +132,16 @@
       "last_updated": ""
     },
     {
+      "name": "فيلينتا مدبلج الموسم 1",
+      "slug": "فيلينتا-مدبلج-الموسم-1-bbe0090c",
+      "poster": "posters/فيلينتا-مدبلج-الموسم-1-bbe0090c.jpg",
+      "episodes_count": 164,
+      "eps": 164,
+      "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
+      "last_updated": ""
+    },
+    {
       "name": "الخياط الموسم 3",
       "slug": "الخياط-الموسم-3-a1976b25",
       "poster": "posters/الخياط-الموسم-3-a1976b25.jpg",
@@ -142,41 +152,21 @@
       "last_updated": ""
     },
     {
-      "name": "جودا اكبر مدبلج",
-      "slug": "جودا-اكبر-مدبلج-6ba87130",
-      "poster": "posters/جودا-اكبر-مدبلج-6ba87130.jpg",
-      "episodes_count": 37,
-      "eps": 37,
-      "genre": "",
-      "category": "مسلسلات مدبلجة",
-      "last_updated": ""
-    },
-    {
-      "name": "كذبتي الحلوه الموسم 1",
-      "slug": "كذبتي-الحلوه-الموسم-1-23f85344",
-      "poster": "posters/كذبتي-الحلوه-الموسم-1-23f85344.jpg",
-      "episodes_count": 83,
-      "eps": 83,
-      "genre": "",
-      "category": "مسلسلات مدبلجة",
-      "last_updated": ""
-    },
-    {
-      "name": "فيلينتا مدبلج الموسم 1",
-      "slug": "فيلينتا-مدبلج-الموسم-1-bbe0090c",
-      "poster": "posters/فيلينتا-مدبلج-الموسم-1-bbe0090c.jpg",
-      "episodes_count": 164,
-      "eps": 164,
-      "genre": "",
-      "category": "مسلسلات مدبلجة",
-      "last_updated": ""
-    },
-    {
       "name": "المحافظ مدبلج الموسم 4",
       "slug": "المحافظ-مدبلج-الموسم-4-7c44f5a2",
       "poster": "posters/المحافظ-مدبلج-الموسم-4-7c44f5a2.jpg",
       "episodes_count": 10,
       "eps": 10,
+      "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
+      "last_updated": ""
+    },
+    {
+      "name": "جودا اكبر مدبلج",
+      "slug": "جودا-اكبر-مدبلج-6ba87130",
+      "poster": "posters/جودا-اكبر-مدبلج-6ba87130.jpg",
+      "episodes_count": 37,
+      "eps": 37,
       "genre": "",
       "category": "مسلسلات مدبلجة",
       "last_updated": ""
@@ -202,29 +192,9 @@
       "last_updated": ""
     },
     {
-      "name": "النص الثاني الموسم 1",
-      "slug": "النص-الثاني-الموسم-1-4ca8aaae",
-      "poster": "posters/النص-الثاني-الموسم-1-4ca8aaae.png",
-      "episodes_count": 15,
-      "eps": 15,
-      "genre": "",
-      "category": "مسلسلات مترجمة",
-      "last_updated": ""
-    },
-    {
       "name": "فن الحرب الموسم 1",
       "slug": "فن-الحرب-الموسم-1-896957fa",
       "poster": "posters/فن-الحرب-الموسم-1-896957fa.jpg",
-      "episodes_count": 30,
-      "eps": 30,
-      "genre": "",
-      "category": "مسلسلات مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "المداح الموسم 6",
-      "slug": "المداح-الموسم-6-1d9f0c3b",
-      "poster": "posters/المداح-الموسم-6-1d9f0c3b.png",
       "episodes_count": 30,
       "eps": 30,
       "genre": "",
@@ -312,31 +282,21 @@
       "last_updated": ""
     },
     {
+      "name": "كذبتي الحلوه الموسم 1",
+      "slug": "كذبتي-الحلوه-الموسم-1-23f85344",
+      "poster": "posters/كذبتي-الحلوه-الموسم-1-23f85344.jpg",
+      "episodes_count": 83,
+      "eps": 83,
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
       "name": "اوراق النسيان",
       "slug": "اوراق-النسيان-128efc13",
       "poster": "posters/اوراق-النسيان-128efc13.png",
       "episodes_count": 17,
       "eps": 17,
-      "genre": "",
-      "category": "مسلسلات مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "كارثة طبيعية",
-      "slug": "كارثة-طبيعية-96cb1dff",
-      "poster": "posters/كارثة-طبيعية-96cb1dff.jpg",
-      "episodes_count": 10,
-      "eps": 10,
-      "genre": "",
-      "category": "مسلسلات مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "النص",
-      "slug": "النص-09cff955",
-      "poster": "posters/النص-09cff955.png",
-      "episodes_count": 15,
-      "eps": 15,
       "genre": "",
       "category": "مسلسلات مترجمة",
       "last_updated": ""
@@ -362,91 +322,11 @@
       "last_updated": ""
     },
     {
-      "name": "مملكة الحرير",
-      "slug": "مملكة-الحرير-b8e9566f",
-      "poster": "posters/مملكة-الحرير-b8e9566f.jpg",
-      "episodes_count": 10,
-      "eps": 10,
-      "genre": "",
-      "category": "مسلسلات مترجمة",
-      "last_updated": ""
-    },
-    {
       "name": "موعد مع الماضي",
       "slug": "موعد-مع-الماضي-4902bc42",
       "poster": "posters/موعد-مع-الماضي-4902bc42.jpg",
       "episodes_count": 8,
       "eps": 8,
-      "genre": "",
-      "category": "مسلسلات مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "بـ 100 وش",
-      "slug": "بـ-100-وش-4187362d",
-      "poster": "posters/بـ-100-وش-4187362d.jpg",
-      "episodes_count": 30,
-      "eps": 30,
-      "genre": "",
-      "category": "مسلسلات مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "فى كل اسبوع يوم جمعة",
-      "slug": "فى-كل-اسبوع-يوم-جمعة-3abbba53",
-      "poster": "posters/فى-كل-اسبوع-يوم-جمعة-3abbba53.jpg",
-      "episodes_count": 10,
-      "eps": 10,
-      "genre": "",
-      "category": "مسلسلات مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "مسلسل منورة باهلها",
-      "slug": "مسلسل-منورة-باهلها-951b3a2d",
-      "poster": "posters/مسلسل-منورة-باهلها-951b3a2d.jpg",
-      "episodes_count": 10,
-      "eps": 10,
-      "genre": "",
-      "category": "مسلسلات مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "ضربة معلم",
-      "slug": "ضربة-معلم-60261bea",
-      "poster": "posters/ضربة-معلم-60261bea.jpg",
-      "episodes_count": 45,
-      "eps": 45,
-      "genre": "",
-      "category": "مسلسلات مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "مسلسل الاخ الكبير",
-      "slug": "مسلسل-الاخ-الكبير-959a4b35",
-      "poster": "posters/مسلسل-الاخ-الكبير-959a4b35.jpg",
-      "episodes_count": 45,
-      "eps": 45,
-      "genre": "",
-      "category": "مسلسلات مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "الف ليلة وليلة: جودر",
-      "slug": "الف-ليلة-وليلة-جودر-d4cffb96",
-      "poster": "posters/الف-ليلة-وليلة-جودر-d4cffb96.jpg",
-      "episodes_count": 15,
-      "eps": 15,
-      "genre": "",
-      "category": "مسلسلات مترجمة",
-      "last_updated": ""
-    },
-    {
-      "name": "الف ليله وليله",
-      "slug": "الف-ليله-وليله-ab5d5306",
-      "poster": "posters/الف-ليله-وليله-ab5d5306.jpg",
-      "episodes_count": 29,
-      "eps": 29,
       "genre": "",
       "category": "مسلسلات مترجمة",
       "last_updated": ""
@@ -472,6 +352,26 @@
       "last_updated": ""
     },
     {
+      "name": "النص الثاني الموسم 1",
+      "slug": "النص-الثاني-الموسم-1-4ca8aaae",
+      "poster": "posters/النص-الثاني-الموسم-1-4ca8aaae.jpg",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات عربية",
+      "last_updated": ""
+    },
+    {
+      "name": "المداح الموسم 6",
+      "slug": "المداح-الموسم-6-1d9f0c3b",
+      "poster": "posters/المداح-الموسم-6-1d9f0c3b.jpg",
+      "episodes_count": 30,
+      "eps": 30,
+      "genre": "",
+      "category": "مسلسلات عربية",
+      "last_updated": ""
+    },
+    {
       "name": "حد اقصى الموسم 1",
       "slug": "حد-اقصى-الموسم-1-30b58646",
       "poster": "posters/حد-اقصى-الموسم-1-30b58646.png",
@@ -487,6 +387,106 @@
       "poster": "posters/placeholder.jpg",
       "episodes_count": 99,
       "eps": 99,
+      "genre": "",
+      "category": "مسلسلات عربية",
+      "last_updated": ""
+    },
+    {
+      "name": "كارثة طبيعية",
+      "slug": "كارثة-طبيعية-96cb1dff",
+      "poster": "posters/كارثة-طبيعية-96cb1dff.jpg",
+      "episodes_count": 10,
+      "eps": 10,
+      "genre": "",
+      "category": "مسلسلات عربية",
+      "last_updated": ""
+    },
+    {
+      "name": "النص",
+      "slug": "النص-09cff955",
+      "poster": "posters/النص-09cff955.jpg",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات عربية",
+      "last_updated": ""
+    },
+    {
+      "name": "مملكة الحرير",
+      "slug": "مملكة-الحرير-b8e9566f",
+      "poster": "posters/مملكة-الحرير-b8e9566f.jpg",
+      "episodes_count": 10,
+      "eps": 10,
+      "genre": "",
+      "category": "مسلسلات عربية",
+      "last_updated": ""
+    },
+    {
+      "name": "بـ 100 وش",
+      "slug": "بـ-100-وش-4187362d",
+      "poster": "posters/بـ-100-وش-4187362d.jpg",
+      "episodes_count": 30,
+      "eps": 30,
+      "genre": "",
+      "category": "مسلسلات عربية",
+      "last_updated": ""
+    },
+    {
+      "name": "فى كل اسبوع يوم جمعة",
+      "slug": "فى-كل-اسبوع-يوم-جمعة-3abbba53",
+      "poster": "posters/فى-كل-اسبوع-يوم-جمعة-3abbba53.jpg",
+      "episodes_count": 10,
+      "eps": 10,
+      "genre": "",
+      "category": "مسلسلات عربية",
+      "last_updated": ""
+    },
+    {
+      "name": "مسلسل منورة باهلها",
+      "slug": "مسلسل-منورة-باهلها-951b3a2d",
+      "poster": "posters/مسلسل-منورة-باهلها-951b3a2d.jpg",
+      "episodes_count": 10,
+      "eps": 10,
+      "genre": "",
+      "category": "مسلسلات عربية",
+      "last_updated": ""
+    },
+    {
+      "name": "ضربة معلم",
+      "slug": "ضربة-معلم-60261bea",
+      "poster": "posters/ضربة-معلم-60261bea.jpg",
+      "episodes_count": 45,
+      "eps": 45,
+      "genre": "",
+      "category": "مسلسلات عربية",
+      "last_updated": ""
+    },
+    {
+      "name": "مسلسل الاخ الكبير",
+      "slug": "مسلسل-الاخ-الكبير-959a4b35",
+      "poster": "posters/مسلسل-الاخ-الكبير-959a4b35.jpg",
+      "episodes_count": 45,
+      "eps": 45,
+      "genre": "",
+      "category": "مسلسلات عربية",
+      "last_updated": ""
+    },
+    {
+      "name": "الف ليلة وليلة: جودر",
+      "slug": "الف-ليلة-وليلة-جودر-d4cffb96",
+      "poster": "posters/الف-ليلة-وليلة-جودر-d4cffb96.jpg",
+      "episodes_count": 15,
+      "eps": 15,
+      "genre": "",
+      "category": "مسلسلات عربية",
+      "last_updated": ""
+    },
+    {
+      "name": "الف ليله وليله",
+      "slug": "الف-ليله-وليله-ab5d5306",
+      "poster": "posters/الف-ليله-وليله-ab5d5306.jpg",
+      "episodes_count": 29,
+      "eps": 29,
       "genre": "",
       "category": "مسلسلات عربية",
       "last_updated": ""
