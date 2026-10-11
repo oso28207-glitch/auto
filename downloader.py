@@ -868,18 +868,22 @@ def _extract_from_iframe(sb, iframe_url, out_path):
 _U3SEQ_IMPERSONATIONS = ["safari17_0", "chrome120", "chrome110", "chrome104", "chrome99"]
 
 
-def _cffi_get(url, referer=None, timeout=30, session=None):
-    """جلب HTML عبر curl_cffi مع تمويه المتصفح + Referer (لتجاوز حماية vidsp)."""
+def _cffi_get(url, referer=None, timeout=30, session=None, minimal=False):
+    """جلب HTML عبر curl_cffi مع تمويه المتصفح + Referer (لتجاوز حماية vidsp).
+       minimal=True: فقط UA + Referer (مطلوب لصفحة مشغّل vidsp حتى لا يُبطَل الـ hash)."""
     try:
         from curl_cffi import requests as cffi_requests
     except Exception:
         return None
     headers = {
         "User-Agent": UA,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
-        "X-Requested-With": "XMLHttpRequest",
     }
+    if not minimal:
+        headers.update({
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
+            "X-Requested-With": "XMLHttpRequest",
+        })
     if referer:
         headers["Referer"] = referer
     if session is not None:
@@ -918,6 +922,90 @@ def _player_m3u8(iframe_html, iframe_url):
     return None, None
 
 
+def _node_decrypt(enc_file, seed, timeout=45):
+    """فك تشفير رابط vidsp عبر Node.js (vidsp_decrypt.js) → رابط m3u8 الحقيقي (sp=300)."""
+    if not enc_file or not seed:
+        return None
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vidsp_decrypt.js")
+    if not os.path.exists(script):
+        print("      ⚠️ vidsp_decrypt.js غير موجود", flush=True)
+        return None
+    try:
+        r = subprocess.run(
+            ["node", script, str(enc_file), str(seed)],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        out = (r.stdout or "").strip()
+        if r.returncode == 0 and out.startswith("http"):
+            return out.splitlines()[-1].strip()
+        if r.stderr:
+            print(f"      ⚠️ node decrypt: {r.stderr.strip()[:150]}", flush=True)
+    except FileNotFoundError:
+        print("      ⚠️ Node.js غير متاح لفك تشفير vidsp", flush=True)
+    except Exception as e:
+        print(f"      ⚠️ node decrypt خطأ: {str(e)[:120]}", flush=True)
+    return None
+
+
+def _vidsp_real_m3u8(player_html, iframe_url, session=None):
+    """رابط التشغيل الحقيقي (sp=300) لمشغّل vidsp:
+       POST /dl (op=playerddl) → JSON [{file, seed}] → فك التشفير عبر Node.
+       يُرجع (url, referer) أو (None, None)."""
+    if not player_html:
+        return None, None
+    m = re.search(
+        r"op:\s*['\"]playerddl['\"]\s*,\s*file_code:\s*['\"]([^'\"]+)['\"]\s*,"
+        r"\s*hash:\s*['\"]([^'\"]+)['\"]",
+        player_html,
+    )
+    if not m:
+        return None, None
+    file_code, phash = m.group(1), m.group(2)
+    origin = _origin(iframe_url)
+    try:
+        from curl_cffi import requests as cffi_requests
+    except Exception:
+        return None, None
+    headers = {
+        "User-Agent": UA,
+        "Referer": iframe_url,
+        "Origin": origin,
+        "X-Requested-With": "XMLHttpRequest",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    data = {"op": "playerddl", "file_code": file_code, "hash": phash}
+    body = None
+    try:
+        if session is not None:
+            r = session.post(origin + "/dl", data=data, headers=headers, timeout=25)
+            if r.status_code == 200 and r.text:
+                body = r.text
+        if not body:
+            for imp in _U3SEQ_IMPERSONATIONS:
+                try:
+                    r = cffi_requests.post(origin + "/dl", data=data, headers=headers,
+                                           impersonate=imp, timeout=25)
+                    if r.status_code == 200 and r.text:
+                        body = r.text
+                        break
+                except Exception:
+                    continue
+    except Exception as e:
+        print(f"      ⚠️ /dl: {str(e)[:120]}", flush=True)
+    if not body:
+        return None, None
+    try:
+        j = json.loads(body)
+        o = j[0] if isinstance(j, list) else j
+        enc_file, seed = o.get("file"), o.get("seed")
+    except Exception:
+        return None, None
+    url = _node_decrypt(enc_file, seed)
+    if url and url.startswith("http"):
+        return url, iframe_url
+    return None, None
+
+
 def _download_m3u8_direct(m3u8_url, out_path, referer, session=None):
     """تنزيل HLS: yt-dlp → ffmpeg → curl_cffi يدوي (بدون متصفح)."""
     print("      🎯 [1/3] yt-dlp (مباشر)...", flush=True)
@@ -946,7 +1034,7 @@ def _download_m3u8_manual(m3u8_url, out_path, referer, session=None):
         except Exception:
             session = None
 
-    text = _cffi_get(m3u8_url, referer=referer, timeout=30, session=session)
+    text = _cffi_get(m3u8_url, referer=referer, timeout=30, session=session, minimal=True)
     if not text:
         print("      ❌ فشل جلب m3u8", flush=True)
         return None
@@ -955,7 +1043,7 @@ def _download_m3u8_manual(m3u8_url, out_path, referer, session=None):
         chosen = _pick_smallest_variant(text, m3u8_url, min_height=MIN_HEIGHT)
         if chosen:
             m3u8_url = chosen
-            text = _cffi_get(m3u8_url, referer=referer, timeout=30, session=session)
+            text = _cffi_get(m3u8_url, referer=referer, timeout=30, session=session, minimal=True)
             if not text:
                 return None
 
@@ -971,17 +1059,28 @@ def _download_m3u8_manual(m3u8_url, out_path, referer, session=None):
         print("      ❌ لا مقاطع", flush=True)
         return None
 
-    print(f"      📥 {len(seg_urls)} مقطع (curl_cffi)...", flush=True)
+    print(f"      📥 {len(seg_urls)} مقطع (curl_cffi متوازٍ)...", flush=True)
     tmp_dir = tempfile.mkdtemp(prefix="cffi_segs_")
-    headers = {"User-Agent": UA, "Referer": referer, "Accept": "*/*",
-               "Accept-Language": "en-US,en;q=0.9"}
-    paths = []
-    for idx, su in enumerate(seg_urls):
-        ok = False
+    headers = {"User-Agent": UA, "Referer": referer, "Accept": "*/*"}
+
+    n_workers = int(os.environ.get("M3U8_SEG_WORKERS", "8") or "8")
+    n_workers = max(1, min(n_workers, len(seg_urls)))
+
+    # جلسة منفصلة لكل عامل (curl_cffi Session ليست آمنة للاستخدام المتزامن)
+    worker_sessions = []
+    for _ in range(n_workers):
+        try:
+            worker_sessions.append(cffi_requests.Session(impersonate="safari17_0"))
+        except Exception:
+            worker_sessions.append(None)
+
+    results = [None] * len(seg_urls)
+
+    def _fetch_seg(idx, su, sess):
         for attempt in range(3):
             try:
-                if session is not None:
-                    r = session.get(su, headers=headers, timeout=90)
+                if sess is not None:
+                    r = sess.get(su, headers=headers, timeout=90)
                 else:
                     r = cffi_requests.get(su, headers=headers,
                                           impersonate="safari17_0", timeout=90)
@@ -989,16 +1088,30 @@ def _download_m3u8_manual(m3u8_url, out_path, referer, session=None):
                     p = os.path.join(tmp_dir, f"seg_{idx:06d}.ts")
                     with open(p, "wb") as f:
                         f.write(r.content)
-                    paths.append(p)
-                    ok = True
-                    break
+                    return p
             except Exception:
                 time.sleep(1.0 * (attempt + 1))
-                continue
-        if not ok:
-            print(f"      ⚠️ فشل المقطع {idx}", flush=True)
-        if (idx + 1) % 25 == 0:
-            print(f"         ↳ {idx+1}/{len(seg_urls)}", flush=True)
+        return None
+
+    import concurrent.futures as _cf
+    done = 0
+    with _cf.ThreadPoolExecutor(max_workers=n_workers) as ex:
+        fut2idx = {}
+        for i, su in enumerate(seg_urls):
+            fut = ex.submit(_fetch_seg, i, su, worker_sessions[i % n_workers])
+            fut2idx[fut] = i
+        for fut in _cf.as_completed(fut2idx):
+            try:
+                results[fut2idx[fut]] = fut.result()
+            except Exception:
+                pass
+            done += 1
+            if done % 25 == 0:
+                print(f"         ↳ {done}/{len(seg_urls)}", flush=True)
+
+    paths = [p for p in results if p]
+    if len(paths) < len(seg_urls):
+        print(f"      ⚠️ فشل {len(seg_urls) - len(paths)} مقطع", flush=True)
 
     if not paths:
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -1071,9 +1184,25 @@ def _u3seq_direct(url, out_path):
         iframe_url = m_if.group(1).replace("&amp;", "&")
         print(f"   🎯 [مباشر] مشغّل: {iframe_url[:80]}", flush=True)
 
-        player_html = _cffi_get(iframe_url, referer=watch, timeout=25, session=session)
+        is_vidsp_url = "vidsp" in iframe_url.lower()
+        player_html = _cffi_get(iframe_url, referer=watch, timeout=25,
+                                session=session, minimal=is_vidsp_url)
         if not player_html:
             continue
+
+        # ★ vidsp: رابط التشغيل الحقيقي (sp=300) عبر /dl + فك التشفير
+        #   (الرابط الأولي في HTML يحمل sp=1 → CDN يخنقه بشدة → فشل التنزيل)
+        is_vidsp = is_vidsp_url or ("playerddl" in player_html)
+        if is_vidsp:
+            m3u8, ref = _vidsp_real_m3u8(player_html, iframe_url, session=session)
+            if m3u8:
+                print(f"      🔓 m3u8 حقيقي (sp=300): {m3u8[:100]}", flush=True)
+                res = _download_m3u8_direct(m3u8, str(out_path), ref, session=session)
+                if res and os.path.exists(out_path) and os.path.getsize(out_path) > MIN_SIZE:
+                    return res
+            print("      ⚠️ فشل فك تشفير vidsp — تجاوز (بدون sp=1 المخنوق)", flush=True)
+            continue
+
         m3u8, ref = _player_m3u8(player_html, iframe_url)
         if not m3u8:
             print("      ⚠️ لا m3u8 في المشغّل", flush=True)
