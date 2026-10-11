@@ -930,20 +930,43 @@ def _node_decrypt(enc_file, seed, timeout=45):
     if not os.path.exists(script):
         print("      ⚠️ vidsp_decrypt.js غير موجود", flush=True)
         return None
-    try:
-        r = subprocess.run(
-            ["node", script, str(enc_file), str(seed)],
-            capture_output=True, text=True, timeout=timeout,
-        )
-        out = (r.stdout or "").strip()
-        if r.returncode == 0 and out.startswith("http"):
-            return out.splitlines()[-1].strip()
-        if r.stderr:
-            print(f"      ⚠️ node decrypt: {r.stderr.strip()[:150]}", flush=True)
-    except FileNotFoundError:
+    # جرّب عدة أسماء/مسارات لـ Node.js (node / nodejs / مسارات شائعة)
+    node_bins = [
+        os.environ.get("NODE_BIN") or "node",
+        "nodejs",
+        "/usr/bin/node",
+        "/usr/local/bin/node",
+        "/opt/hostedtoolcache/node/*/x64/bin/node",
+    ]
+    import glob as _glob
+    candidates = []
+    for b in node_bins:
+        if not b:
+            continue
+        if "*" in b:
+            candidates.extend(_glob.glob(b))
+        else:
+            candidates.append(b)
+    last_err = None
+    for node_bin in candidates:
+        try:
+            r = subprocess.run(
+                [node_bin, script, str(enc_file), str(seed)],
+                capture_output=True, text=True, timeout=timeout,
+            )
+            out = (r.stdout or "").strip()
+            if r.returncode == 0 and out.startswith("http"):
+                return out.splitlines()[-1].strip()
+            last_err = (r.stderr or "").strip()[:150] or f"rc={r.returncode}"
+        except FileNotFoundError:
+            continue
+        except Exception as e:
+            last_err = str(e)[:120]
+            continue
+    if last_err:
+        print(f"      ⚠️ node decrypt: {last_err}", flush=True)
+    else:
         print("      ⚠️ Node.js غير متاح لفك تشفير vidsp", flush=True)
-    except Exception as e:
-        print(f"      ⚠️ node decrypt خطأ: {str(e)[:120]}", flush=True)
     return None
 
 
