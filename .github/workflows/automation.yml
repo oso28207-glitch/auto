@@ -139,6 +139,8 @@ jobs:
           M3U8_SEARCH_TIMEOUT=25
           OPEN_TIMEOUT=10
           EPISODE_TIMEOUT=2400
+          EPISODE_DELAY=15
+          DOWNLOAD_RETRIES=2
           EOF
 
           sed -i "s|\${API_ID}|${API_ID}|g" .env
@@ -192,7 +194,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add -f data/ docs/ 2>/dev/null || true
+          # ★ حذف ملفات الوسائط الضخمة (mp4) — تسبب رفض push (>100MB)
+          rm -rf data/media/ 2>/dev/null || true
+          git rm -r --cached --ignore-unmatch -q data/media/ 2>/dev/null || true
+
+          # إضافة docs/ بالكامل + ملفات JSON فقط من data/ (بدون media)
+          git add -f docs/ 2>/dev/null || true
+          find data -maxdepth 1 -name '*.json' -exec git add -f {} + 2>/dev/null || true
 
           if git diff --staged --quiet; then
             echo "✅ لا تغييرات"
@@ -213,7 +221,8 @@ jobs:
             # حل تعارضات data/ و docs/ بـ ours (الأحدث)
             git checkout --ours data/ 2>/dev/null || true
             git checkout --ours docs/ 2>/dev/null || true
-            git add data/ docs/ 2>/dev/null || true
+            git add docs/ 2>/dev/null || true
+            find data -maxdepth 1 -name '*.json' -exec git add {} + 2>/dev/null || true
 
             GIT_EDITOR=true git rebase --continue 2>/dev/null || true
 

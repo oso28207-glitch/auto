@@ -1,5 +1,5 @@
 {
-  "built_at": "2026-10-11T20:50:06.137551",
+  "built_at": "2026-10-11T21:56:28.077737",
   "series": [
     {
       "name": "انت من احببت",
@@ -506,20 +506,6 @@
       "last_updated": ""
     },
     {
-      "name": "النص الثاني",
-      "slug": "النص-الثاني-25242fe7",
-      "poster": "posters/النص-الثاني-25242fe7.jpg",
-      "episodes_count": 15,
-      "eps": 15,
-      "seasons_count": 1,
-      "seasons": [
-        1
-      ],
-      "genre": "",
-      "category": "مسلسلات عربية",
-      "last_updated": ""
-    },
-    {
       "name": "المداح",
       "slug": "المداح-9fb05068",
       "poster": "posters/المداح-9fb05068.jpg",
@@ -565,11 +551,12 @@
       "name": "النص",
       "slug": "النص-09cff955",
       "poster": "posters/النص-09cff955.jpg",
-      "episodes_count": 15,
-      "eps": 15,
-      "seasons_count": 1,
+      "episodes_count": 30,
+      "eps": 30,
+      "seasons_count": 2,
       "seasons": [
-        1
+        1,
+        2
       ],
       "genre": "",
       "category": "مسلسلات عربية",

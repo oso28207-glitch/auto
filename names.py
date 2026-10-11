@@ -105,6 +105,18 @@ def base_norm(name: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════
 _SEASON_WORD_RE = re.compile(r"(?:ال)?(?:موسم|جزء|season|part)", re.IGNORECASE)
 
+
+def _fold_letters(s: str) -> str:
+    """توحيد الحروف العربية للمطابقة فقط (لا يُغيِّر النص المعروض).
+
+    يوحّد الهمزات (أ/إ/آ/ٱ → ا) والألف المقصورة (ى → ي) والياء (ئ → ي)
+    والواو (ؤ → و) والتاء المربوطة (ة → ه). ضروري للتعرف على الترتيب
+    المكتوب بالهمزة مثل «الأول»/«الثاني» و«الثانى» (بالألف المقصورة).
+    """
+    return (s.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+             .replace("ٱ", "ا").replace("ى", "ي").replace("ئ", "ي")
+             .replace("ؤ", "و").replace("ة", "ه"))
+
 _NUM_WORDS = {
     "الاول": 1, "الاولى": 1, "اول": 1, "first": 1,
     "الثاني": 2, "الثانية": 2, "ثاني": 2, "second": 2,
@@ -154,14 +166,16 @@ def split_season(name: str):
             pos += mm.end()
         else:
             for w in ("الحادي عشر", "الثاني عشر"):
-                if s[pos:].startswith(w):
+                if _fold_letters(s[pos:]).startswith(w):
                     num = _NUM_WORDS[w]
                     pos += len(w)
                     break
             if num is None:
                 toks = s[pos:].split(None, 1)
                 if toks:
-                    tok = toks[0].strip(".,:،")
+                    # ★ نُطبّع الحروف للمطابقة حتى يُتعرف على «الأول/الثاني/الثالث»
+                    #   المكتوبة بالهمزة أو «الثانى» بالألف المقصورة.
+                    tok = _fold_letters(toks[0].strip(".,:،"))
                     if tok in _NUM_WORDS:
                         num = _NUM_WORDS[tok]
                         pos += len(toks[0])

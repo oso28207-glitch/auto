@@ -421,6 +421,34 @@ def _group_into_works(series):
                     merged["episodes_count"] = len(merged["episodes"])
                     w["seasons"][season] = merged
 
+    # ── ★ دمج «الأجزاء/المواسم» المستقلة التي ينتهي مفتاحها برقم ترتيب ──
+    #   مثال: «النص» + «النص الثاني» → عمل واحد بموسمين (1 و 2).
+    #   الشرط: المفتاح الأصلي (بدون الرقم) موجود، والرقم ضمن 1..12،
+    #   والجزء لا يحمل مواسم صريحة ≥ 2 (وإلا فالرقم جزء من العنوان لا رقم
+    #   موسم، مثل «السلطان عبدالحميد الثاني» الذي يحمل مواسمه الخاصة).
+    for key in list(groups.keys()):
+        m = re.match(r"^(.*?)(\d{1,2})$", key)
+        if not m:
+            continue
+        parent_key, digits = m.group(1), int(m.group(2))
+        if not parent_key or parent_key == key or not (1 <= digits <= 12):
+            continue
+        parent = groups.get(parent_key)
+        child = groups.get(key)
+        if parent is None or child is None:
+            continue
+        if any(num >= 2 for num in child["seasons"].keys()):
+            continue
+        # إدماج مواسم الجزء داخل العمل الأصلي مع إزاحة رقم الموسم
+        for num, s in sorted(child["seasons"].items()):
+            tgt = digits + (num - 1)
+            prev = parent["seasons"].get(tgt)
+            if prev is None or len(s.get("episodes", [])) > len(prev.get("episodes", [])):
+                parent["seasons"][tgt] = s
+        del groups[key]
+        if key in order:
+            order.remove(key)
+
     works = []
     for key in order:
         w = groups[key]
