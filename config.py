@@ -1,4 +1,5 @@
 import os
+import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -6,7 +7,12 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
-MEDIA_DIR = DATA_DIR / "media"
+# ★ الوسائط المؤقتة (mp4/jpg) خارج المستودع تماماً — حتى لا يلتقطها
+#   `git add -f data/` وتُفشل الدفع لكونها أكبر من 100MB.
+#   يمكن تجاوز المسار عبر SHOOF_MEDIA_DIR.
+MEDIA_DIR = Path(
+    os.environ.get("SHOOF_MEDIA_DIR") or (Path(tempfile.gettempdir()) / "shoof_media")
+)
 DOCS_DIR = BASE_DIR / "docs"
 ASSETS_DIR = BASE_DIR / "assets"
 
