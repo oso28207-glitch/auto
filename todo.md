@@ -32,5 +32,7 @@
 - [x] التحقق من البطاقات والصفحة الرئيسية (تُعرض 50 بطاقة بشكل صحيح)
 
 ## 4. الدفع إلى GitHub
-- [ ] commit + push للتغييرات (يشغّل GitHub Action)
-- [ ] تقرير عربي بالنتائج
+- [x] commit + push للتغييرات (يشغّل GitHub Action) — تم الدفع a8e89f0..fd737f1
+- [x] معالجة رفض الدفع (توكن بلا صلاحية workflow): إرجاع ملف الـ workflow + تثبيت الحد الأدنى 500 في config.py
+- [x] تأكيد بدء تشغيل GitHub Action (Shoof Automation = in_progress على fd737f1)
+- [x] تقرير عربي بالنتائج
