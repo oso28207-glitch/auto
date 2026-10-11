@@ -1,12 +1,12 @@
 {
-  "built_at": "2026-10-11T18:08:12.197131",
+  "built_at": "2026-10-11T21:27:31.792306",
   "series": [
     {
       "name": "انت من احببت",
       "slug": "انت-من-احببت-8c83f29c",
       "poster": "posters/انت-من-احببت-8c83f29c.jpg",
-      "episodes_count": 32,
-      "eps": 32,
+      "episodes_count": 33,
+      "eps": 33,
       "seasons_count": 1,
       "seasons": [
         2
@@ -156,9 +156,37 @@
       "last_updated": ""
     },
     {
+      "name": "فتاة النافذة",
+      "slug": "فتاة-النافذة-3691783f",
+      "poster": "posters/فتاة-النافذة-3691783f.jpg",
+      "episodes_count": 44,
+      "eps": 44,
+      "seasons_count": 1,
+      "seasons": [
+        3
+      ],
+      "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
+      "last_updated": ""
+    },
+    {
+      "name": "كذبتي الحلوه",
+      "slug": "كذبتي-الحلوه-a783742b",
+      "poster": "posters/كذبتي-الحلوه-a783742b.jpg",
+      "episodes_count": 83,
+      "eps": 83,
+      "seasons_count": 1,
+      "seasons": [
+        1
+      ],
+      "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
+      "last_updated": ""
+    },
+    {
       "name": "حب للايجار",
       "slug": "حب-للايجار-04f39ec8",
-      "poster": "posters/حب-للايجار-04f39ec8.jpg",
+      "poster": "posters/حب-للايجار-04f39ec8.png",
       "episodes_count": 122,
       "eps": 122,
       "seasons_count": 1,
@@ -192,20 +220,6 @@
       "seasons_count": 1,
       "seasons": [
         1
-      ],
-      "genre": "",
-      "category": "مسلسلات تركية مدبلجة",
-      "last_updated": ""
-    },
-    {
-      "name": "الخياط",
-      "slug": "الخياط-f28d04bd",
-      "poster": "posters/الخياط-f28d04bd.jpg",
-      "episodes_count": 8,
-      "eps": 8,
-      "seasons_count": 1,
-      "seasons": [
-        3
       ],
       "genre": "",
       "category": "مسلسلات تركية مدبلجة",
@@ -380,6 +394,20 @@
       "last_updated": ""
     },
     {
+      "name": "التفاح الحرام",
+      "slug": "التفاح-الحرام-408db2b7",
+      "poster": "posters/التفاح-الحرام-408db2b7.jpg",
+      "episodes_count": 99,
+      "eps": 99,
+      "seasons_count": 1,
+      "seasons": [
+        6
+      ],
+      "genre": "",
+      "category": "مسلسلات مترجمة",
+      "last_updated": ""
+    },
+    {
       "name": "لعبة الحظ",
       "slug": "لعبة-الحظ-0b466bac",
       "poster": "posters/لعبة-الحظ-0b466bac.jpg",
@@ -394,14 +422,14 @@
       "last_updated": ""
     },
     {
-      "name": "كذبتي الحلوه",
-      "slug": "كذبتي-الحلوه-a783742b",
-      "poster": "posters/كذبتي-الحلوه-a783742b.jpg",
-      "episodes_count": 83,
-      "eps": 83,
+      "name": "الخياط",
+      "slug": "الخياط-f28d04bd",
+      "poster": "posters/الخياط-f28d04bd.png",
+      "episodes_count": 8,
+      "eps": 8,
       "seasons_count": 1,
       "seasons": [
-        1
+        3
       ],
       "genre": "",
       "category": "مسلسلات مترجمة",
@@ -478,20 +506,6 @@
       "last_updated": ""
     },
     {
-      "name": "فتاة النافذة",
-      "slug": "فتاة-النافذة-3691783f",
-      "poster": "posters/placeholder.jpg",
-      "episodes_count": 44,
-      "eps": 44,
-      "seasons_count": 1,
-      "seasons": [
-        3
-      ],
-      "genre": "",
-      "category": "مسلسلات عربية",
-      "last_updated": ""
-    },
-    {
       "name": "النص الثاني",
       "slug": "النص-الثاني-25242fe7",
       "poster": "posters/النص-الثاني-25242fe7.jpg",
@@ -528,20 +542,6 @@
       "seasons_count": 1,
       "seasons": [
         1
-      ],
-      "genre": "",
-      "category": "مسلسلات عربية",
-      "last_updated": ""
-    },
-    {
-      "name": "التفاح الحرام",
-      "slug": "التفاح-الحرام-408db2b7",
-      "poster": "posters/placeholder.jpg",
-      "episodes_count": 99,
-      "eps": 99,
-      "seasons_count": 1,
-      "seasons": [
-        6
       ],
       "genre": "",
       "category": "مسلسلات عربية",
