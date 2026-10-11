@@ -246,6 +246,8 @@ ALL_CATEGORIES = list(CATEGORY_PRIORITY.keys())
 
 # ── كلمات مفتاحية ──
 _MOVIE_KEYS = ("فيلم", "أفلام", "افلام", "movie", "film", "aflam")
+# تصنيفات المصدر التي تعني "أفلام" صراحةً (yam)
+_MOVIE_SLUG_KEYS = ("aflam", "افلام", "أفلام", "movies", "films")
 _TURK_KEYS = ("تركي", "turk")
 _IND_KEYS = ("هندي", "hndia", "india")
 _KOR_KEYS = ("كوري", "korea", "korean")
@@ -273,6 +275,24 @@ _SLUG_FIX = {
     "moslslat-ahwak": CAT_GENERIC,
     "tv-show": CAT_GENERIC,
     "msr7yat": CAT_GENERIC,
+    "moslslat-cartoon": CAT_ANIME_DUB,        # أنمي/كرتون
+    "mosalslat-english": CAT_FOREIGN,         # أجنبي
+    "moslslat-asia": CAT_ASIAN,               # آسيوي
+    "moslslat-msriya": CAT_ARABIC,            # مصري
+    "1moslslat-arbyaa": CAT_ARABIC,           # عربي
+    "moslslat-turkiaa-motrgma": CAT_TRANS,    # تركي مترجم
+    "moslslat-turkiaa1": CAT_TRANS,           # تركي مترجم
+    "moslslat-turkiaa-modblga": CAT_TURK_DUB, # تركي مدبلج
+    "moslslat-hndia-modblja": CAT_IND_DUB,    # هندي مدبلج
+    "indian-series": CAT_IND_DUB,             # هندي
+    "moslslat-modblga": CAT_DUB,              # مدبلج عام
+    "goda-akbar-modblge": CAT_DUB,
+    "mn-elnazra-elthania-modblge": CAT_DUB,
+    # ── أفلام (yam) ──
+    "aflam-dub": CAT_DUB_MOVIES,              # أفلام مدبلجة
+    "aflam-arabya1": CAT_MOVIES,              # أفلام عربية
+    "aflam-turky": CAT_MOVIES,                # أفلام تركية
+    "aflam-hindi": CAT_MOVIES,                # أفلام هندية
 }
 
 
@@ -294,7 +314,8 @@ def canonical_category(name: str = "", category: str = "",
     c_match = "" if c == CAT_GENERIC.lower() else c
     hay = f"{n} {c_match}"
 
-    is_movie = _has(hay, _MOVIE_KEYS)
+    # ── كشف الفيلم: من الاسم ("فيلم ...") أو من تصنيف المصدر (aflam-*) ──
+    is_movie = _has(hay, _MOVIE_KEYS) or _has(c, _MOVIE_SLUG_KEYS)
     is_turk = _has(hay, _TURK_KEYS)
     is_ind = _has(hay, _IND_KEYS)
     is_kor = _has(hay, _KOR_KEYS)

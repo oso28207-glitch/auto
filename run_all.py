@@ -55,6 +55,9 @@ SOURCE_ORDER = {"u3seq": 0, "yam": 1, "egybest": 2}
 # عدد محاولات تنزيل الحلقة الواحدة (1 = بدون إعادة) — يمكن ضبطه عبر البيئة
 DOWNLOAD_RETRIES = max(1, int(os.environ.get("DOWNLOAD_RETRIES", "2") or "2"))
 
+# ★ تأخير بين الحلقات (ثوانٍ) لتقليل حظر Cloudflare على IP الـ runner
+EPISODE_DELAY = max(0, int(os.environ.get("EPISODE_DELAY", "15") or "15"))
+
 # تسميات أسباب تخطّي الحلقات (للرسائل الواضحة)
 _SKIP_LABELS = {
     "no_url": "بدون رابط",
@@ -67,9 +70,28 @@ _SKIP_LABELS = {
 # ═══════════════════════════════════════════════════════════════
 # Git push
 # ═══════════════════════════════════════════════════════════════
+def _purge_media():
+    """يحذف كل ملفات الوسائط (mp4/jpg) من data/media/ ويزيلها من فهرس git.
+    السبب: ملفات *_raw.mp4 الضخمة (>100MB) تُرفض من GitHub وتُفشل الدفع بالكامل."""
+    try:
+        if MEDIA_DIR.exists():
+            shutil.rmtree(MEDIA_DIR, ignore_errors=True)
+        MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        print(f"   ⚠️ تعذّر حذف media: {str(e)[:100]}", flush=True)
+    # إزالة أي ملفات وسائط متتبَّعة من فهرس git (بدون حذف فعلي مكرّر)
+    try:
+        subprocess.run(
+            ["git", "rm", "-r", "--cached", "--ignore-unmatch", "-q", "data/media/"],
+            capture_output=True, timeout=60,
+        )
+    except Exception:
+        pass
+
+
 def _git_push_docs(force=False):
     """
-    يدفع data/ و docs/ إلى GitHub.
+    يدفع data/ (JSON فقط) و docs/ إلى GitHub — دون أي ملفات وسائط ضخمة.
     يُستدعى بعد بناء الموقع (قبل التحميل) وبعد النهاية.
     """
     if os.environ.get("GITHUB_ACTIONS") != "true":
@@ -87,10 +109,19 @@ def _git_push_docs(force=False):
             capture_output=True, timeout=10,
         )
 
+        # ★ إزالة ملفات الوسائط الضخمة قبل الدفع (تسبب رفض push >100MB)
+        _purge_media()
+
         subprocess.run(
-            ["git", "add", "-f", "docs/", "data/"],
-            capture_output=True, timeout=30,
+            ["git", "add", "-f", "docs/"],
+            capture_output=True, timeout=60,
         )
+        # إضافة ملفات JSON فقط من data/ (بدون media)
+        for jf in sorted(DATA_DIR.glob("*.json")):
+            subprocess.run(
+                ["git", "add", "-f", str(jf)],
+                capture_output=True, timeout=30,
+            )
 
         r = subprocess.run(
             ["git", "diff", "--staged", "--quiet"],
@@ -129,9 +160,14 @@ def _git_push_docs(force=False):
                 capture_output=True, timeout=30,
             )
             subprocess.run(
-                ["git", "add", "data/", "docs/"],
+                ["git", "add", "docs/"],
                 capture_output=True, timeout=30,
             )
+            for jf in sorted(DATA_DIR.glob("*.json")):
+                subprocess.run(
+                    ["git", "add", str(jf)],
+                    capture_output=True, timeout=30,
+                )
             subprocess.run(
                 ["git", "rebase", "--continue"],
                 capture_output=True, timeout=30,
@@ -653,6 +689,10 @@ async def _process_series(series, existing_tg, uploaded, skipped_log):
 
         print(f"\n   ── الحلقة {n} ──", flush=True)
 
+        # ★ تأخير بين الحلقات لتقليل حظر Cloudflare على IP الـ runner
+        if EPISODE_DELAY > 0:
+            await asyncio.sleep(EPISODE_DELAY)
+
         # ★ التحميل مع إعادة المحاولة: عند فشل كل المحاولات نُسجّل ونتابع
         r = None
         last_err = ""
@@ -703,6 +743,15 @@ async def _process_series(series, existing_tg, uploaded, skipped_log):
         }
         ok_count += 1
         print(f"   ✅ تمت + رُفعت (msg={info.get('message_id')})", flush=True)
+
+        # ★ تنظيف: حذف ملف الوسائط بعد الرفع الناجح (منع تراكم data/media)
+        try:
+            Path(r).unlink(missing_ok=True)
+            _thumb = Path(r).with_suffix(".jpg")
+            if _thumb.exists():
+                _thumb.unlink()
+        except Exception:
+            pass
 
         # تنظيف: إزالة أي سجل فشل سابق لهذه الحلقة بعد نجاحها
         if name in skipped_log:

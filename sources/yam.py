@@ -50,6 +50,15 @@ SKIP = {
     "تسجيل دخول", "تسجيل", "دخول", "حسابي", "بحث", "Categories",
 }
 
+# ── كشف تصنيفات الأفلام (yam): أي slug يحتوي "aflam" أو ما يعادله ──
+_MOVIE_CAT_KEYS = ("aflam", "افلام", "أفلام", "movies", "films")
+
+
+def _is_movie_cat(cat: str) -> bool:
+    c = (cat or "").lower()
+    return any(k in c for k in _MOVIE_CAT_KEYS)
+
+
 # رابط بطاقة المسلسل
 SERIE_RE = re.compile(r'view-serie\.php\?name=([^"&\s]+)', re.I)
 # رابط الحلقة
@@ -217,10 +226,15 @@ def _fetch_list():
 # ══════════════════════════════════════════════════════════════════════
 # 2) تصنيفات المدبلج (category.php) — الحلقات + الصور مباشرة
 # ══════════════════════════════════════════════════════════════════════
-def _parse_category_page(html: str):
-    """يستخرج {اسم المسلسل: {poster, episodes:{num:url}}} من صفحة تصنيف."""
+def _parse_category_page(html: str, cat: str = ""):
+    """يستخرج {اسم المسلسل: {poster, episodes:{num:url}}} من صفحة تصنيف.
+
+    ★ يدعم الأفلام: في تصنيفات ``aflam-*`` لا تحمل البطاقات رقم حلقة،
+      فنعتبر كل بطاقة فيلماً واحداً (الجزء = 1) ونضع علامة ``is_movie``.
+    """
     soup = BeautifulSoup(html, "html.parser")
     series = {}
+    movie_cat = _is_movie_cat(cat)
 
     for a in soup.find_all("a", href=True):
         h = a["href"]
@@ -236,13 +250,19 @@ def _parse_category_page(html: str):
         num = _extract_ep_num(title)
         if not num:
             num = _extract_ep_num(a.get("title", ""))
+        is_movie = movie_cat and not num
         if not num:
-            continue
+            if not is_movie:
+                continue
+            num = 1
 
         entry = series.setdefault(name, {
-            "name": name, "poster": "", "genre": "", "category": "",
+            "name": name, "poster": "", "genre": "", "category": cat,
             "episodes": {}, "source_url": "", "dubbed": False,
+            "is_movie": is_movie,
         })
+        if is_movie:
+            entry["is_movie"] = True
         low = title.lower()
         if "مدبلج" in low or "مدبلجة" in low:
             entry["dubbed"] = True
@@ -258,25 +278,32 @@ def _parse_category_page(html: str):
 def _fetch_cat(cat):
     """يجلب كل صفحات تصنيف واحد ويعيد (cat, {name: entry})."""
     merged = {}
+    movie_cat = _is_movie_cat(cat)
     for page in range(1, CATEGORY_PAGES + 1):
         url = f"{BASE}/category.php?cat={cat}&page={page}&order=DESC"
         r = _get(url, 25)
         if not r or r.status_code != 200:
             break
-        page_series = _parse_category_page(r.text)
+        page_series = _parse_category_page(r.text, cat)
         if not page_series:
             break
         for name, s in page_series.items():
             tgt = merged.setdefault(name, {
                 "name": name, "poster": "", "genre": "", "category": cat,
                 "episodes": {}, "source_url": "",
+                "is_movie": bool(s.get("is_movie", movie_cat)),
             })
+            if s.get("is_movie"):
+                tgt["is_movie"] = True
             if s.get("poster") and not tgt["poster"]:
                 tgt["poster"] = s["poster"]
             tgt["episodes"].update(s["episodes"])
         # توقف إذا كانت الصفحة أقل من 20 حلقة (آخر صفحة)
         total_eps = sum(len(v["episodes"]) for v in page_series.values())
-        if total_eps < 20:
+        if movie_cat:
+            if len(page_series) < 20:
+                break
+        elif total_eps < 20:
             break
     return cat, merged
 
@@ -302,13 +329,17 @@ def _fetch_categories():
             tgt = merged.setdefault(name, {
                 "name": name, "poster": "", "genre": "", "category": cat,
                 "episodes": {}, "source_url": "",
+                "is_movie": bool(s.get("is_movie")),
             })
+            if s.get("is_movie"):
+                tgt["is_movie"] = True
             if s.get("poster") and not tgt["poster"]:
                 tgt["poster"] = s["poster"]
             tgt["episodes"].update(s["episodes"])
             cat_count += len(s["episodes"])
         if cat_count:
-            print(f"      yam cat {cat}: {cat_count} حلقة", flush=True)
+            kind = "فيلم" if _is_movie_cat(cat) else "حلقة"
+            print(f"      yam cat {cat}: {cat_count} {kind}", flush=True)
 
     return merged
 

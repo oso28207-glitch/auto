@@ -10,6 +10,17 @@
 (function () {
     'use strict';
 
+    // ── نوع العمل: مسلسل (مواسم/حلقات) أو فيلم (أجزاء) ──
+    const KIND = (typeof window.KIND !== 'undefined' && window.KIND) ? window.KIND : 'series';
+    const IS_MOVIE = (KIND === 'movie');
+    const L = IS_MOVIE
+        ? { season: '\u0627\u0644\u062c\u0632\u0621', seasons: '\u0623\u062c\u0632\u0627\u0621',
+            episode: '\u0627\u0644\u0641\u064a\u0644\u0645', episodes: '\u0627\u0644\u0623\u0641\u0644\u0627\u0645',
+            play: '\u25b6 \u062a\u0634\u063a\u064a\u0644 \u0627\u0644\u0641\u064a\u0644\u0645' }
+        : { season: '\u0627\u0644\u0645\u0648\u0633\u0645', seasons: '\u0645\u0648\u0627\u0633\u0645',
+            episode: '\u0627\u0644\u062d\u0644\u0642\u0629', episodes: '\u0627\u0644\u062d\u0644\u0642\u0627\u062a',
+            play: '\u25b6 \u062a\u0634\u063a\u064a\u0644' };
+
     // عناصر الصفحة
     const v = document.getElementById('v') || document.getElementById('video-player');
     const grid = document.getElementById('grid') || document.getElementById('episodes-grid');
@@ -84,7 +95,7 @@
             ov.id = 'ep-unavailable';
             ov.className = 'player-unavailable';
             ov.innerHTML = '<div class="pu-icon">\u23f3</div>' +
-                '<p>\u0647\u0630\u0647 \u0627\u0644\u062d\u0644\u0642\u0629 \u0644\u0645 \u062a\u064f\u0631\u0641\u0639 \u0628\u0639\u062f \u0625\u0644\u0649 \u0627\u0644\u0642\u0646\u0627\u0629.</p>' +
+                '<p>' + (IS_MOVIE ? '\u0647\u0630\u0627 \u0627\u0644\u0641\u064a\u0644\u0645 \u0644\u0645 \u064a\u064f\u0631\u0641\u0639 \u0628\u0639\u062f \u0625\u0644\u0649 \u0627\u0644\u0642\u0646\u0627\u0629.' : '\u0647\u0630\u0647 \u0627\u0644\u062d\u0644\u0642\u0629 \u0644\u0645 \u062a\u064f\u0631\u0641\u0639 \u0628\u0639\u062f \u0625\u0644\u0649 \u0627\u0644\u0642\u0646\u0627\u0629.') + '</p>' +
                 '<a class="pu-btn" href="' + (window.C || '#') + '" target="_blank" rel="noopener">\ud83d\udce1 \u062a\u0627\u0628\u0639 \u0639\u0644\u0649 \u062a\u064a\u0644\u064a\u062c\u0631\u0627\u0645</a>';
             const wrap = (v && v.parentElement) ? v.parentElement : document.body;
             wrap.appendChild(ov);
@@ -115,14 +126,14 @@
             const b = document.createElement('button');
             b.type = 'button';
             b.className = 'season-btn' + (i === curSeason ? ' active' : '');
-            b.innerHTML = '\u0627\u0644\u0645\u0648\u0633\u0645 ' + s.season +
+            b.innerHTML = L.season + ' ' + s.season +
                 ' <span class="sc">' + (s.eps ? s.eps.length : 0) + '</span>';
             b.onclick = function () { selectSeason(i); };
             seasonsBar.appendChild(b);
         });
 
         if (seasonLabel) {
-            seasonLabel.textContent = '\u2014 \u0627\u0644\u0645\u0648\u0633\u0645 ' + curSeasonNum();
+            seasonLabel.textContent = '\u2014 ' + L.season + ' ' + curSeasonNum();
         }
     }
 
@@ -152,13 +163,19 @@
         grid.innerHTML = '';
 
         const eps = curEps();
+        const singlePart = IS_MOVIE && seasons.length === 1 && eps.length === 1;
         eps.forEach(function (ep, i) {
             const num = ep.num || (i + 1);
             if (filter && String(num).indexOf(filter) === -1) return;
 
             const b = document.createElement('button');
-            b.textContent = num;
-            b.className = 'ep-btn';
+            if (IS_MOVIE) {
+                b.textContent = singlePart ? L.play : (L.season + ' ' + num);
+                b.classList.add('ep-btn', 'movie-btn');
+            } else {
+                b.textContent = num;
+                b.classList.add('ep-btn');
+            }
             if (watched.has(wkey(num))) b.classList.add('watched');
             if (i === cur) b.classList.add('active');
             b.onclick = function () { play(i); };
@@ -185,13 +202,13 @@
         const num = (ep && typeof ep === 'object' && ep.num) ? ep.num : (i + 1);
 
         // تحديث العنوان + URL
-        document.title = '\u0627\u0644\u062d\u0644\u0642\u0629 ' + num;
+        document.title = L.episode + ' ' + num;
         try {
             history.replaceState(null, '', '?s=' + curSeasonNum() + '&ep=' + num);
         } catch (e) {}
 
-        // شارة الحلقة الحالية
-        if (epBadge) epBadge.textContent = '\u0627\u0644\u062d\u0644\u0642\u0629 ' + num;
+        // شارة الحلقة/الفيلم الحالية
+        if (epBadge) epBadge.textContent = L.episode + ' ' + num;
 
         // تسجيل مشاهدة
         watched.add(wkey(num));

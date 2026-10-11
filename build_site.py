@@ -192,7 +192,12 @@ def _poster_ext(url: str) -> str:
 
 
 def _dl_poster(url, name):
-    """ينزّل البوستر محلياً ويعيد المسار النسبي 'posters/xxx.ext'."""
+    """ينزّل البوستر محلياً ويعيد المسار النسبي 'posters/xxx.ext'.
+
+    ★ مقاومة للحجب: نجرّب عدة بصمات متصفح، ثم محاولة ثانية بدون Referer،
+      ثم محاولة عبر نطاقات u3seq البديلة — لأن سيرفرات GitHub Actions
+      قد تُحجب من Cloudflare على النطاق الأساسي.
+    """
     if not url or not url.startswith("http"):
         return "posters/placeholder.jpg"
 
@@ -203,22 +208,65 @@ def _dl_poster(url, name):
         return f"posters/{out.name}"
 
     referer = "{u.scheme}://{u.netloc}/".format(u=urlparse(url))
-    for imp in IMPERSONATIONS:
-        try:
-            r = cffi.get(
-                url, impersonate=imp, timeout=25, verify=False,
-                headers={"Referer": referer, "User-Agent":
-                         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                         "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-                         "Version/17.0 Safari/605.1.15"},
-            )
-            if r.status_code == 200 and len(r.content) > 1024:
-                with open(out, "wb") as f:
-                    f.write(r.content)
-                return f"posters/{out.name}"
-        except Exception:
-            continue
+    ua = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+          "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+          "Version/17.0 Safari/605.1.15")
+
+    # بناء قائمة عناوين بديلة (نطاقات u3seq المتكافئة)
+    urls = [url]
+    try:
+        pu = urlparse(url)
+        if "u.3seq." in pu.netloc:
+            for alt in ("u.3seq.cam", "u.3seq.com"):
+                if alt != pu.netloc:
+                    urls.append(url.replace(pu.netloc, alt))
+    except Exception:
+        pass
+
+    # محاولة 1: بكل البصمات + Referer
+    for u in urls:
+        for imp in IMPERSONATIONS:
+            try:
+                r = cffi.get(u, impersonate=imp, timeout=25, verify=False,
+                             headers={"Referer": referer, "User-Agent": ua})
+                if r.status_code == 200 and len(r.content) > 1024:
+                    with open(out, "wb") as f:
+                        f.write(r.content)
+                    return f"posters/{out.name}"
+            except Exception:
+                continue
+
+    # محاولة 2: بدون Referer (بعض المضيفات ترفض الـ Referer)
+    for u in urls:
+        for imp in ("chrome120", "safari17_0"):
+            try:
+                r = cffi.get(u, impersonate=imp, timeout=25, verify=False,
+                             headers={"User-Agent": ua})
+                if r.status_code == 200 and len(r.content) > 1024:
+                    with open(out, "wb") as f:
+                        f.write(r.content)
+                    return f"posters/{out.name}"
+            except Exception:
+                continue
+
     return "posters/placeholder.jpg"
+
+
+def _search_poster(name: str) -> str:
+    """بحث احتياطي عن بوستر في yam بالاسم (عند غياب بوستر المطابقة)."""
+    if not name or len(name.strip()) < 3:
+        return ""
+    try:
+        from sources.yam import search_series
+        m = search_series(name)
+        if not m:
+            base = re.sub(r"\s+الموسم\s+\d+\s*$", "", name).strip()
+            base = re.sub(r"\s+\d+\s*$", "", base).strip()
+            if base and base != name:
+                m = search_series(base)
+        return (m or {}).get("poster", "") or ""
+    except Exception:
+        return ""
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -419,7 +467,7 @@ CARD = """<a class="card" href="watch/{slug}.html" title="{name}">
     <div class="badges">{badges}</div>
   </div>
   <div class="title">{name}</div>
-  <div class="meta">{eps} حلقة</div>
+  <div class="meta">{meta}</div>
 </a>"""
 
 
@@ -434,6 +482,18 @@ def _cat_label(category: str) -> str:
     return CAT_BADGE.get(_canonical_category(category=c), "")
 
 
+def _is_movie_cat(category: str) -> bool:
+    """هل التصنيف الموحّد يعني فيلماً؟"""
+    return (category or "").strip() in (CAT_MOVIES, CAT_DUB_MOVIES)
+
+
+def _card_meta(s) -> str:
+    """نص أسفل البطاقة: عدد الحلقات للمسلسل أو 'فيلم' للأفلام."""
+    if _is_movie_cat(s.get("category")):
+        return "🎬 فيلم"
+    return f"{s.get('episodes_count', 0)} حلقة"
+
+
 def _badges(s):
     out = ""
     if s.get("is_new"):
@@ -443,7 +503,8 @@ def _badges(s):
         out += f'<span class="badge genre">{label}</span>'
     sc = s.get("seasons_count") or 0
     if sc > 1:
-        out += f'<span class="badge seasons">{sc} مواسم</span>'
+        word = "أجزاء" if _is_movie_cat(s.get("category")) else "مواسم"
+        out += f'<span class="badge seasons">{sc} {word}</span>'
     return out
 
 
@@ -459,6 +520,17 @@ def _watch_html(work, ch, stream_map):
     poster = work.get("local_poster") or "posters/placeholder.jpg"
     count = work.get("episodes_count", 0)
     seasons_count = work.get("seasons_count", 1)
+
+    # ── كشف الفيلم: من التصنيف الموحّد ──
+    cat = work.get("category", "")
+    is_movie = cat in (CAT_MOVIES, CAT_DUB_MOVIES)
+    season_word = "الجزء" if is_movie else "الموسم"
+    seasons_word = "أجزاء" if is_movie else "مواسم"
+    episode_word = "الفيلم" if is_movie else "الحلقة"
+    episodes_word = "الأفلام" if is_movie else "الحلقات"
+    kind = "movie" if is_movie else "series"
+    eps_badge = ('<span class="badge eps">🎬 فيلم</span>' if is_movie
+                 else f'<span class="badge eps">{count} حلقة</span>')
 
     seasons_payload = []
     total_playable = 0
@@ -477,7 +549,7 @@ def _watch_html(work, ch, stream_map):
         eps_list.sort(key=lambda x: x["num"])
         total_playable += sum(1 for e in eps_list if e["url"])
         seasons_payload.append({
-            "season": int(season.get("season", 1)),
+            "season": int(season.get("season") or 1),
             "eps": eps_list,
         })
 
@@ -492,7 +564,7 @@ def _watch_html(work, ch, stream_map):
     seasons_json = json.dumps(seasons_payload, ensure_ascii=False)
     eps_json = json.dumps(first_eps, ensure_ascii=False)
     playable = total_playable
-    season_badge = (f'<span class="badge seasons">{seasons_count} مواسم</span>'
+    season_badge = (f'<span class="badge seasons">{seasons_count} {seasons_word}</span>'
                     if seasons_count > 1 else "")
 
     return f"""<!DOCTYPE html><html lang="ar" dir="rtl"><head>
@@ -529,9 +601,9 @@ def _watch_html(work, ch, stream_map):
     <div class="player-info">
       <h1>{name}</h1>
       <div class="info-meta">
-        <span class="badge eps">{count} حلقة</span>
+        {eps_badge}
         {season_badge}
-        <span class="badge genre" id="current-ep-badge">الحلقة 1</span>
+        <span class="badge genre" id="current-ep-badge">{episode_word} 1</span>
       </div>
       <div class="player-controls">
         <button id="btn-prev">⏮ السابقة</button>
@@ -543,9 +615,9 @@ def _watch_html(work, ch, stream_map):
   <section class="episodes-section">
     <div id="seasons-bar" class="seasons-bar"></div>
     <div class="episodes-header">
-      <h2>الحلقات <span id="season-label" class="season-label"></span></h2>
+      <h2>{episodes_word} <span id="season-label" class="season-label"></span></h2>
       <div class="episodes-filter">
-        <input id="ep-search" type="search" placeholder="ابحث عن رقم الحلقة...">
+        <input id="ep-search" type="search" placeholder="ابحث عن رقم {episode_word}...">
       </div>
     </div>
     <div id="grid" class="episodes-grid"></div>
@@ -558,7 +630,7 @@ def _watch_html(work, ch, stream_map):
     <a href="{ch}" target="_blank" rel="noopener">قناة تيليجرام</a>
   </div>
 </footer>
-<script>window.SEASONS = {seasons_json}; window.S = {eps_json}; window.DEFAULT_SEASON = {default_season}; window.C = {json.dumps(ch)}; window.PLAYABLE = {playable};</script>
+<script>window.SEASONS = {seasons_json}; window.S = {eps_json}; window.DEFAULT_SEASON = {default_season}; window.C = {json.dumps(ch)}; window.PLAYABLE = {playable}; window.KIND = {json.dumps(kind)};</script>
 <script src="../watch.js?v={ASSET_VER}"></script>
 </body></html>"""
 
@@ -580,7 +652,7 @@ def _index_html(series, ch, built_at):
         cards = "".join(CARD.format(
             slug=_slug(s["name"]), name=s["name"],
             poster=s.get("local_poster", "posters/placeholder.jpg"),
-            eps=s.get("episodes_count", 0),
+            meta=_card_meta(s),
             badges=_badges(s),
         ) for s in items)
         toggle = (f'<button class="row-toggle" onclick="toggleRow(this)">عرض الكل</button>'
@@ -713,7 +785,11 @@ def build_site():
     print(f"   🖼️  تنزيل صور {len(works)} عمل...", flush=True)
     ok = 0
     for w in works:
-        lp = _dl_poster(w.get("poster", ""), w.get("name", ""))
+        purl = w.get("poster", "")
+        # ★ احتياطي: إن لم يوجد بوستر من المطابقة، نبحث عنه في yam بالاسم
+        if not purl or not purl.startswith("http"):
+            purl = _search_poster(w.get("name", ""))
+        lp = _dl_poster(purl, w.get("name", ""))
         w["local_poster"] = lp
         if lp != "posters/placeholder.jpg":
             ok += 1

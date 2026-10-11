@@ -200,14 +200,15 @@ def _cookies(sb):
     return {}
 
 
-def _open(sb, url, wait=1.5, referrer=None):
+def _open(sb, url, wait=1.5, referrer=None, stop=True):
     # ★ Referer مهم: مشغّل vidsp.net يرفض التضمين بدونه ("Embeds disabled2")
     params = {"url": url}
     if referrer:
         params["referrer"] = referrer
     _cdp(sb, "Page.navigate", params)
     sb.cdp.sleep(wait)
-    _cdp(sb, "Runtime.evaluate", {"expression": "try{window.stop()}catch(e){}"})
+    if stop:
+        _cdp(sb, "Runtime.evaluate", {"expression": "try{window.stop()}catch(e){}"})
 
 
 def _play(sb):
@@ -867,9 +868,25 @@ def _extract_from_iframe(sb, iframe_url, out_path):
 # عبر curl_cffi مع Referer → رابط m3u8 موجود مباشرة داخل HTML.
 _U3SEQ_IMPERSONATIONS = ["safari17_0", "chrome120", "chrome110", "chrome104", "chrome99"]
 
+# ★ علامات صفحة تحدّي Cloudflare (يجب اعتبارها فشلاً وإعادة المحاولة)
+_CHALLENGE_MARKERS = (
+    "just a moment", "cf-challenge", "cf_chl", "challenge-platform",
+    "attention required", "checking your browser", "ddos protection",
+    "cf-browser-verification", "enable javascript and cookies",
+    "_cf_chl_opt", "turnstile",
+)
 
-def _cffi_get(url, referer=None, timeout=30, session=None, minimal=False):
+
+def _looks_like_challenge(text):
+    if not text:
+        return False
+    low = text[:6000].lower()
+    return any(m in low for m in _CHALLENGE_MARKERS)
+
+
+def _cffi_get(url, referer=None, timeout=30, session=None, minimal=False, retries=3):
     """جلب HTML عبر curl_cffi مع تمويه المتصفح + Referer (لتجاوز حماية vidsp).
+       ★ v59: يكشف صفحة تحدّي Cloudflare ويعيد المحاولة بجلسة جديدة + تدوير impersonation + backoff.
        minimal=True: فقط UA + Referer (مطلوب لصفحة مشغّل vidsp حتى لا يُبطَل الـ hash)."""
     try:
         from curl_cffi import requests as cffi_requests
@@ -886,21 +903,39 @@ def _cffi_get(url, referer=None, timeout=30, session=None, minimal=False):
         })
     if referer:
         headers["Referer"] = referer
+
+    def _try(sess, imp):
+        try:
+            if sess is not None:
+                r = sess.get(url, headers=headers, timeout=timeout, allow_redirects=True)
+            else:
+                r = cffi_requests.get(url, headers=headers, impersonate=imp,
+                                      timeout=timeout, allow_redirects=True)
+            if r.status_code == 200 and r.text and len(r.text) > 40:
+                if not _looks_like_challenge(r.text):
+                    return r.text
+        except Exception:
+            return None
+        return None
+
+    # 1) الجلسة الممرّرة (إن وُجدت)
     if session is not None:
-        try:
-            r = session.get(url, headers=headers, timeout=timeout, allow_redirects=True)
-            if r.status_code == 200 and r.text and len(r.text) > 40:
-                return r.text
-        except Exception:
-            pass
-    for imp in _U3SEQ_IMPERSONATIONS:
-        try:
-            r = cffi_requests.get(url, headers=headers, impersonate=imp,
-                                  timeout=timeout, allow_redirects=True)
-            if r.status_code == 200 and r.text and len(r.text) > 40:
-                return r.text
-        except Exception:
-            continue
+        t = _try(session, None)
+        if t:
+            return t
+
+    # 2) جلسات جديدة + تدوير impersonation مع backoff
+    for attempt in range(max(1, retries)):
+        for imp in _U3SEQ_IMPERSONATIONS:
+            try:
+                sess = cffi_requests.Session(impersonate=imp)
+            except Exception:
+                sess = None
+            t = _try(sess, imp)
+            if t:
+                return t
+        if attempt < retries - 1:
+            time.sleep(2.0 * (attempt + 1))
     return None
 
 
@@ -1149,6 +1184,16 @@ def _download_m3u8_manual(m3u8_url, out_path, referer, session=None):
     return None
 
 
+def _u3seq_domain_variants(u):
+    """نطاقات بديلة لعشق (u.3seq.com / u.3seq.cam) — لتجاوز حظر نطاق واحد."""
+    out = [u]
+    if "u.3seq.com" in u:
+        out.append(u.replace("u.3seq.com", "u.3seq.cam"))
+    elif "u.3seq.cam" in u:
+        out.append(u.replace("u.3seq.cam", "u.3seq.com"))
+    return out
+
+
 def _u3seq_direct(url, out_path):
     """مسار مباشر لعشق (u3seq) عبر curl_cffi — لا يحتاج متصفح.
        watch → serversList → iframe2.php → HTML المشغّل → m3u8 → تنزيل."""
@@ -1166,7 +1211,22 @@ def _u3seq_direct(url, out_path):
         watch = cur + "?do=watch"
 
     print(f"   ⚡ [مباشر] عشق: {watch[:90]}", flush=True)
-    html = _cffi_get(watch, referer=_origin(watch) + "/", timeout=30, session=session)
+
+    # ★ v59: إعادة المحاولة عبر نطاقات بديلة + جلسات جديدة (لتجاوز حظر Cloudflare المؤقت)
+    html = None
+    for dom_url in _u3seq_domain_variants(watch):
+        for attempt in range(3):
+            html = _cffi_get(dom_url, referer=_origin(dom_url) + "/", timeout=30,
+                             session=None, retries=2)
+            if html and ("vo_postID" in html or "serversList" in html):
+                watch = dom_url
+                break
+            html = None
+            if attempt < 2:
+                time.sleep(4.0 * (attempt + 1))
+        if html:
+            break
+
     if not html:
         print("   ⚠️ [مباشر] فشل جلب صفحة المشاهدة", flush=True)
         return None
@@ -1247,10 +1307,10 @@ def _u3seq(sb, url, out_path):
     else:
         watch = url
     print(f"🖥️  فتح: {watch[:90]}", flush=True)
-    _open(sb, watch, wait=2)
+    _open(sb, watch, wait=3, stop=False)
     servers = []
-    for i in range(8):
-        sb.cdp.sleep(0.6)
+    for i in range(30):
+        sb.cdp.sleep(1.0)
         servers = _eval(sb, """
             (function(){
                 var l=document.querySelector('.serversList');
@@ -1261,6 +1321,19 @@ def _u3seq(sb, url, out_path):
             })();
         """, []) or []
         if servers: break
+        # ★ كشف تحدّي Cloudflare ومحاولة تجاوزه (v59)
+        if i in (4, 9, 15):
+            try:
+                src = (sb.cdp.get_page_source() or "")[:6000].lower()
+                if any(m in src for m in _CHALLENGE_MARKERS):
+                    print("      🛡️ تحدّي Cloudflare — محاولة تجاوز...", flush=True)
+                    try:
+                        sb.uc_gui_click_captcha()
+                    except Exception:
+                        pass
+                    sb.cdp.sleep(4)
+            except Exception:
+                pass
     if not servers:
         raise RuntimeError("لا سيرفرات في u3seq")
     print(f"   ✅ {len(servers)} سيرفر", flush=True)

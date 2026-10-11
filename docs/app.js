@@ -79,7 +79,7 @@
             a.classList.add('active');
 
             const rows = document.querySelectorAll('.row');
-            if (cat === 'الرئيسية') {
+            if (cat === '__all__' || cat === 'الرئيسية' || !cat) {
                 rows.forEach(r => r.style.display = '');
             } else {
                 rows.forEach(r => {
