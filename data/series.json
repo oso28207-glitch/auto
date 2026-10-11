@@ -1247,6 +1247,7 @@
       "name": "مسلسل انت من احببت 2 الموسم الثاني",
       "poster": "https://u.3seq.cam/wp-content/uploads/2026/10/1-351x520.jpg",
       "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
       "source": "u3seq",
       "episodes": [
         {
@@ -1326,13 +1327,13 @@
           "url": "https://u.3seq.com/video/modablaj-sevdigim-sensin-episode-s02e20/"
         }
       ],
-      "episodes_count": 19,
-      "is_new": false
+      "episodes_count": 19
     },
     {
       "name": "مسلسل انت من احببت الموسم الثاني",
       "poster": "https://u.3seq.cam/wp-content/uploads/2026/10/1-351x520.jpg",
       "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
       "source": "u3seq",
       "episodes": [
         {
@@ -1340,13 +1341,13 @@
           "url": "https://u.3seq.com/video/modablaj-sevdigim-sensin-s02e01/"
         }
       ],
-      "episodes_count": 1,
-      "is_new": false
+      "episodes_count": 1
     },
     {
       "name": "مسلسل باهار",
       "poster": "https://u.3seq.cam/wp-content/uploads/2024/05/posterImage-351x520.jpg",
       "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
       "source": "u3seq",
       "episodes": [
         {
@@ -1354,13 +1355,13 @@
           "url": "https://u.3seq.com/video/modablaj-bahar-episode-04-s7pk/"
         }
       ],
-      "episodes_count": 1,
-      "is_new": false
+      "episodes_count": 1
     },
     {
       "name": "مسلسل ثلاث اخوات",
       "poster": "https://u.3seq.cam/wp-content/uploads/2024/01/1.png",
       "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
       "source": "u3seq",
       "episodes": [
         {
@@ -1392,13 +1393,13 @@
           "url": "https://u.3seq.com/video/modablaj-uc-kiz-kardes-episode-122-qxzg/"
         }
       ],
-      "episodes_count": 7,
-      "is_new": false
+      "episodes_count": 7
     },
     {
       "name": "مسلسل جبل القلب (جبل جونول)",
       "poster": "https://u.3seq.cam/wp-content/uploads/2023/07/1-4-376x520.png",
       "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
       "source": "u3seq",
       "episodes": [
         {
@@ -1430,13 +1431,13 @@
           "url": "https://u.3seq.com/video/modablaj-gonul-dagi-episode-25-qoom/"
         }
       ],
-      "episodes_count": 7,
-      "is_new": false
+      "episodes_count": 7
     },
     {
       "name": "مسلسل حكاية زواج",
       "poster": "https://u.3seq.cam/wp-content/uploads/2024/10/2024-10-04_085017-369x520.png",
       "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
       "source": "u3seq",
       "episodes": [
         {
@@ -1444,13 +1445,13 @@
           "url": "https://u.3seq.com/video/modablaj-kendi-dusen-aglamaz-episode-03-p3vh/"
         }
       ],
-      "episodes_count": 1,
-      "is_new": false
+      "episodes_count": 1
     },
     {
       "name": "مسلسل حلم اشرف",
       "poster": "https://u.3seq.cam/wp-content/uploads/2025/05/1-368x520.png",
       "genre": "",
+      "category": "مسلسلات تركية مدبلجة",
       "source": "u3seq",
       "episodes": [
         {
@@ -1622,8 +1623,7 @@
           "url": "https://u.3seq.com/video/modablaj-esref-ruya-episode-152/"
         }
       ],
-      "episodes_count": 42,
-      "is_new": false
+      "episodes_count": 42
     },
     {
       "name": "مسلسل شراب التوت 2 الموسم الثاني",
@@ -305469,9 +305469,13 @@
         {
           "num": 187,
           "url": "https://yam.ahwaktv.net/watch.php?vid=D7ae481fa"
+        },
+        {
+          "num": 188,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=703d5c8a8"
         }
       ],
-      "episodes_count": 65
+      "episodes_count": 66
     },
     {
       "name": "المنظمة الموسم السادس",
@@ -337247,9 +337251,13 @@
         {
           "num": 10,
           "url": "https://yam.ahwaktv.net/watch.php?vid=7abe925bb"
+        },
+        {
+          "num": 11,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=de8350dbe"
         }
       ],
-      "episodes_count": 10
+      "episodes_count": 11
     },
     {
       "name": "أرابيسك",
@@ -339547,10 +339555,6 @@
       "source": "yam",
       "episodes": [
         {
-          "num": 20,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=5B3b7e423"
-        },
-        {
           "num": 21,
           "url": "https://yam.ahwaktv.net/watch.php?vid=01451F0fe"
         },
@@ -339831,7 +339835,7 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=6c52e179c"
         }
       ],
-      "episodes_count": 71
+      "episodes_count": 70
     },
     {
       "name": "اسعاف يونس",
@@ -360873,9 +360877,13 @@
         {
           "num": 87,
           "url": "https://yam.ahwaktv.net/watch.php?vid=28Bb5a27b"
+        },
+        {
+          "num": 88,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=b77216e33"
         }
       ],
-      "episodes_count": 87
+      "episodes_count": 88
     },
     {
       "name": "حب لا يموت",
@@ -397397,9 +397405,17 @@
         {
           "num": 174,
           "url": "https://yam.ahwaktv.net/watch.php?vid=28Bb5a27b"
+        },
+        {
+          "num": 175,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=b77216e33"
+        },
+        {
+          "num": 176,
+          "url": "https://yam.ahwaktv.net/watch.php?vid=b77216e33"
         }
       ],
-      "episodes_count": 174
+      "episodes_count": 176
     },
     {
       "name": "مسلسل حد أقصى",
@@ -416171,10 +416187,6 @@
       "source": "yam",
       "episodes": [
         {
-          "num": 15,
-          "url": "https://yam.ahwaktv.net/watch.php?vid=E7c79eafa"
-        },
-        {
           "num": 16,
           "url": "https://yam.ahwaktv.net/watch.php?vid=6e72504c6"
         },
@@ -416235,7 +416247,7 @@
           "url": "https://yam.ahwaktv.net/watch.php?vid=53043779D"
         }
       ],
-      "episodes_count": 16
+      "episodes_count": 15
     },
     {
       "name": "هزاع",
@@ -431623,7 +431635,7 @@
       "name": "Doctor X: Mafia in White",
       "poster": "https://yam.ahwaktv.net/uploads/thumbs/31a5a343e-1.jpg",
       "genre": "",
-      "category": "moslslat-",
+      "category": "moslslat-asia",
       "source": "yam",
       "episodes": [
         {
@@ -460102,5 +460114,5 @@
       "episodes_count": 12
     }
   ],
-  "last_update": "2026-10-11T14:59:06.009256+00:00"
+  "last_update": "2026-10-11T15:53:19.166051+00:00"
 }
