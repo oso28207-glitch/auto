@@ -402,6 +402,10 @@ main {
     background: #0047ab;
 }
 
+.badge.seasons {
+    background: #7c3aed;
+}
+
 .card-title,
 .title {
     margin-top: 10px;
@@ -696,6 +700,76 @@ main {
    Episodes Grid
    ═══════════════════════════════════════════════════════════════ */
 .eps,
+/* ── Seasons Bar (multi-season works) ── */
+.seasons-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.seasons-bar:empty {
+    display: none;
+    margin: 0;
+    padding: 0;
+    border: none;
+}
+
+.season-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 10px 18px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    transition: all .15s;
+    white-space: nowrap;
+}
+
+.season-btn:hover {
+    background: var(--hover);
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
+
+.season-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    box-shadow: 0 0 14px rgba(229, 9, 20, .5);
+}
+
+.season-btn .sc {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .12);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.season-btn.active .sc {
+    background: rgba(0, 0, 0, .25);
+}
+
+.season-label {
+    color: var(--dim);
+    font-size: 15px;
+    font-weight: 600;
+}
+
 .episodes-section {
     background: var(--card);
     border-radius: 12px;
@@ -974,5 +1048,12 @@ main {
     .tg-btn {
         font-size: 11px;
         padding: 6px 10px;
+    }
+    .seasons-bar {
+        gap: 8px;
+    }
+    .season-btn {
+        padding: 8px 14px;
+        font-size: 13px;
     }
 }

@@ -46,15 +46,19 @@
         if (matches.length === 0) {
             searchResults.innerHTML = '<div class="result" style="color:#999">لا نتائج</div>';
         } else {
-            searchResults.innerHTML = matches.map(s => `
+            searchResults.innerHTML = matches.map(s => {
+                const sc = s.seasons_count || 1;
+                const seasonsTxt = sc > 1 ? ` • ${sc} مواسم` : '';
+                return `
                 <a class="result" href="watch/${s.slug}.html">
                     <img src="${s.poster}" alt="${s.name}" loading="lazy">
                     <div>
                         <div style="font-weight:600">${s.name}</div>
-                        <div style="font-size:12px;color:#999">${s.episodes_count} حلقة • ${s.genre}</div>
+                        <div style="font-size:12px;color:#999">${s.episodes_count} حلقة${seasonsTxt} • ${s.genre}</div>
                     </div>
                 </a>
-            `).join('');
+            `;
+            }).join('');
         }
         searchResults.classList.remove('hidden');
     }

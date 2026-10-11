@@ -23,6 +23,7 @@ from curl_cffi import requests as cffi
 from config import config, DATA_DIR, DOCS_DIR
 from names import (
     norm as _norm, base_norm as _base_norm,
+    split_season as _split_season,
     canonical_category as _canonical_category,
     CATEGORY_PRIORITY as _CATEGORY_PRIORITY,
     CAT_TURK_DUB, CAT_IND_DUB, CAT_ANIME_DUB, CAT_KOR_DUB, CAT_DUB,
@@ -331,6 +332,85 @@ def _lookup_stream(stream_map, name):
 # ═══════════════════════════════════════════════════════════════════
 # قوالب HTML
 # ═══════════════════════════════════════════════════════════════════
+# ★ دمج المواسم: تجميع المسلسلات في "أعمال" حسب اسم العمل + رقم الموسم
+def _group_into_works(series):
+    """يجمع مدخلات المسلسلات في "أعمال" موحّدة.
+
+    كل عمل = اسم أساسي (بدون رقم الموسم) + قائمة مواسم، وكل موسم يحمل حلقاته.
+    مثال: ["حب للايجار الموسم 1", "حب للايجار الموسم 2"] → عمل واحد بموسمين.
+    """
+    groups = {}     # key -> work
+    order = []      # ترتيب أول ظهور للمفاتيح
+
+    for s in series:
+        raw_name = (s.get("name") or "").strip()
+        if not raw_name:
+            continue
+        show, season = _split_season(raw_name)
+        show = (show or raw_name).strip()
+        key = _base_norm(show) or _norm(show) or raw_name
+
+        w = groups.get(key)
+        if w is None:
+            w = {"key": key, "seasons": {}, "order": len(order)}
+            groups[key] = w
+            order.append(key)
+
+        prev = w["seasons"].get(season)
+        if prev is None:
+            w["seasons"][season] = s
+        else:
+            # نفس الموسم مرتين (مصدران) → نُبقي الأكثر حلقات وندمج الحلقات
+            if len(s.get("episodes", [])) > len(prev.get("episodes", [])):
+                w["seasons"][season] = s
+            else:
+                merged = dict(prev)
+                seen = {e.get("num") for e in prev.get("episodes", [])}
+                extra = [e for e in s.get("episodes", [])
+                         if e.get("num") not in seen]
+                if extra:
+                    merged["episodes"] = list(prev.get("episodes", [])) + extra
+                    merged["episodes_count"] = len(merged["episodes"])
+                    w["seasons"][season] = merged
+
+    works = []
+    for key in order:
+        w = groups[key]
+        seasons = [{"season": num, "series": w["seasons"][num]}
+                   for num in sorted(w["seasons"].keys())]
+
+        # الاسم المعروض من أدنى موسم (عادةً الموسم الأول)
+        lowest = seasons[0]["series"]
+        disp, _ = _split_season(lowest.get("name", ""))
+        disp = (disp or lowest.get("name", "")).strip()
+
+        # البوستر/التصنيف من الموسم الأكثر حلقات (أفضل تغطية)
+        best = max(seasons, key=lambda x: len(x["series"].get("episodes", [])))
+        bs = best["series"]
+
+        total_eps = sum(len(x["series"].get("episodes", [])) for x in seasons)
+        is_new = any(bool(x["series"].get("is_new")) for x in seasons)
+        last_updated = max(
+            (x["series"].get("last_updated", "") or "" for x in seasons),
+            default="")
+
+        works.append({
+            "name": disp,
+            "key": key,
+            "seasons": seasons,
+            "seasons_count": len(seasons),
+            "poster": bs.get("poster", ""),
+            "category": bs.get("category", ""),
+            "genre": bs.get("genre", ""),
+            "source": bs.get("source", ""),
+            "episodes_count": total_eps,
+            "is_new": is_new,
+            "last_updated": last_updated,
+            "order": w["order"],
+        })
+    return works
+
+
 CARD = """<a class="card" href="watch/{slug}.html" title="{name}">
   <div class="poster-wrap">
     <img src="{poster}" alt="{name}" loading="lazy"
@@ -361,29 +441,59 @@ def _badges(s):
     label = _cat_label(s.get("category"))
     if label:
         out += f'<span class="badge genre">{label}</span>'
+    sc = s.get("seasons_count") or 0
+    if sc > 1:
+        out += f'<span class="badge seasons">{sc} مواسم</span>'
     return out
 
 
-def _watch_html(s, ch, stream_eps):
-    name = s["name"]
-    slug = _slug(name)
-    poster = s.get("local_poster") or "posters/placeholder.jpg"
-    count = s.get("episodes_count", 0)
+def _watch_html(work, ch, stream_map):
+    """يبني صفحة مشاهدة لعمل واحد (قد يحوي عدة مواسم).
 
-    eps_list = []
-    for e in s.get("episodes", []):
-        num = e.get("num")
-        try:
-            num = int(num)
-        except Exception:
-            continue
-        info = stream_eps.get(num) or {}
-        url = _stream_url(info.get("fid"), info.get("size"), info.get("mid"))
-        eps_list.append({"num": num, "url": url})
-    eps_list.sort(key=lambda x: x["num"])
+    يُصدّر للمتصفح:
+        window.SEASONS = [{season, eps:[{num,url}]}, ...]
+        window.S        = حلقات الموسم الافتراضي (توافق خلفي)
+        window.DEFAULT_SEASON = فهرس الموسم الافتراضي
+    """
+    name = work["name"]
+    poster = work.get("local_poster") or "posters/placeholder.jpg"
+    count = work.get("episodes_count", 0)
+    seasons_count = work.get("seasons_count", 1)
 
-    playable = sum(1 for e in eps_list if e["url"])
-    eps_json = json.dumps(eps_list, ensure_ascii=False)
+    seasons_payload = []
+    total_playable = 0
+    for season in work.get("seasons", []):
+        s = season["series"]
+        stream_eps = _lookup_stream(stream_map, s.get("name", ""))
+        eps_list = []
+        for e in s.get("episodes", []):
+            try:
+                num = int(e.get("num"))
+            except Exception:
+                continue
+            info = stream_eps.get(num) or {}
+            url = _stream_url(info.get("fid"), info.get("size"), info.get("mid"))
+            eps_list.append({"num": num, "url": url})
+        eps_list.sort(key=lambda x: x["num"])
+        total_playable += sum(1 for e in eps_list if e["url"])
+        seasons_payload.append({
+            "season": int(season.get("season", 1)),
+            "eps": eps_list,
+        })
+
+    # الموسم الافتراضي = أول موسم فيه حلقات قابلة للبث، وإلا الأول
+    default_season = 0
+    for i, sp in enumerate(seasons_payload):
+        if any(e["url"] for e in sp["eps"]):
+            default_season = i
+            break
+
+    first_eps = seasons_payload[default_season]["eps"] if seasons_payload else []
+    seasons_json = json.dumps(seasons_payload, ensure_ascii=False)
+    eps_json = json.dumps(first_eps, ensure_ascii=False)
+    playable = total_playable
+    season_badge = (f'<span class="badge seasons">{seasons_count} مواسم</span>'
+                    if seasons_count > 1 else "")
 
     return f"""<!DOCTYPE html><html lang="ar" dir="rtl"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -420,6 +530,7 @@ def _watch_html(s, ch, stream_eps):
       <h1>{name}</h1>
       <div class="info-meta">
         <span class="badge eps">{count} حلقة</span>
+        {season_badge}
         <span class="badge genre" id="current-ep-badge">الحلقة 1</span>
       </div>
       <div class="player-controls">
@@ -430,8 +541,9 @@ def _watch_html(s, ch, stream_eps):
     </div>
   </section>
   <section class="episodes-section">
+    <div id="seasons-bar" class="seasons-bar"></div>
     <div class="episodes-header">
-      <h2>الحلقات</h2>
+      <h2>الحلقات <span id="season-label" class="season-label"></span></h2>
       <div class="episodes-filter">
         <input id="ep-search" type="search" placeholder="ابحث عن رقم الحلقة...">
       </div>
@@ -446,7 +558,7 @@ def _watch_html(s, ch, stream_eps):
     <a href="{ch}" target="_blank" rel="noopener">قناة تيليجرام</a>
   </div>
 </footer>
-<script>window.S = {eps_json}; window.C = {json.dumps(ch)}; window.PLAYABLE = {playable};</script>
+<script>window.SEASONS = {seasons_json}; window.S = {eps_json}; window.DEFAULT_SEASON = {default_season}; window.C = {json.dumps(ch)}; window.PLAYABLE = {playable};</script>
 <script src="../watch.js?v={ASSET_VER}"></script>
 </body></html>"""
 
@@ -583,26 +695,29 @@ def build_site():
         print("⚠️ لا مسلسلات لبناء الموقع", flush=True)
         return
 
-    # ── الترتيب: الأولوية ثم الأحدث ──
-    def _date_key(s):
-        return s.get("last_updated", "") or s.get("built_at", "")
+    # ── ★ دمج المواسم: تجميع المسلسلات في أعمال موحّدة ──
+    works = _group_into_works(series)
+    multi = sum(1 for w in works if w.get("seasons_count", 1) > 1)
+    print(f"   🔗 {len(series)} مدخل → {len(works)} عمل "
+          f"({multi} عمل متعدد المواسم)", flush=True)
 
-    series.sort(key=_date_key, reverse=True)
-    series.sort(key=lambda s: _priority_of(s.get("name", ""), s.get("category", ""),
-                                           s.get("source", "")))
+    # ── الترتيب: الأولوية ثم الأحدث ──
+    works.sort(key=lambda w: w.get("last_updated", "") or "", reverse=True)
+    works.sort(key=lambda w: _priority_of(w.get("name", ""), w.get("category", ""),
+                                          w.get("source", "")))
 
     # ── الصورة البديلة ──
     _ensure_placeholder()
 
     # ── تنزيل الصور ──
-    print(f"   🖼️  تنزيل صور {len(series)} عمل...", flush=True)
+    print(f"   🖼️  تنزيل صور {len(works)} عمل...", flush=True)
     ok = 0
-    for s in series:
-        lp = _dl_poster(s.get("poster", ""), s.get("name", ""))
-        s["local_poster"] = lp
+    for w in works:
+        lp = _dl_poster(w.get("poster", ""), w.get("name", ""))
+        w["local_poster"] = lp
         if lp != "posters/placeholder.jpg":
             ok += 1
-    print(f"   ✅ {ok}/{len(series)} صورة حقيقية", flush=True)
+    print(f"   ✅ {ok}/{len(works)} صورة حقيقية", flush=True)
 
     # ── خريطة البث ──
     stream_map = _load_stream_map()
@@ -617,31 +732,34 @@ def build_site():
           if config.CHANNEL_ID else "https://t.me/shoofcima")
 
     playable_total = 0
-    for s in series:
-        stream_eps = _lookup_stream(stream_map, s["name"])
-        playable_total += len(stream_eps)
-        slug = _slug(s["name"])
+    for w in works:
+        for season in w.get("seasons", []):
+            stream_eps = _lookup_stream(stream_map, season["series"].get("name", ""))
+            playable_total += len(stream_eps)
+        slug = _slug(w["name"])
         with open(watch / f"{slug}.html", "w", encoding="utf-8") as fh:
-            fh.write(_watch_html(s, ch, stream_eps))
+            fh.write(_watch_html(w, ch, stream_map))
 
     # ── الصفحة الرئيسية ──
     built_at = datetime.now().strftime("%Y-%m-%d")
     with open(DOCS_DIR / "index.html", "w", encoding="utf-8") as fh:
-        fh.write(_index_html(series, ch, built_at))
+        fh.write(_index_html(works, ch, built_at))
 
     # ── series.json (للبحث في app.js) ──
     meta = {"built_at": datetime.now().isoformat(), "series": [
         {
-            "name": s["name"],
-            "slug": _slug(s["name"]),
-            "poster": s.get("local_poster", "posters/placeholder.jpg"),
-            "episodes_count": s.get("episodes_count", 0),
-            "eps": s.get("episodes_count", 0),
-            "genre": s.get("genre", ""),
-            "category": s.get("category", ""),
-            "last_updated": s.get("last_updated", ""),
+            "name": w["name"],
+            "slug": _slug(w["name"]),
+            "poster": w.get("local_poster", "posters/placeholder.jpg"),
+            "episodes_count": w.get("episodes_count", 0),
+            "eps": w.get("episodes_count", 0),
+            "seasons_count": w.get("seasons_count", 1),
+            "seasons": [s.get("season") for s in w.get("seasons", [])],
+            "genre": w.get("genre", ""),
+            "category": w.get("category", ""),
+            "last_updated": w.get("last_updated", ""),
         }
-        for s in series
+        for w in works
     ]}
     with open(DOCS_DIR / "series.json", "w", encoding="utf-8") as fh:
         json.dump(meta, fh, ensure_ascii=False, indent=2)
@@ -652,12 +770,12 @@ def build_site():
 
     # إحصاء الأقسام
     counts = {}
-    for s in series:
-        sec = _section_of(_priority_of(s.get("name", ""), s.get("category", ""),
-                                       s.get("source", "")))
+    for w in works:
+        sec = _section_of(_priority_of(w.get("name", ""), w.get("category", ""),
+                                       w.get("source", "")))
         counts[sec] = counts.get(sec, 0) + 1
 
-    print(f"✅ {len(series)} عمل | {playable_total} حلقة قابلة للبث | "
+    print(f"✅ {len(works)} عمل | {playable_total} حلقة قابلة للبث | "
           f"صور: {ok}", flush=True)
     for sec in SECTION_ORDER:
         if counts.get(sec):

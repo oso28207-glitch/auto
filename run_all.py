@@ -31,6 +31,7 @@ from names import (
     norm as _norm,
     base_norm as _base_norm,
     similarity as _similarity,
+    split_season as _split_season,
     canonical_category as _canonical_category,
     CATEGORY_PRIORITY as _CATEGORY_PRIORITY,
 )
@@ -50,6 +51,9 @@ SKIPPED_LOG = DATA_DIR / "skipped_episodes.json"
 TG_SERIES = DATA_DIR / "tg_series.json"
 
 SOURCE_ORDER = {"u3seq": 0, "yam": 1, "egybest": 2}
+
+# عدد محاولات تنزيل الحلقة الواحدة (1 = بدون إعادة) — يمكن ضبطه عبر البيئة
+DOWNLOAD_RETRIES = max(1, int(os.environ.get("DOWNLOAD_RETRIES", "2") or "2"))
 
 # تسميات أسباب تخطّي الحلقات (للرسائل الواضحة)
 _SKIP_LABELS = {
@@ -252,11 +256,17 @@ def _find_source_match(tg_name, all_series):
         if _norm(s.get("name", "")) == tg_norm:
             return s
 
-    # 2) مطابقة بدون الموسم
+    # 2) مطابقة بدون الموسم (مع تفضيل نفس رقم الموسم لتجنّب خلط المواسم)
     if tg_base:
-        for s in all_series:
-            if _base_norm(s.get("name", "")) == tg_base:
-                return s
+        tg_show, tg_season = _split_season(tg_name)
+        cands = [s for s in all_series
+                 if _base_norm(s.get("name", "")) == tg_base]
+        if cands:
+            for s in cands:
+                _, s_season = _split_season(s.get("name", ""))
+                if s_season == tg_season:
+                    return s
+            return cands[0]
 
     # 3) احتواء نصّي
     if len(tg_base) >= 5:
@@ -459,15 +469,54 @@ def _build_site_from_tg():
 # ═══════════════════════════════════════════════════════════════
 # الخطوة 5: ترتيب للتحميل
 # ═══════════════════════════════════════════════════════════════
-def _sort_for_download(all_series):
+def _sort_for_download(all_series, existing_tg=None, skipped_log=None):
+    """يرتّب المسلسلات للتنزيل بحيث:
+       ★ الطبقة 0: المسلسلات الموجودة على الموقع (تيليجرام) — لملء الحلقات الناقصة أولاً
+       ★ الطبقة 1: الأعمال الجديدة (غير الموجودة على الموقع)
+    وداخل كل طبقة: المسلسلات التي بها حلقات فاشلة أولاً، ثم حسب الأولوية/التصنيف.
+    """
+    existing_tg = existing_tg or {}
+    skipped_log = skipped_log or {}
+
+    # فهارس المسلسلات الموجودة على الموقع (تيليجرام)
+    site_norms = set()
+    site_bases = set()
+    for n in existing_tg.keys():
+        nm = _norm(n)
+        if nm:
+            site_norms.add(nm)
+        b = _base_norm(n)
+        if b:
+            site_bases.add(b)
+
+    def _is_on_site(s):
+        nm = _norm(s.get("name", ""))
+        if nm and nm in site_norms:
+            return True
+        b = _base_norm(s.get("name", ""))
+        return bool(b) and b in site_bases
+
+    def _has_failures(s):
+        return s.get("name", "") in skipped_log
+
     def sort_key(s):
         name = s.get("name", "")
+        tier = 0 if _is_on_site(s) else 1          # الموقع أولاً
+        fail = 0 if _has_failures(s) else 1        # ذوو الفشل أولاً
         # ★ الأولوية حسب الاسم + التصنيف (المسلسلات التركية المدبلجة أولاً)
-        return (config.priority_of_series(s),
+        return (tier, fail,
+                config.priority_of_series(s),
                 SOURCE_ORDER.get(s.get("_src", "z"), 9),
                 name)
 
     all_series.sort(key=sort_key)
+
+    # إحصاء الطبقتين
+    on_site = sum(1 for s in all_series if _is_on_site(s))
+    with_fail = sum(1 for s in all_series if _has_failures(s))
+    print(f"\n🎯 ترتيب التنزيل: {on_site} مسلسل موجود على الموقع (أولاً) | "
+          f"{len(all_series) - on_site} عمل جديد | {with_fail} به حلقات فاشلة",
+          flush=True)
 
     # إحصاء الأقسام الموحّدة (12 قسماً) بالترتيب
     cat_counts = {}
@@ -604,17 +653,28 @@ async def _process_series(series, existing_tg, uploaded, skipped_log):
 
         print(f"\n   ── الحلقة {n} ──", flush=True)
 
-        # ★ التحميل: عند فشل حلقة نُسجّل ونتابع (لا نُسقط التشغيل كاملاً)
-        try:
-            r = download_episode(name, n, u)
-        except Exception as e:
-            print(f"   ⚠️ استثناء في تحميل الحلقة {n}: {str(e)[:150]}", flush=True)
-            r = None
+        # ★ التحميل مع إعادة المحاولة: عند فشل كل المحاولات نُسجّل ونتابع
+        r = None
+        last_err = ""
+        for attempt in range(1, DOWNLOAD_RETRIES + 1):
+            try:
+                r = download_episode(name, n, u)
+            except Exception as e:
+                last_err = str(e)[:150]
+                r = None
+            if r and Path(r).exists():
+                break
+            if attempt < DOWNLOAD_RETRIES:
+                print(f"   🔁 إعادة محاولة الحلقة {n} "
+                      f"({attempt}/{DOWNLOAD_RETRIES - 1})...", flush=True)
+                await asyncio.sleep(2)
 
         if not r or not Path(r).exists():
-            print(f"   ⚠️ فشل تحميل الحلقة {n} — تخطّي ومتابعة", flush=True)
+            print(f"   ⚠️ فشل تحميل الحلقة {n} — "
+                  f"{last_err or 'لا ملف ناتج'} — تخطّي ومتابعة", flush=True)
             skipped_log.setdefault(name, []).append({
                 "episode": n, "reason": "download_failed",
+                "error": last_err, "url": u,
             })
             continue
 
@@ -703,14 +763,14 @@ async def _main_async(clean=False):
     print("═" * 60, flush=True)
     _git_push_docs(force=True)
 
-    # ═══ 5) ترتيب للتحميل ═══
-    if all_series:
-        all_series = _sort_for_download(all_series)
-
     # ═══ تحميل الحالة ═══
     state = _load(STATE, {"series": []})
     uploaded = _load(UPLOADED, {})
     skipped_log = _load(SKIPPED_LOG, {})
+
+    # ═══ 5) ترتيب للتحميل: المسلسلات الناقصة على الموقع أولاً ثم الأعمال الجديدة ═══
+    if all_series:
+        all_series = _sort_for_download(all_series, existing_tg, skipped_log)
 
     print(
         f"\n💾 محلي: {len(state.get('series', []))} مسلسل | "

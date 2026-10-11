@@ -31,7 +31,9 @@ class Config:
 
     U3SEQ_BASE_URL = os.environ.get("SOURCE_BASE_URL", "https://u.3seq.cam").rstrip("/")
     U3SEQ_CATEGORY = int(os.environ.get("SOURCE_CATEGORY", "0"))
-    U3SEQ_MAX_PAGES = int(os.environ.get("SOURCE_MAX_PAGES", "20"))
+    # ملاحظة: مصدر u3seq يحتوي ~45854 منشوراً (~459 صفحة). نضمن حداً أدنى 500 صفحة
+    # حتى لا يقتطع إعداد قديم في الـ workflow (SOURCE_MAX_PAGES=20) الحلقات من البداية.
+    U3SEQ_MAX_PAGES = max(500, int(os.environ.get("SOURCE_MAX_PAGES", "500") or "500"))
     SOURCE_BASE_URL = U3SEQ_BASE_URL
     SOURCE_CATEGORY = U3SEQ_CATEGORY
     SOURCE_MAX_PAGES = U3SEQ_MAX_PAGES

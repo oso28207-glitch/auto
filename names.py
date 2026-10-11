@@ -100,6 +100,86 @@ def base_norm(name: str) -> str:
     return s
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# فصل الموسم عن اسم العمل (لدمج المواسم في عمل واحد بأزرار)
+# ══════════════════════════════════════════════════════════════════════════
+_SEASON_WORD_RE = re.compile(r"(?:ال)?(?:موسم|جزء|season|part)", re.IGNORECASE)
+
+_NUM_WORDS = {
+    "الاول": 1, "الاولى": 1, "اول": 1, "first": 1,
+    "الثاني": 2, "الثانية": 2, "ثاني": 2, "second": 2,
+    "الثالث": 3, "الثالثة": 3, "ثالث": 3, "third": 3,
+    "الرابع": 4, "الرابعة": 4, "رابع": 4, "fourth": 4,
+    "الخامس": 5, "الخامسة": 5, "خامس": 5, "fifth": 5,
+    "السادس": 6, "السادسة": 6, "سادس": 6, "sixth": 6,
+    "السابع": 7, "السابعة": 7, "سابع": 7, "seventh": 7,
+    "الثامن": 8, "الثامنة": 8, "ثامن": 8, "eighth": 8,
+    "التاسع": 9, "التاسعة": 9, "تاسع": 9, "ninth": 9,
+    "العاشر": 10, "العاشرة": 10, "عاشر": 10, "tenth": 10,
+    "الحادي عشر": 11, "الثاني عشر": 12,
+}
+
+# لواحق ضوضائية تُزال من نهاية اسم العمل
+_NOISE_SUFFIX_RE = re.compile(
+    r"\s*[-:]?\s*(?:مدبلج(?:ة|ين)?|مدبلجه|مترجم(?:ة|ين)?|كامل(?:ة)?|"
+    r"الجديد(?:ة)?|جديد(?:ة)?|والاخيرة|والأخيرة)\s*$"
+)
+
+
+def split_season(name: str):
+    """يفصل اسم العمل عن رقم الموسم.
+
+    أمثلة:
+        'حب للايجار الموسم 2'            → ('حب للايجار', 2)
+        'انت من احببت 2 الموسم الثاني'   → ('انت من احببت', 2)
+        'حياتي الرائعة الموسم 1'         → ('حياتي الرائعة', 1)
+        'الخياط Terzi الموسم الثاني'     → ('الخياط Terzi', 2)
+
+    يُعيد (اسم العمل, رقم الموسم). رقم الموسم = 1 إن لم يوجد موسم صريح.
+    """
+    if not name:
+        return name or "", 1
+    s = re.sub(r"[\u064B-\u065F\u0670\u0640]", "", str(name).strip()).translate(_AR_DIGITS)
+    season = 1
+
+    m = _SEASON_WORD_RE.search(s)
+    if m:
+        pos = m.end()
+        while pos < len(s) and s[pos] in " \t-:،.":
+            pos += 1
+        num = None
+        mm = re.match(r"(\d+)", s[pos:])
+        if mm:
+            num = int(mm.group(1))
+            pos += mm.end()
+        else:
+            for w in ("الحادي عشر", "الثاني عشر"):
+                if s[pos:].startswith(w):
+                    num = _NUM_WORDS[w]
+                    pos += len(w)
+                    break
+            if num is None:
+                toks = s[pos:].split(None, 1)
+                if toks:
+                    tok = toks[0].strip(".,:،")
+                    if tok in _NUM_WORDS:
+                        num = _NUM_WORDS[tok]
+                        pos += len(toks[0])
+        if num:
+            season = num
+        s = (s[:m.start()] + " " + s[pos:]).strip()
+
+    s = re.sub(r"\s+", " ", s).strip(" -:،.")
+
+    # رقم زائد في النهاية يطابق رقم الموسم (مثال: 'انت من احببت 2 الموسم الثاني')
+    m2 = re.search(r"\s(\d+)\s*$", s)
+    if m2 and int(m2.group(1)) == season:
+        s = s[:m2.start()].strip()
+
+    s = _NOISE_SUFFIX_RE.sub("", s).strip()
+    return (s or name), season
+
+
 def tokens(name: str) -> set:
     """كلمات الاسم (مطبَّعة) لقياس التشابه."""
     s = _clean(name)
