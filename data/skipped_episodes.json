@@ -587,6 +587,12 @@
     {
       "episode": 75,
       "reason": "download_failed"
+    },
+    {
+      "episode": 26,
+      "reason": "download_failed",
+      "error": "",
+      "url": "https://u.3seq.com/video/modablaj-sevdigim-sensin-episode-26/"
     }
   ],
   "مسلسل انت من احببت 2 الموسم الثاني": [
